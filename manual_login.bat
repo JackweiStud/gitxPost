@@ -25,7 +25,7 @@ if exist "C:\Program Files\Google\Chrome\Application\chrome.exe" (
 )
 
 :: 启动 Chrome，指定用户目录，不带任何自动化参数，但强制直连
-"%CHROME_PATH%" --user-data-dir="%~dp0chrome_data_mirror" --no-proxy-server --no-first-run --no-default-browser-check "https://x.com/flow/login"
+"%CHROME_PATH%" --user-data-dir="%~dp0chrome_data_mirror" --no-proxy-server --no-first-run --no-default-browser-check "https://x.com/i/flow/login"
 
 echo 浏览器已关闭。
 echo 现在可以运行 python auto_publish.py 了！

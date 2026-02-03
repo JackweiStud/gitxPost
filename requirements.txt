@@ -1,0 +1,6 @@
+playwright>=1.40.0
+Pillow>=10.0.0
+pywin32>=306
+markdown>=3.5.0
+html2text>=2020.1.16
+beautifulsoup4>=4.12.0
