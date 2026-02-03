@@ -21,6 +21,7 @@ temp/
 doc/
 
 .cursor/
-.agent/
+.agent/*
+!.agent/workflows/
 .claude/
 openspec/
