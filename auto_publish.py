@@ -496,17 +496,65 @@ async def auto_publish_article(markdown_file: str, publish: bool = False):
                 print(f"⚠️  导航超时: {e}")
             
             # 检查登录状态
+            # 检查登录状态
             current_url = page.url
-            if "login" in current_url.lower() or "flow/login" in current_url.lower():
-                print("⚠️  检测到未登录状态！")
-                print("👉 请在弹出的浏览器中手动完成登录")
-                print("   (登录成功并跳转到 Articles 页面后，回到这里按 Enter 继续)")
-                await asyncio.get_event_loop().run_in_executor(None, input)
+            # 检查 URL 是否包含 login 关键字
+            is_login_url = "login" in current_url.lower() or "flow/login" in current_url.lower()
+            if is_login_url:
+                print(f"   ℹ️  URL 包含 login: {current_url}")
+
+            # 进一步检查是否存在登录按钮/跳转链接（更准确）
+            has_login_button = False
+            try:
+                # 检查常见的登录入口标识
+                login_indicators = [
+                    'a[href="/login"]',
+                    'a[href*="flow/login"]',
+                    'span:has-text("Sign in to X")',
+                    'span:has-text("登录 X")',
+                ]
+                for selector in login_indicators:
+                    try:
+                        elem = await page.wait_for_selector(selector, state='visible', timeout=2000)
+                        if elem:
+                            has_login_button = True
+                            print(f"   ℹ️  发现登录按钮/文本: {selector}")
+                            break
+                    except:
+                        continue
+            except:
+                pass
+
+            if is_login_url or has_login_button:
+                print("❌ 检测到未登录状态！")
+                print("=" * 60)
+                print("⚠️  当前账号未登录，无法继续执行自动化操作。")
+                print("👉 请按照以下步骤操作：")
+                print("   1. 关闭当前的自动化浏览器窗口")
+                print("   2. 运行目录下的 manual_login.bat 脚本")
+                print(f"      (双击运行: {os.path.abspath('manual_login.bat')})")
+                print("   3. 在弹出的 Chrome 中完成登录")
+                print("   4. 登录成功后，关闭 Chrome，重新运行此脚本")
+                print("=" * 60)
                 
-                # 二次检查
-                if "login" in page.url.lower():
-                    print("❌ 依然未登录，退出")
-                    return False
+                # 关闭浏览器上下文，释放文件句柄
+                await context.close()
+                context = None # 防止 finally 块再次关闭
+                await asyncio.sleep(2)
+
+                # 自动删除镜像文件夹，以便用户下次重新从源同步
+                try:
+                    if TEMP_USER_DATA_DIR.exists():
+                        print(f"   🗑️  检测到登录失效，正在删除镜像文件夹: {TEMP_USER_DATA_DIR}...")
+                        # 稍微等待一下确保进程完全退出
+                        await asyncio.sleep(1)
+                        shutil.rmtree(TEMP_USER_DATA_DIR, ignore_errors=True)
+                        print("   ✅ 镜像文件夹已清除")
+                except Exception as e:
+                    print(f"   ⚠️  清除镜像文件夹失败 (可能被占用): {e}")
+                    print("   👉 请手动删除该文件夹")
+
+                return False
             
             print("✅ 已登录")
             
