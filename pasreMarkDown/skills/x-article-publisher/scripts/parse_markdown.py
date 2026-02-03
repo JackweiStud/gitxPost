@@ -169,9 +169,14 @@ def extract_images_and_dividers(markdown: str, base_path: Path) -> tuple[list[di
     content_image_index = 0
 
     img_pattern = re.compile(r'^!\[([^\]]*)\]\(([^)]+)\)$')
+    comment_pattern = re.compile(r'^<!--.*-->$', re.DOTALL)
 
     for i, block in enumerate(blocks):
         block_stripped = block.strip()
+
+        # strip html comments
+        if comment_pattern.match(block_stripped):
+            continue
 
         # Check for divider
         if block_stripped == '___DIVIDER___':
@@ -205,12 +210,13 @@ def extract_images_and_dividers(markdown: str, base_path: Path) -> tuple[list[di
             after_text = ""
             if clean_blocks:
                 prev_block = clean_blocks[-1].strip()
-                lines = [l for l in prev_block.split('\n') if l.strip()]
+                # Remove placeholders from prev_block text to ensure we get real text
+                prev_block_clean = re.sub(r'\{\{IMG_PLACEHOLDER_.*\}\}', '', prev_block).strip()
+                lines = [l for l in prev_block_clean.split('\n') if l.strip()]
                 after_text = lines[-1][:80] if lines else ""
             
-            # 生成唯一占位符标记（用于精准定位）
-            # 注意：不能用 < > 符号，会被 HTML 解析吃掉
-            placeholder = f"[[IMG_PLACEHOLDER_{content_image_index}:{filename}]]"
+            # 使用更安全的占位符格式 {{...}}
+            placeholder = f"{{{{IMG_PLACEHOLDER_{content_image_index}:{filename}}}}}"
 
             images.append({
                 "path": full_path,
@@ -219,13 +225,12 @@ def extract_images_and_dividers(markdown: str, base_path: Path) -> tuple[list[di
                 "alt": alt_text,
                 "block_index": block_index,
                 "after_text": after_text,
-                "placeholder": placeholder,  # 新增：占位符标记
-                "placeholder_index": content_image_index  # 新增：占位符索引
+                "placeholder": placeholder,
+                "placeholder_index": content_image_index
             })
             
             # 第一张图片是封面，不插入占位符；后续图片插入占位符
             if content_image_index > 0:
-                # 在 clean_blocks 中插入占位符（作为独立段落）
                 clean_blocks.append(placeholder)
             
             content_image_index += 1
