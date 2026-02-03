@@ -1,27 +1,66 @@
-你是一个硅谷风格的“Builder in Public”技术博主（参考 Zara Zhang 风格--skill路径：C:\Users\wzq13\.claude\skills\zara-zhang-tweets）。
-请根据我提供的 `template.md` 格式，写一篇关于 [主题/产品名称] 的文章。
+# 文章生成 Prompt 选择
 
-### 1. 核心风格要求 (Tone & Voice)
-*   **拒绝爹味/说明书**：不要写成枯燥的文档。要像朋友聊天一样自然。
-*   **痛点优先 (The Struggle)**：开篇必须描述一个具体的、让人抓狂的场景（如“耗时”、“重复劳动”、“甚至想摔键盘”）。
-*   **情绪价值**：使用 "No thanks 🙅‍♀️", "Mind blown 🤯", "Magic ✨" 等表达惊喜和拒绝旧模式的情绪。
-*   **赋能 (Empowerment)**：强调“即使你不懂代码，也能做到”，最后要号召大家去尝试。
+## 📚 可用风格
 
-### 2. 严格格式规则 (Critical for Automation)
-为了确保自动化发布脚本能正确解析，请**严格遵守**以下物理格式限制，不要自由发挥：
+| 风格 | 文件 | 描述 | 适用场景 |
+|---|---|---|---|
+| **Builder/洞察风** (默认) | [prompt_zara.md](prompts/prompt_zara.md) | 硅谷创业者，Building in Public | 经验分享、工具推荐、效率提升 |
+| **技术硬核风** | [prompt_tech.md](prompts/prompt_tech.md) | 资深工程师，深度技术分析 | 技术教程、架构分析、性能优化 |
+| **幽默风趣风** | [prompt_fun.md](prompts/prompt_fun.md) | 段子手，轻松有趣科普 | 科普、吐槽、轻松话题 |
 
-1.  **H1 标题**：全文只能有一个 `#` 标题，且必须在**第一行**。标题要吸引人（如“我如何用...解决...”）。
-2.  **图片占位符**：
-    *   **第一张图片**必须是封面图，使用 `![Cover](images/cover.png)`。
-    *   后续图片使用 `![Demo](images/demo1.png)`, `![Arch](images/architecture.png)` 等。
-    *   **绝对禁止**两张图片紧挨着，中间必须有文字或列表隔开。
-3.  **列表与引用**：
-    *   使用 `> 引用块` 来展示金句或高光时刻。
-    *   使用列表来拆解步骤。
-4.  **代码块**：如果涉及代码或 Prompt，必须使用标准 Markdown 代码块 ` ```python ` 或 ` ```text `。
+---
 
-### 3. 内容结构参考
-*   **Hook**：以前怎么惨（No thanks）。
-*   **The Aha Moment**：发现新方法的瞬间（Magic）。
-*   **How it works**：简单三步走，小白也能懂。
-*   **Result\Value**：省了多少时间/钱。
+## 🚀 使用说明
+
+### Step 1: 选择风格
+根据你要写的内容类型，选择对应的 Prompt 文件。
+
+### Step 2: 复制 Prompt
+打开对应的 `.md` 文件，复制全部内容到 LLM 对话 (Claude/GPT/etc.)。
+
+### Step 3: 填入主题
+在 Prompt 的 `## 任务` 部分，将 `[在这里填入你的主题]` 替换为你的实际主题。
+
+### Step 4: 生成文章
+让 LLM 生成完整的 Markdown 文章。
+
+### Step 5: 配图 (可选)
+使用 `/auto-imgByMdCn` 工作流自动为文章配图。
+
+### Step 6: 发布
+使用 `auto_publish.py` 自动发布到 X。
+
+```bash
+python auto_publish.py <your_article.md> --publish
+```
+
+---
+
+## ⚡ 快捷方式
+
+如果你只想使用默认风格 (Builder/洞察风)，直接使用：
+
+👉 [prompt_zara.md](prompts/prompt_zara.md)
+
+---
+
+## 📋 格式规范
+
+所有风格都必须满足以下格式，确保自动发布脚本正常工作：
+
+1. `# 标题` - H1 标题
+2. `![封面](images/cover.png)` - 第一张图片作为封面
+3. `![配图](images/xxx.png)` - 使用相对路径
+4. 标准 Markdown 语法
+
+详细规范请参考：[template.md](template.md)
+
+---
+
+## 🔍 验证
+
+生成文章后，可运行以下命令验证格式：
+
+```bash
+python pasreMarkDown/skills/x-article-publisher/scripts/parse_markdown.py <your_article.md> --output json
+```
