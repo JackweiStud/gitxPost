@@ -19,3 +19,8 @@ chrome_data_mirror/
 
 temp/
 doc/
+
+.cursor/
+.agent/
+.claude/
+openspec/
