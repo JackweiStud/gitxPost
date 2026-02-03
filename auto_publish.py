@@ -230,7 +230,7 @@ async def setup_stealth_browser(playwright):
 async def find_placeholder_and_select(page: Page, placeholder: str) -> bool:
     """【方案B】在编辑器中查找占位符文本并选中它，准备替换为图片。
     
-    占位符格式：<<IMG_PLACEHOLDER_0:filename.png>>
+    占位符格式：{{IMG_PLACEHOLDER_0:filename.png}}
     """
     try:
         print(f"   🔍 搜索占位符: {placeholder[:40]}...")
