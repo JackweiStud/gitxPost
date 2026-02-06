@@ -31,7 +31,7 @@ description: 分析 Markdown 内容，使用 AI 生成匹配的插图，并替�
 1.  **生成**：根据构造的 Prompt 调用 `generate_image`。
 2.  **移动与重命名**：将生成的图片文件（Artifacts）移动到文章对应的 `images/` 目录中，并重命名以匹配 Markdown 中的占位符路径。
     // turbo
-    -   *PowerShell 命令*：`Copy-Item -Path "[ArtifactPath]" -Destination "[LocalPath]" -Force`
+    -   *命令*：`cp "[ArtifactPath]" "[LocalPath]"`
 3.  **验证**：确认 Markdown 文件引用无误，图片显示正常。
 
 ## 5. 用户反馈

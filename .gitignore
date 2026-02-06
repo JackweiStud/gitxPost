@@ -25,3 +25,6 @@ doc/
 !.agent/workflows/
 .claude/
 openspec/
+
+CreateMd/testmd/*
+CreateMd/testmd/
