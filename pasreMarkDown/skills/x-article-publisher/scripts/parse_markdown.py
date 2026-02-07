@@ -40,7 +40,11 @@ import os
 import re
 import sys
 import urllib.parse
+import hashlib
 from pathlib import Path
+
+# Import table rendering functions
+from table_to_image import parse_markdown_table, render_table_to_image
 
 
 # Common search directories for missing images
@@ -74,12 +78,36 @@ def find_image_file(original_path: str, filename: str) -> tuple[str, bool]:
     return original_path, False
 
 
+def is_table_line(line: str) -> bool:
+    """Check if a line is part of a Markdown table."""
+    stripped = line.strip()
+    # A table line starts and ends with | or contains | as separator
+    if not stripped:
+        return False
+    # Must contain at least one | and have content
+    if '|' not in stripped:
+        return False
+    # Check for table separator line (e.g., |---|---|)
+    if re.match(r'^\|?[\s]*:?-{2,}:?[\s]*(\|[\s]*:?-{2,}:?[\s]*)*\|?$', stripped):
+        return True
+    # Check for table data/header line
+    if stripped.startswith('|') or stripped.endswith('|'):
+        return True
+    # Check for pipe-separated content (at least 2 columns)
+    parts = stripped.split('|')
+    if len(parts) >= 2:
+        return True
+    return False
+
+
 def split_into_blocks(markdown: str) -> list[str]:
-    """Split markdown into logical blocks (paragraphs, headers, quotes, code blocks, etc.)."""
+    """Split markdown into logical blocks (paragraphs, headers, quotes, code blocks, tables, etc.)."""
     blocks = []
     current_block = []
     in_code_block = False
     code_block_lines = []
+    in_table = False
+    table_lines = []
 
     lines = markdown.split('\n')
 
@@ -98,6 +126,10 @@ def split_into_blocks(markdown: str) -> list[str]:
                 code_block_lines = []
             else:
                 # Start of code block
+                if in_table and table_lines:
+                    blocks.append('___TABLE___' + '\n'.join(table_lines))
+                    table_lines = []
+                    in_table = False
                 if current_block:
                     blocks.append('\n'.join(current_block))
                     current_block = []
@@ -108,6 +140,22 @@ def split_into_blocks(markdown: str) -> list[str]:
         if in_code_block:
             code_block_lines.append(line)
             continue
+
+        # Check for table lines
+        if is_table_line(stripped):
+            if current_block:
+                blocks.append('\n'.join(current_block))
+                current_block = []
+            in_table = True
+            table_lines.append(line)
+            continue
+
+        # If we were in a table but this line is not a table line, end the table
+        if in_table:
+            if table_lines:
+                blocks.append('___TABLE___' + '\n'.join(table_lines))
+            table_lines = []
+            in_table = False
 
         # Empty line signals end of block
         if not stripped:
@@ -145,6 +193,10 @@ def split_into_blocks(markdown: str) -> list[str]:
     if current_block:
         blocks.append('\n'.join(current_block))
 
+    # Handle unclosed table
+    if in_table and table_lines:
+        blocks.append('___TABLE___' + '\n'.join(table_lines))
+
     # Handle unclosed code block
     if code_block_lines:
         blocks.append('___CODE_BLOCK_START___' + '\n'.join(code_block_lines) + '___CODE_BLOCK_END___')
@@ -153,9 +205,10 @@ def split_into_blocks(markdown: str) -> list[str]:
 
 
 def extract_images_and_dividers(markdown: str, base_path: Path) -> tuple[list[dict], list[dict], str, int]:
-    """Extract images and dividers with their block index positions.
+    """Extract images, tables, and dividers with their block index positions.
     
     方案B改进：在图片位置插入占位符标记，用于精准定位。
+    Tables are automatically converted to images.
 
     Returns:
         (image_list, divider_list, markdown_with_placeholders, total_blocks)
@@ -167,9 +220,15 @@ def extract_images_and_dividers(markdown: str, base_path: Path) -> tuple[list[di
     
     # 内容图片计数器（排除封面图）
     content_image_index = 0
+    # 表格计数器
+    table_index = 0
 
     img_pattern = re.compile(r'^!\[([^\]]*)\]\(([^)]+)\)$')
     comment_pattern = re.compile(r'^<!--.*-->$', re.DOTALL)
+
+    # Ensure images directory exists
+    images_dir = base_path / "images"
+    images_dir.mkdir(parents=True, exist_ok=True)
 
     for i, block in enumerate(blocks):
         block_stripped = block.strip()
@@ -190,6 +249,60 @@ def extract_images_and_dividers(markdown: str, base_path: Path) -> tuple[list[di
                 "block_index": block_index,
                 "after_text": after_text
             })
+            continue
+
+        # Check for table blocks
+        if block_stripped.startswith('___TABLE___'):
+            table_content = block_stripped[len('___TABLE___'):]
+            
+            try:
+                # Parse and render table to image
+                headers, rows, alignments = parse_markdown_table(table_content)
+                
+                if rows:  # Only process if we have data
+                    # Generate unique filename based on content hash
+                    table_hash = hashlib.md5(table_content.encode()).hexdigest()[:8]
+                    table_filename = f"table_{table_index}_{table_hash}.png"
+                    table_path = images_dir / table_filename
+                    
+                    # Render table to image
+                    img = render_table_to_image(headers, rows, alignments, scale=2)
+                    img.save(str(table_path), 'PNG')
+                    
+                    print(f"[parse_markdown] 表格已转换为图片: {table_path}", file=sys.stderr)
+                    
+                    block_index = len(clean_blocks)
+                    after_text = ""
+                    if clean_blocks:
+                        prev_block = clean_blocks[-1].strip()
+                        prev_block_clean = re.sub(r'\{\{IMG_PLACEHOLDER_.*\}\}', '', prev_block).strip()
+                        lines = [l for l in prev_block_clean.split('\n') if l.strip()]
+                        after_text = lines[-1][:80] if lines else ""
+                    
+                    placeholder = f"{{{{IMG_PLACEHOLDER_{content_image_index}:{table_filename}}}}}"
+                    
+                    images.append({
+                        "path": str(table_path),
+                        "original_path": str(table_path),
+                        "exists": True,
+                        "alt": f"Table {table_index + 1}",
+                        "block_index": block_index,
+                        "after_text": after_text,
+                        "placeholder": placeholder,
+                        "placeholder_index": content_image_index,
+                        "is_table": True
+                    })
+                    
+                    # Tables are always content images, not covers
+                    clean_blocks.append(placeholder)
+                    content_image_index += 1
+                    table_index += 1
+                    
+            except Exception as e:
+                print(f"[parse_markdown] WARNING: 表格转换失败: {e}", file=sys.stderr)
+                # If table conversion fails, keep the original markdown table text
+                clean_blocks.append(table_content)
+            
             continue
 
         match = img_pattern.match(block_stripped)
