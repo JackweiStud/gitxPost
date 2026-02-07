@@ -28,6 +28,7 @@ gitxPost/
 ├── auto_publish_uc.py    # 核心发布脚本 (macOS 专用)
 ├── config.py             # 配置文件
 ├── pyEnv.py              # 环境检测工具
+├── xpost.py              # CLI 入口（推荐给 Agent/自动化）
 ├── requirements.txt      # 项目依赖
 ├── chrome_data_mirror/   # 浏览器登录状态（自动生成）
 ├── CreateMd/             # 文章创作目录
@@ -63,7 +64,10 @@ pip install -r requirements.txt
 # 激活虚拟环境
 source venv/bin/activate
 
-# 运行脚本（会打开浏览器）
+# 推荐：使用 CLI（会打开浏览器）
+python3 xpost.py publish CreateMd/your_article.md
+
+# 或：直接运行脚本（等价）
 python3 auto_publish_uc.py CreateMd/your_article.md
 ```
 
@@ -73,6 +77,30 @@ python3 auto_publish_uc.py CreateMd/your_article.md
 3. 登录成功后脚本自动继续
 
 > 💡 登录状态会保存到 `chrome_data_mirror/` 目录，后续运行无需重新登录。
+
+### 2.1 CLI 速查（推荐给 Agent/自动化）
+
+所有命令输出 JSON，方便其他 Agent/LLM 调用。
+
+```bash
+# 生成文章骨架（可选指定主题/风格）
+python3 xpost.py init CreateMd/your_article.md --topic "你的主题" --style zara
+
+# 发布前预检（严格按 CreateMd/template.md 约束）
+python3 xpost.py validate CreateMd/your_article.md
+
+# 解析为结构化 JSON（title/cover/images/html 等）
+python3 xpost.py parse CreateMd/your_article.md
+
+# 保存草稿（默认）或直接发布（输出包含 missing_images 与耗时）
+python3 xpost.py publish CreateMd/your_article.md
+python3 xpost.py publish CreateMd/your_article.md --publish
+
+# 环境与依赖检查
+python3 xpost.py doctor
+```
+
+风格参数 `--style` 支持：`zara` / `tech` / `fun`（对应 `CreateMd/prompts/` 下的 Prompt）。
 
 ### 3. 创作文章
 

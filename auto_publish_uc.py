@@ -28,7 +28,11 @@ from parse_markdown import parse_markdown_file
 from copy_to_clipboard import copy_html_to_clipboard, copy_image_to_clipboard
 
 # 配置
-USER_DATA_DIR = Path.cwd() / "chrome_data_mirror"
+PROFILE_DIR = os.environ.get("XPOST_PROFILE_DIR")
+if PROFILE_DIR:
+    USER_DATA_DIR = Path(PROFILE_DIR)
+else:
+    USER_DATA_DIR = Path.cwd() / "chrome_data_mirror"
 ARTICLES_URL = "https://x.com/compose/articles"
 
 
@@ -115,10 +119,16 @@ def create_driver():
     options.add_argument("--no-sandbox")  # macOS 必需
     
     # 指定 Chrome 版本以匹配系统安装的 Chrome
+    version_main_env = os.environ.get("XPOST_CHROME_VERSION_MAIN")
+    try:
+        version_main = int(version_main_env) if version_main_env else 144
+    except ValueError:
+        version_main = 144
+
     driver = uc.Chrome(
-        options=options, 
+        options=options,
         use_subprocess=True,
-        version_main=144  # 匹配当前系统 Chrome 版本
+        version_main=version_main  # 匹配当前系统 Chrome 版本
     )
     print("✅ 浏览器已启动（反检测模式）")
     return driver
@@ -632,7 +642,8 @@ def auto_publish_article(markdown_file: str, publish: bool = False):
         else:
             print("   3. 手动点击「保存草稿」或「发布」 (未开启 --publish)")
             print()
-            input("按 Enter 键关闭浏览器...")
+            if os.environ.get("XPOST_NO_WAIT") != "1":
+                input("按 Enter 键关闭浏览器...")
         
         return True
         
