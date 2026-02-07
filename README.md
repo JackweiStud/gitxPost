@@ -58,6 +58,21 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### 1.1 安装 CLI（推荐）
+
+在虚拟环境中安装本地 CLI，之后可直接使用 `xpost` 命令：
+
+```bash
+cd /Users/jackwl/Code/gitcode/gitxPost
+source venv/bin/activate
+pip install -e .
+xpost --help
+```
+你也可以使用一键脚本完成以上步骤：
+```bash
+./scripts/install_cli.sh
+```
+
 ### 2. 首次登录（仅需一次）
 
 ```bash
@@ -65,7 +80,7 @@ pip install -r requirements.txt
 source venv/bin/activate
 
 # 推荐：使用 CLI（会打开浏览器）
-python3 xpost.py publish CreateMd/your_article.md
+xpost publish CreateMd/your_article.md
 
 # 或：直接运行脚本（等价）
 python3 auto_publish_uc.py CreateMd/your_article.md
@@ -84,20 +99,20 @@ python3 auto_publish_uc.py CreateMd/your_article.md
 
 ```bash
 # 生成文章骨架（可选指定主题/风格）
-python3 xpost.py init CreateMd/your_article.md --topic "你的主题" --style zara
+xpost init CreateMd/your_article.md --topic "你的主题" --style zara
 
 # 发布前预检（严格按 CreateMd/template.md 约束）
-python3 xpost.py validate CreateMd/your_article.md
+xpost validate CreateMd/your_article.md
 
 # 解析为结构化 JSON（title/cover/images/html 等）
-python3 xpost.py parse CreateMd/your_article.md
+xpost parse CreateMd/your_article.md
 
 # 保存草稿（默认）或直接发布（输出包含 missing_images 与耗时）
-python3 xpost.py publish CreateMd/your_article.md
-python3 xpost.py publish CreateMd/your_article.md --publish
+xpost publish CreateMd/your_article.md
+xpost publish CreateMd/your_article.md --publish
 
 # 环境与依赖检查
-python3 xpost.py doctor
+xpost doctor
 ```
 
 风格参数 `--style` 支持：`zara` / `tech` / `fun`（对应 `CreateMd/prompts/` 下的 Prompt）。
