@@ -117,6 +117,17 @@ xpost doctor
 
 风格参数 `--style` 支持：`zara` / `tech` / `fun`（对应 `CreateMd/prompts/` 下的 Prompt）。
 
+### 2.2 Agent 调用示例
+
+示例脚本会执行 `init -> validate -> publish`（默认草稿），并打印每一步的 JSON 结果。可直接传入主题文本：
+
+```bash
+python3 scripts/agent_example.py "关于AI电力的问题文章"
+
+# 或传入 Markdown 路径
+python3 scripts/agent_example.py CreateMd/your_article.md
+```
+
 ### 3. 创作文章
 
 在 `CreateMd/` 目录下创建 Markdown 文件，格式要求：

@@ -264,6 +264,7 @@ def _cmd_publish(args):
     if args.chrome_version_main:
         os.environ["XPOST_CHROME_VERSION_MAIN"] = str(args.chrome_version_main)
 
+    sys.path.insert(0, str(BASE_DIR))
     sys.path.insert(0, str(SCRIPTS_DIR))
     try:
         from parse_markdown import parse_markdown_file
