@@ -128,6 +128,33 @@ python3 scripts/agent_example.py "关于AI电力的问题文章"
 python3 scripts/agent_example.py CreateMd/your_article.md
 ```
 
+### 2.3 自动配图（Antigravity 工作流）
+
+本项目内置 Antigravity 工作流：`.agent/workflows/auto-imgByMdCn.md`  
+在 Antigravity 的对话中运行以下命令，可自动为指定 Markdown 插入配图：
+
+```bash
+/auto-imgByMdCn.md CreateMd/your_article.md
+```
+
+说明：该流程依赖 Antigravity 的 workflow 运行能力与其内置的图片生成工具，其他平台通常无法直接执行该工作流。
+
+### 2.4 一键触发自动配图（Antigravity + AppleScript）
+
+脚本会启动 Antigravity、打开本项目，并模拟输入命令：
+
+```bash
+./scripts/antigravity_auto_img.sh CreateMd/your_article.md
+```
+
+如果 Antigravity 的聊天输入快捷键不是 `cmd+l`，可通过环境变量覆盖：
+
+```bash
+AGY_FOCUS_SHORTCUT=cmd+shift+l ./scripts/antigravity_auto_img.sh CreateMd/your_article.md
+```
+
+首次运行可能需要在 macOS 中授权终端的“辅助功能”权限，否则无法模拟键盘输入。
+
 ### 3. 创作文章
 
 在 `CreateMd/` 目录下创建 Markdown 文件，格式要求：
