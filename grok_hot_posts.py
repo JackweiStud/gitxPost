@@ -29,6 +29,17 @@ else:
 
 GROK_URL = "https://x.com/i/grok"
 
+
+def _log_progress(msg):
+    """输出进度信息到 stderr（不污染 stdout 的 JSON 输出）。
+    
+    解决 Agent/CI 在 --json-only 模式下因 stdout 无输出
+    而误判脚本卡死的问题。
+    """
+    ts = datetime.now().strftime("%H:%M:%S")
+    print(f"[{ts}] {msg}", file=sys.stderr, flush=True)
+
+
 # Grok 提示词构建器
 def build_grok_prompt(topics: list, count: int, hours: int, tags: list = None):
     """动态构建 Grok 提示词
@@ -104,6 +115,7 @@ def _cleanup_chrome_profile(profile_dir: Path, quiet=False):
 
 def create_driver(quiet=False):
     """创建 undetected Chrome 驱动"""
+    _log_progress("🌐 启动浏览器...")
     if not quiet:
         print("🌐 启动浏览器...")
     USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -148,6 +160,7 @@ def create_driver(quiet=False):
             print(f"   📦 使用本地 ChromeDriver")
 
     driver = uc.Chrome(**kwargs)
+    _log_progress("✅ 浏览器已启动")
     if not quiet:
         print("✅ 浏览器已启动")
     return driver
@@ -159,6 +172,7 @@ def random_delay(min_ms=500, max_ms=2000):
 
 def start_new_conversation(driver, quiet=False):
     """确保在全新的 Grok 对话中开始，清除历史上下文"""
+    _log_progress("🆕 新建 Grok 对话...")
     if not quiet:
         print("🆕 新建 Grok 对话...")
     
@@ -221,6 +235,7 @@ def start_new_conversation(driver, quiet=False):
 
 def wait_for_grok_response(driver, timeout=300, quiet=False):
     """等待 Grok 生成完毕"""
+    _log_progress(f"⏳ 等待 Grok 回复（超时: {timeout}s）...")
     if not quiet:
         print("⏳ 等待 Grok 回复...")
     time.sleep(3)
@@ -281,6 +296,7 @@ def wait_for_grok_response(driver, timeout=300, quiet=False):
             if current_text == last_text:
                 stable_count += 1
                 if stable_count >= 1:  # 连续稳定 1 次即可视为完成
+                    _log_progress(f"✅ Grok 回复完成 ({elapsed}s, {len(current_text)} 字符)")
                     if not quiet:
                         print(f"✅ Grok 回复完成 ({elapsed}s, {len(current_text)} 字符)")
                     return True
@@ -306,6 +322,8 @@ def wait_for_grok_response(driver, timeout=300, quiet=False):
 
         if still_generating:
             stable_count = 0
+            if elapsed % 30 == 0:
+                _log_progress(f"   ⏳ Grok 生成中... ({elapsed}s / {timeout}s)")
             if elapsed % 10 == 0 and not quiet:
                 print(f"   ⏳ 生成中... ({elapsed}s)")
             time.sleep(2)
@@ -318,6 +336,7 @@ def wait_for_grok_response(driver, timeout=300, quiet=False):
 
         time.sleep(2)
 
+    _log_progress(f"⚠️  等待超时 ({timeout}s)，尝试提取当前内容")
     if not quiet:
         print(f"⚠️  等待超时 ({timeout}s)，尝试提取当前内容")
     return False
@@ -368,6 +387,7 @@ def extract_grok_response(driver):
 
 def send_prompt_to_grok(driver, prompt, quiet=False):
     """在 Grok 对话框中输入提示词并发送"""
+    _log_progress("📝 输入提示词...")
     if not quiet:
         print("📝 输入提示词...")
 
@@ -462,6 +482,7 @@ def send_prompt_to_grok(driver, prompt, quiet=False):
         if not quiet:
             print("✅ 提示词已发送（Enter）")
 
+    _log_progress("✅ 提示词已发送，等待 Grok 响应...")
     return True
 
 
@@ -660,6 +681,7 @@ def main():
         driver = create_driver(quiet=args.quiet)
 
         # 打开 Grok
+        _log_progress(f"🔗 打开 Grok 页面...")
         if not args.quiet:
             print(f"🔗 打开 Grok: {GROK_URL}")
         driver.get(GROK_URL)
@@ -712,6 +734,7 @@ def main():
             return 3
 
         # 解析 JSON
+        _log_progress(f"📋 解析 Grok 回复 ({len(raw_text)} 字符)...")
         posts = parse_json_from_text(raw_text)
 
         # 输出结果
@@ -726,6 +749,7 @@ def main():
             count=10
         )
         
+        _log_progress(f"🏁 完成！获取 {len(posts) if posts else 0} 条帖子")
         return 0 if posts else 4
 
     except KeyboardInterrupt:
@@ -742,6 +766,7 @@ def main():
         return 5
     finally:
         if driver:
+            _log_progress("🔒 关闭浏览器...")
             if not args.quiet:
                 print("\n🔒 关闭浏览器...")
             driver.quit()

@@ -30,6 +30,65 @@ description: 通过 Grok AI 搜集 X (Twitter) 热门帖子，支持自定义主
 | 1 | @openai | 2026-02-12 03:17 | GPT-4o 发布... | 2,000,000 | 50,000 | 12,000 | [链接](url) |
 ```
 
+## 🤖 Agent 长时间命令执行指南（Cursor/OpenClaw 必读）
+
+> ⚠️ **这是一个长时间运行命令（通常 3-5 分钟）**，不要因为短时间内没有 stdout 输出就认为脚本出错或卡死。
+
+### 执行参数要求
+
+使用 `run_command` 工具时，必须设置以下参数：
+
+```
+WaitMsBeforeAsync: 10000    # 至少等待 10 秒再转后台（脚本启动浏览器约需 5-8 秒）
+```
+
+使用 `command_status` 轮询时，必须设置：
+
+```
+WaitDurationSeconds: 300    # 等待最多 300 秒（5 分钟），让命令有充足时间完成
+```
+
+### stderr 进度输出
+
+脚本在 `--json-only` 模式下，**stdout 只包含最终 JSON**，但 **stderr 会输出实时进度信息**，格式如下：
+
+```
+[11:05:30] 🌐 启动浏览器...
+[11:05:38] ✅ 浏览器已启动
+[11:05:39] 🔗 打开 Grok 页面...
+[11:05:45] 🆕 新建 Grok 对话...
+[11:05:48] 📝 输入提示词...
+[11:05:52] ✅ 提示词已发送，等待 Grok 响应...
+[11:05:55] ⏳ 等待 Grok 回复（超时: 300s）...
+[11:06:25] ⏳ Grok 生成中... (30s / 300s)
+[11:06:55] ⏳ Grok 生成中... (60s / 300s)
+[11:08:10] ✅ Grok 回复完成 (135s, 4200 字符)
+[11:08:10] 📋 解析 Grok 回复 (4200 字符)...
+[11:08:10] 🏁 完成！获取 10 条帖子
+[11:08:12] 🔒 关闭浏览器...
+```
+
+Agent 在调用 `command_status` 时可以看到这些 stderr 进度信息，据此判断脚本是否正在正常工作。
+
+### ❌ 常见错误做法
+
+1. **不要使用太短的 WaitDurationSeconds**（如 5 秒）然后反复轮询 — 浪费 Agent 回合且可能误判为超时
+2. **不要因为 stdout 无输出就判断脚本卡死** — `--json-only` 模式下 stdout 只在最终才输出
+3. **不要在脚本运行中途终止它** — Grok Thinking 搜索需要 1-3 分钟，属于正常等待
+
+### ✅ 正确执行模板
+
+```
+步骤1: run_command（WaitMsBeforeAsync=10000）
+  命令: cd /Users/jackwl/Code/gitcode/gitxPost && source venv/bin/activate && python3 grok_hot_posts.py --json-only [其他参数]
+
+步骤2: command_status（WaitDurationSeconds=300）
+  等待命令完成，查看 stderr 进度和最终 stdout JSON 输出
+
+步骤3: 如果 stdout 包含 JSON，直接解析并展示
+       如果命令失败，检查 stderr 中的错误信息
+```
+
 ## 前置条件
 1. 进入项目目录并激活虚拟环境：
    ```bash
