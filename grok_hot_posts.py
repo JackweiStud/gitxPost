@@ -51,7 +51,7 @@ def build_grok_prompt(topics: list, count: int, hours: int, tags: list = None):
         # 默认标签基于主题生成
         tags_str = f"{topics_str}相关的技术突破、进展、动态、热门项目等"
     
-    return f"""请在 X (Twitter) 上搜索过去 {hours} 小时内关于【{topics_str}】的真实热门x帖子，找出浏览量最高的{count} 条。
+    return f"""请在 X (Twitter) 上搜索过去 {hours} 小时内关于{topics_str}的真实热门x帖子，找出浏览量最高的{count}条。
 
 要求：
 - 必须是真实存在的X帖子,不要编造,必须是英文帖子
@@ -508,7 +508,7 @@ def parse_json_from_text(text):
 
 
 def output_results(posts, raw_text, output_dir, json_only=False, quiet=False, 
-                  topics=None, hours=None):
+                  topics=None, hours=None, count=10):
     """输出结果
     
     Args:
@@ -519,20 +519,24 @@ def output_results(posts, raw_text, output_dir, json_only=False, quiet=False,
         quiet: 静默模式
         topics: 搜索主题列表
         hours: 时间范围
+        count: 最终输出的帖子数量上限
     """
-    # 按时间倒序排序（最新在前）
+    # 排序：按浏览量降序，浏览量相同按时间最新在前
     if posts:
         def _parse_time(post):
             t = post.get("time", "")
-            # 尝试解析标准格式 "2026-02-13 08:16:31"
             for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
                 try:
                     return datetime.strptime(t, fmt)
                 except (ValueError, TypeError):
                     continue
-            # 无法解析则排最后
             return datetime.min
-        posts.sort(key=_parse_time, reverse=True)
+        posts.sort(key=lambda p: (
+            int(p.get("views", 0) or 0),
+            _parse_time(p),
+        ), reverse=True)
+        # 截取 top N
+        posts = posts[:count]
 
     if json_only:
         # 类似 xpost.py，直接输出 JSON 到 stdout
@@ -718,7 +722,8 @@ def main():
             json_only=args.json_only,
             quiet=args.quiet,
             topics=args.topics,
-            hours=args.hours
+            hours=args.hours,
+            count=10
         )
         
         return 0 if posts else 4
