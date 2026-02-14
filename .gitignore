@@ -28,3 +28,5 @@ openspec/
 
 CreateMd/testmd/*
 CreateMd/testmd/
+hot_posts_output/*
+hot_posts_output
