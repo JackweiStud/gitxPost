@@ -1,242 +1,122 @@
-# X Article 自动发布工具 (macOS 专用版)
+# gitxPost
 
-> **面向中长文创作者的 X (Twitter) Article 自动化发布工具**  
-> _使用 undetected-chromedriver 反检测技术，让发布回归一键_
+macOS 上的 X 自动化工具，当前包含两条独立链路：
 
-## 🚀 功能特性
+- `Article`：将 Markdown 长文发布到 X Articles
+- `Post`：发布 280 字符以内的短帖，可选带图
+- `Grok Hot Posts`：通过 Grok 搜集 X 热门帖子并输出 JSON
 
-- **Markdown 原生支持**：支持标准 Markdown 语法（标题、粗体、列表、引用、代码块）
-- **智能图片处理**：自动识别本地图片并插入到正确位置
-- **反检测技术**：基于 undetected-chromedriver，通过 X 的机器人检测
-- **登录状态持久化**：登录一次，后续运行无需重复登录
-- **双模式运行**：草稿预览模式（默认）和自动发布模式
+## 当前状态
 
----
+截至 2026-03-09，已经真实验证通过：
 
-## 🛠️ 技术栈
+- `post` 纯文本发布
+- `post` 单图发布
+- `post` 草稿模式
+- `article` 草稿链路
 
-- **Python** 3.9+
-- **undetected-chromedriver** - 反检测浏览器自动化
-- **Chrome** 浏览器（macOS 系统安装）
+当前仍要注意：
 
----
+- `post` 首次登录必须人工完成
+- `post` 重点验证的是单图，多图建议继续专项回归
+- `article` 和 `post` 的底层实现不同，不要混为一套
 
-## 📂 项目结构
+## 技术路线
 
-```
+### Article 链路
+
+- 入口：[`xpost.py`](/Users/jackwl/Code/gitcode/gitxPost/xpost.py) 的 `publish`
+- 核心实现：[`auto_publish_uc.py`](/Users/jackwl/Code/gitcode/gitxPost/auto_publish_uc.py)
+- 技术：`undetected-chromedriver`
+- 目标：X Articles 长文编辑器
+
+### Post 链路
+
+- 入口：[`xpost.py`](/Users/jackwl/Code/gitcode/gitxPost/xpost.py) 的 `post` / `post-login`
+- 核心实现：[`auto_publish_post.py`](/Users/jackwl/Code/gitcode/gitxPost/auto_publish_post.py)
+- 技术：真实 Google Chrome profile + Patchright CDP 附着
+- 目标：X Post 短帖编辑器
+
+### 热点搜索链路
+
+- 入口：[`grok_hot_posts.py`](/Users/jackwl/Code/gitcode/gitxPost/grok_hot_posts.py)
+- 技术：`undetected-chromedriver` + 已登录 X 会话 + Grok
+- 目标：按主题搜集 X 热门帖子并输出结构化 JSON
+
+## 目录结构
+
+```text
 gitxPost/
-├── auto_publish_uc.py    # 核心发布脚本 (macOS 专用)
-├── config.py             # 配置文件
-├── pyEnv.py              # 环境检测工具
-├── xpost.py              # CLI 入口（推荐给 Agent/自动化）
-├── requirements.txt      # 项目依赖
-├── chrome_data_mirror/   # 浏览器登录状态（自动生成）
-├── CreateMd/             # 文章创作目录
-│   ├── prompts/          # 多风格 Prompt 文件
-│   └── images/           # 文章配图目录
-├── pasreMarkDown/        # Markdown 解析模块
-├── .agent/workflows/     # AI Agent 工作流
-└── venv/                 # Python 虚拟环境
+├── xpost.py                         # CLI 主入口
+├── auto_publish_uc.py              # Article 自动化主流程
+├── auto_publish_post.py            # Post 自动化主流程
+├── grok_hot_posts.py               # Grok 热门帖子搜集
+├── config.py                       # Article 通用配置
+├── requirements.txt                # 运行依赖
+├── pyproject.toml                  # CLI 打包配置
+├── pyEnv.py                        # 环境辅助脚本
+├── .agent/workflows/               # Antigravity 工作流
+├── CreateMd/                       # 文章创作目录
+│   ├── template.md                 # 长文模板
+│   ├── articleNew.md               # 示例文章
+│   ├── prompts/                    # 写作风格 Prompt
+│   ├── images/                     # 示例图片
+│   └── testmd/                     # 旧测试文章样本
+├── pasreMarkDown/                  # Markdown 解析与复制辅助
+├── scripts/
+│   ├── install_cli.sh              # 安装本地 CLI
+│   └── agent_example.py            # Agent 调用示例
+├── docs/
+│   ├── x-post-implementation-overview-2026-03-09.md
+│   ├── post-lessons-learned-2026-03-09.md
+│   └── ...
+├── memory/                         # 项目分析与复盘
+├── chrome_data_mirror/             # 默认 Chrome 登录态目录
+└── hot_posts_output/               # 热帖抓取输出
 ```
 
----
+## 环境要求
 
-## 🚦 快速开始
+- macOS
+- Python 3.9+
+- 已安装 Google Chrome
+- 建议使用 `.venv`
 
-### 1. 环境准备
-
-确保已安装 **Python 3.9+** 和 **Chrome 浏览器**。
-
-```bash
-# 创建虚拟环境
-python3 -m venv venv
-
-# 激活虚拟环境
-source venv/bin/activate
-
-# 安装依赖
-pip install -r requirements.txt
-```
-
-### 1.1 安装 CLI（推荐）
-
-在虚拟环境中安装本地 CLI，之后可直接使用 `xpost` 命令：
+## 安装
 
 ```bash
 cd /Users/jackwl/Code/gitcode/gitxPost
-source venv/bin/activate
+
+python3 -m venv .venv
+source .venv/bin/activate
+
+pip install -r requirements.txt
 pip install -e .
-xpost --help
-```
-你也可以使用一键脚本完成以上步骤：
-```bash
-./scripts/install_cli.sh
 ```
 
-### 2. 首次登录（仅需一次）
+说明：
+
+- `requirements.txt` 包含 `patchright`
+- `pyproject.toml` 主要用于本地 CLI 安装
+- 如果只执行 `pip install -e .`，`post` 依赖不一定完整，所以建议先装 `requirements.txt`
+
+## CLI 总览
 
 ```bash
-# 激活虚拟环境
-source venv/bin/activate
-
-# 推荐：使用 CLI（会打开浏览器）
-xpost publish CreateMd/your_article.md
-
-# 或：直接运行脚本（等价）
-python3 auto_publish_uc.py CreateMd/your_article.md
-```
-
-首次运行时，脚本会检测到未登录状态并提示你：
-1. 在打开的 Chrome 浏览器中登录你的 X 账号
-2. 完成所有安全验证
-3. 登录成功后脚本自动继续
-
-> 💡 登录状态会保存到 `chrome_data_mirror/` 目录，后续运行无需重新登录。
-
-### 2.1 CLI 速查（推荐给 Agent/自动化）
-
-所有命令输出 JSON，方便其他 Agent/LLM 调用。
-
-```bash
-# 生成文章骨架（可选指定主题/风格）
-xpost init CreateMd/your_article.md --topic "你的主题" --style zara
-
-# 发布前预检（严格按 CreateMd/template.md 约束）
-xpost validate CreateMd/your_article.md
-
-# 解析为结构化 JSON（title/cover/images/html 等）
-xpost parse CreateMd/your_article.md
-
-# 保存草稿（默认）或直接发布（输出包含 missing_images 与耗时）
-xpost publish CreateMd/your_article.md
-xpost publish CreateMd/your_article.md --publish
-
-# 环境与依赖检查
+xpost init ...
+xpost validate ...
+xpost parse ...
+xpost publish ...
+xpost post-login
+xpost post ...
 xpost doctor
 ```
 
-风格参数 `--style` 支持：`zara` / `tech` / `fun`（对应 `CreateMd/prompts/` 下的 Prompt）。
+所有命令都输出 JSON，便于 Agent 或脚本调用。
 
-### 2.2 Agent 调用示例
+## Article 使用方式
 
-示例脚本会执行 `init -> validate -> publish`（默认草稿），并打印每一步的 JSON 结果。可直接传入主题文本：
-
-```bash
-python3 scripts/agent_example.py "关于AI电力的问题文章"
-
-# 或传入 Markdown 路径
-python3 scripts/agent_example.py CreateMd/your_article.md
-```
-
-### 2.3 自动配图（Antigravity 工作流）
-
-本项目内置 Antigravity 工作流：`.agent/workflows/auto-imgByMdCn.md`  
-在 Antigravity 的对话中运行以下命令，可自动为指定 Markdown 插入配图：
-
-```bash
-/auto-imgByMdCn.md CreateMd/your_article.md
-```
-
-说明：该流程依赖 Antigravity 的 workflow 运行能力与其内置的图片生成工具，其他平台通常无法直接执行该工作流。
-
-### 2.4 一键触发自动配图（Antigravity + AppleScript）
-
-脚本会启动 Antigravity、打开本项目，并模拟输入命令：
-
-```bash
-./scripts/antigravity_auto_img.sh CreateMd/your_article.md
-```
-
-如果 Antigravity 的聊天输入快捷键不是 `cmd+l`，可通过环境变量覆盖：
-
-```bash
-AGY_FOCUS_SHORTCUT=cmd+shift+l ./scripts/antigravity_auto_img.sh CreateMd/your_article.md
-```
-
-首次运行可能需要在 macOS 中授权终端的“辅助功能”权限，否则无法模拟键盘输入。
-
-### 3. 创作文章
-
-在 `CreateMd/` 目录下创建 Markdown 文件，格式要求：
-
-```markdown
-# 文章标题（H1 级别，必需）
-
-![封面图描述](images/cover.png)
-
-开场段落...
-
-## 章节一
-
-内容段落...
-
-![内容图片](images/demo1.png)
-
-## 章节二
-
-- 列表项 1
-- 列表项 2
-
-> 引用块：重点强调的内容
-
----
-
-[@YourHandle](https://x.com/yourhandle)
-```
-
-**完整示例** (`CreateMd/my_article.md`)：
-
-```markdown
-# 我如何用 AI 在 30 秒内搞定周报
-
-![封面图](images/cover.png)
-
-写周报曾经是我周五最头疼的事。花一小时整理邮件？No thanks. 🙅‍♀️
-
-## 发现
-
-于是我试着把工作流丢给了 Claude...
-
-- 痛点 1：以前要手动整理
-- 痛点 2：格式还经常不对
-
-结果？简直是魔法。✨
-
-![对比图](images/demo1.png)
-
-## 原理
-
-> Mind = blown 🤯. 这完全改变了我的工作方式。
-
-1. 第一步：把邮件导出
-2. 第二步：丢给 AI 处理
-3. 第三步：复制粘贴搞定
-
-## 结语
-
-别只看，去试试！🚀
-
----
-
-[@YourHandle](https://x.com/yourhandle)
-```
-
-### 4. 发布文章
-
-```bash
-# 激活虚拟环境
-source venv/bin/activate
-
-# 发布为草稿（推荐）
-python3 auto_publish_uc.py CreateMd/your_article.md
-
-# 直接发布
-python3 auto_publish_uc.py CreateMd/your_article.md --publish
-```
-
----
-
-## 🎨 多风格写作
+### 1. 多风格写作
 
 内置 3 种写作风格 Prompt：
 
@@ -246,73 +126,211 @@ python3 auto_publish_uc.py CreateMd/your_article.md --publish
 | 技术硬核风 | `CreateMd/prompts/prompt_tech.md` | 技术教程、架构分析 |
 | 幽默风趣风 | `CreateMd/prompts/prompt_fun.md` | 科普、吐槽、轻松话题 |
 
----
+例如：
 
-## 🖼️ 配图工作流
+```bash
+xpost init CreateMd/your_article.md --topic "你的主题" --style zara
+```
 
-使用 AI Agent 自动配图：
+### 2. 自动配图（Antigravity 工作流）
 
-**工作流文件**：`.agent/workflows/auto-imgByMdCn.md`
+本项目内置 Antigravity 工作流：
 
-**功能**：
+- `.agent/workflows/auto-imgByMdCn.md`
+
+在 Antigravity 的对话中运行以下命令，可自动为指定 Markdown 插入配图：
+
+```bash
+/auto-imgByMdCn.md CreateMd/your_article.md
+```
+
+这个流程会：
+
 1. 读取 Markdown 文件，识别图片占位符
 2. 分析上下文，构造图片生成 Prompt
 3. 调用 AI 图片生成工具
 4. 自动保存到文章 `images/` 目录
 
----
+说明：
 
-## ⚠️ 常见问题
+- 这个能力依赖 Antigravity 的 workflow 运行环境
+- 当前仓库里可以确认工作流文件存在
+- `scripts/antigravity_auto_img.sh` 这一层本地包装脚本当前不在仓库里，所以 README 不再把它写成现成命令入口
 
-### Q1: 提示 "检测到未登录状态"？
+### 3. 写文章
 
-**解决**：在打开的浏览器中手动登录即可，脚本会自动检测并继续。
+按 [`CreateMd/template.md`](/Users/jackwl/Code/gitcode/gitxPost/CreateMd/template.md) 写 Markdown。  
+示例可参考 [`CreateMd/articleNew.md`](/Users/jackwl/Code/gitcode/gitxPost/CreateMd/articleNew.md)。
 
-### Q2: 登录状态过期了？
-
-**解决**：删除 `chrome_data_mirror/` 目录，重新运行脚本并登录。
+### 4. 预检
 
 ```bash
-rm -rf chrome_data_mirror/
-python3 auto_publish_uc.py CreateMd/your_article.md
+source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
+xpost validate CreateMd/articleNew.md
 ```
 
-### Q3: Chrome 版本不匹配？
+### 5. 草稿或发布
 
-**解决**：更新 `auto_publish_uc.py` 中的 `version_main` 参数为你的 Chrome 版本号。
+```bash
+# 草稿
+xpost publish CreateMd/articleNew.md
 
-```python
-# 在 create_driver() 函数中修改
-version_main=144  # 改为你的 Chrome 主版本号
+# 直接发布
+xpost publish CreateMd/articleNew.md --publish
 ```
 
-查看 Chrome 版本：Chrome → 关于 Google Chrome
+说明：
 
-### Q4: 图片没插入成功？
+- `article` 默认复用 [`chrome_data_mirror`](/Users/jackwl/Code/gitcode/gitxPost/chrome_data_mirror)
+- 如果 X 未登录，会在浏览器里提示你人工登录
+- 这条链路当前仍基于 `undetected-chromedriver`
 
-**解决**：确保 Markdown 图片占位符格式正确，且前后有足够的文本段落。
+## Post 使用方式
 
----
+### 1. 首次初始化登录态
 
-## 👨‍💻 开发者指南
+`post` 不再自动完成首次登录。正确方式是先执行：
 
-核心函数说明：
+```bash
+source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
+xpost post-login
+```
 
-- **`create_driver()`** - 创建反检测浏览器实例
-- **`check_login_status()`** - 检测登录状态
-- **`input_title()`** - 自动输入文章标题
-- **`paste_content()`** - 粘贴 HTML 格式内容
-- **`insert_content_images()`** - 插入内容图片
-- **`insert_cover_image()`** - 插入封面图
+然后在打开的真实 Chrome 里人工登录 X。登录成功后，状态会保存在默认 profile 里。
 
----
+### 2. 发纯文本 Post
 
-## 📝 注意事项
+```bash
+xpost post "Hello world" --publish
+```
 
-- 运行前请确保已关闭所有 Chrome 窗口
-- 建议使用虚拟环境隔离项目依赖
-- Chrome 版本更新后可能需要调整 `version_main` 参数
+### 3. 发图文 Post
 
----
+```bash
+xpost post "这是一条图文 Post" --images /path/to/image.png --publish
+```
 
-> _macOS 专用版 - 使用 undetected-chromedriver 反检测技术_
+### 4. 草稿模式
+
+```bash
+xpost post "先存草稿"
+```
+
+### 5. 可观察模式
+
+调试时如果想看清楚输入、插图、点击过程：
+
+```bash
+xpost post "Visible flow" --images /path/to/image.png --publish --observe-ms 2500
+```
+
+## Post 参数
+
+```bash
+xpost post TEXT [--images ...] [--publish] [--profile-dir ...] [--no-wait] [--remote-debugging-port ...] [--observe-ms ...]
+```
+
+常用参数：
+
+- `text`：Post 文本内容
+- `--images`：最多 4 张图片
+- `--publish`：直接发布，否则默认为草稿
+- `--profile-dir`：自定义 Chrome profile
+- `--no-wait`：完成后不等待
+- `--remote-debugging-port`：真实 Chrome CDP 端口
+- `--observe-ms`：关键步骤可观察停顿
+
+`post-login` 参数：
+
+- `--profile-dir`
+- `--login-timeout`
+- `--remote-debugging-port`
+
+## doctor
+
+检查环境：
+
+```bash
+xpost doctor
+```
+
+会输出：
+
+- Python 版本
+- Chrome 版本
+- 关键依赖是否可用
+- `post` 当前使用的浏览器控制方式
+
+## X 热点搜索
+
+项目还支持通过 Grok 搜索 X 热门帖子，核心脚本是：
+
+- [`grok_hot_posts.py`](/Users/jackwl/Code/gitcode/gitxPost/grok_hot_posts.py)
+
+典型用途：
+
+- 搜集 AI 热点
+- 搜集科技动态
+- 搜集某个主题过去若干小时内的热门帖子
+
+基础用法：
+
+```bash
+source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
+python /Users/jackwl/Code/gitcode/gitxPost/grok_hot_posts.py --json-only
+```
+
+自定义主题、时间范围和数量：
+
+```bash
+python /Users/jackwl/Code/gitcode/gitxPost/grok_hot_posts.py \
+  --topics AI 科技 开源Github \
+  --hours 72 \
+  --count 10 \
+  --json-only
+```
+
+说明：
+
+- 这条链路依赖已登录的 X 会话
+- 需要具备 Grok 可用权限
+- 结果会输出为 JSON，适合二次处理或给 Agent 消费
+- 详细调用说明可参考 [`skills/grok-hotposts-cli/SKILL.md`](/Users/jackwl/Code/gitcode/gitxPost/skills/grok-hotposts-cli/SKILL.md)
+
+## 设计说明
+
+### 为什么 Post 不继续走 chromedriver
+
+因为这次真实联调已经证明：
+
+- Chrome 自动升级会频繁打断 `chromedriver`
+- 运行时下载 driver 不稳定
+- 首次登录在干净自动化浏览器里容易被 X 风控
+
+所以 `post` 改成了：
+
+- 人工在真实 Chrome 里登录一次
+- 后续只自动化已登录后的发布动作
+
+### 为什么 Article 仍保留旧链路
+
+因为 Article 是已有老功能，当前已经能继续工作。  
+这次的目标是修好 `post`，并确保不要再把 `article` 的登录态破坏掉。
+
+## 相关文档
+
+- [`docs/x-post-implementation-overview-2026-03-09.md`](/Users/jackwl/Code/gitcode/gitxPost/docs/x-post-implementation-overview-2026-03-09.md)
+- [`docs/post-lessons-learned-2026-03-09.md`](/Users/jackwl/Code/gitcode/gitxPost/docs/post-lessons-learned-2026-03-09.md)
+- [`docs/post-api-spec.md`](/Users/jackwl/Code/gitcode/gitxPost/docs/post-api-spec.md)
+
+## 已知边界
+
+- `post` 当前重点验证的是单图，不代表多图所有情况都已充分覆盖
+- X 页面结构可能变化，后续建议为 `/home` 发帖入口补 fallback
+- `article` 当前只再次验证了草稿链路
+
+## 推荐维护原则
+
+- 不要把 `article` 和 `post` 强行统一到底层实现
+- `post` 优先保真实 Chrome profile 复用
+- 修改浏览器启动逻辑后，必须同时回归 `article` 和 `post`

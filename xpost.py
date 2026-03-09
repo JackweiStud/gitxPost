@@ -317,6 +317,115 @@ def _cmd_publish(args):
         return 1
 
 
+def _cmd_post(args):
+    """发布 X Post（短文）"""
+    # 设置环境变量
+    if args.profile_dir:
+        os.environ["XPOST_PROFILE_DIR"] = str(Path(args.profile_dir).expanduser().resolve())
+
+    if args.no_wait:
+        os.environ["XPOST_NO_WAIT"] = "1"
+
+    if args.remote_debugging_port:
+        os.environ["XPOST_REMOTE_DEBUGGING_PORT"] = str(args.remote_debugging_port)
+    if args.observe_ms is not None:
+        os.environ["XPOST_STEP_PAUSE_MS"] = str(args.observe_ms)
+
+    # 加载发布模块
+    sys.path.insert(0, str(BASE_DIR))
+    try:
+        from auto_publish_post import auto_publish_post
+    except Exception as exc:
+        _print_json({"ok": False, "error": f"Post 发布模块加载失败: {exc}"})
+        return 1
+
+    # 验证图片文件存在性
+    images = args.images or []
+    missing_images = []
+    if images:
+        for img_path in images:
+            abs_path = Path(img_path).expanduser().resolve()
+            if not abs_path.exists():
+                missing_images.append(str(img_path))
+
+    if missing_images:
+        _print_json(
+            {
+                "ok": False,
+                "error": "部分图片文件不存在",
+                "missing_images": missing_images,
+            }
+        )
+        return 1
+
+    # 转换为绝对路径
+    abs_images = [str(Path(img).expanduser().resolve()) for img in images] if images else None
+
+    # 执行发布
+    start_ts = time.time()
+    try:
+        success = auto_publish_post(
+            text=args.text,
+            images=abs_images,
+            publish=args.publish,
+            wait_after=not args.no_wait,
+            step_pause_ms=args.observe_ms,
+        )
+        total_ms = int((time.time() - start_ts) * 1000)
+
+        _print_json(
+            {
+                "ok": success,
+                "mode": "publish" if args.publish else "draft",
+                "text_length": len(args.text),
+                "images_count": len(images),
+                "timings": {
+                    "total_ms": total_ms,
+                },
+            }
+        )
+        return 0 if success else 1
+
+    except ValueError as exc:
+        _print_json({"ok": False, "error": f"输入验证失败: {exc}"})
+        return 1
+    except Exception as exc:
+        _print_json({"ok": False, "error": f"发布失败: {exc}"})
+        return 1
+
+
+def _cmd_post_login(args):
+    if args.profile_dir:
+        os.environ["XPOST_PROFILE_DIR"] = str(Path(args.profile_dir).expanduser().resolve())
+    if args.remote_debugging_port:
+        os.environ["XPOST_REMOTE_DEBUGGING_PORT"] = str(args.remote_debugging_port)
+
+    sys.path.insert(0, str(BASE_DIR))
+    try:
+        from auto_publish_post import initialize_login_session
+    except Exception as exc:
+        _print_json({"ok": False, "error": f"Post 登录初始化模块加载失败: {exc}"})
+        return 1
+
+    start_ts = time.time()
+    try:
+        success = initialize_login_session(timeout=args.login_timeout)
+        total_ms = int((time.time() - start_ts) * 1000)
+        _print_json(
+            {
+                "ok": success,
+                "mode": "login_setup",
+                "timings": {
+                    "total_ms": total_ms,
+                },
+            }
+        )
+        return 0 if success else 1
+    except Exception as exc:
+        _print_json({"ok": False, "error": f"登录初始化失败: {exc}"})
+        return 1
+
+
 def _detect_chrome_version():
     chrome_bin = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
     if not chrome_bin.exists():
@@ -335,6 +444,7 @@ def _cmd_doctor(_args):
     deps = {}
     for mod in [
         "undetected_chromedriver",
+        "patchright",
         "selenium",
         "PIL",
         "markdown",
@@ -363,6 +473,8 @@ def _cmd_doctor(_args):
     missing_deps = [k for k, v in deps.items() if not v]
     if missing_deps:
         notes.append("检测到依赖缺失，建议先激活虚拟环境并安装 requirements.txt")
+    if deps.get("patchright"):
+        notes.append("post 子命令使用真实 Google Chrome profile + Patchright CDP 附着，不再依赖 chromedriver 下载")
     if not clipboard_ok and sys.platform == "darwin":
         notes.append("剪贴板依赖缺失，确认已安装 pyobjc-framework-Cocoa")
     if not platform_ok:
@@ -412,6 +524,22 @@ def main():
     p_publish.add_argument("--no-wait", action="store_true", help="Do not wait for Enter in draft mode")
     p_publish.add_argument("--chrome-version-main", type=int, help="Chrome major version override")
     p_publish.set_defaults(func=_cmd_publish)
+
+    p_post = sub.add_parser("post", help="Publish X Post (short text)")
+    p_post.add_argument("text", help="Post text content (max 280 characters)")
+    p_post.add_argument("--images", nargs="+", help="Image paths (max 4)")
+    p_post.add_argument("--publish", action="store_true", help="Publish directly (default: draft)")
+    p_post.add_argument("--profile-dir", help="Chrome profile directory")
+    p_post.add_argument("--no-wait", action="store_true", help="Do not wait after completion")
+    p_post.add_argument("--remote-debugging-port", type=int, help="Chrome CDP port override")
+    p_post.add_argument("--observe-ms", type=int, default=900, help="Pause after key steps so the UI is visible")
+    p_post.set_defaults(func=_cmd_post)
+
+    p_post_login = sub.add_parser("post-login", help="Initialize and persist X login session for post")
+    p_post_login.add_argument("--profile-dir", help="Chrome profile directory for post session")
+    p_post_login.add_argument("--login-timeout", type=int, default=600, help="Manual login timeout in seconds")
+    p_post_login.add_argument("--remote-debugging-port", type=int, help="Chrome CDP port override")
+    p_post_login.set_defaults(func=_cmd_post_login)
 
     p_doctor = sub.add_parser("doctor", help="Check environment and deps")
     p_doctor.set_defaults(func=_cmd_doctor)

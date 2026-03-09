@@ -30,3 +30,7 @@ CreateMd/testmd/*
 CreateMd/testmd/
 hot_posts_output/*
 hot_posts_output
+patchright_post_data/
+.cache/
+.playwright-cli/
+

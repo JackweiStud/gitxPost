@@ -1,6 +1,7 @@
 # macOS 专用依赖
 undetected-chromedriver>=3.5.0
 selenium>=4.0.0
+patchright>=1.58.1
 setuptools  # Python 3.12+ 需要
 
 # 剪贴板支持

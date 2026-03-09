@@ -108,6 +108,13 @@ def create_driver():
     # 确保用户数据目录存在
     USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
     
+    # 指定 Chrome 版本以匹配系统安装的 Chrome
+    version_main_env = os.environ.get("XPOST_CHROME_VERSION_MAIN")
+    try:
+        version_main = int(version_main_env) if version_main_env else 145
+    except ValueError:
+        version_main = 145
+
     options = uc.ChromeOptions()
     options.add_argument(f"--user-data-dir={USER_DATA_DIR}")
     options.add_argument("--profile-directory=Default")
@@ -117,18 +124,11 @@ def create_driver():
     options.add_argument("--start-maximized")
     options.add_argument("--disable-infobars")
     options.add_argument("--no-sandbox")  # macOS 必需
-    
-    # 指定 Chrome 版本以匹配系统安装的 Chrome
-    version_main_env = os.environ.get("XPOST_CHROME_VERSION_MAIN")
-    try:
-        version_main = int(version_main_env) if version_main_env else 144
-    except ValueError:
-        version_main = 144
 
     driver = uc.Chrome(
         options=options,
         use_subprocess=True,
-        version_main=version_main  # 匹配当前系统 Chrome 版本
+        version_main=version_main
     )
     print("✅ 浏览器已启动（反检测模式）")
     return driver
