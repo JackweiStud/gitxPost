@@ -1,0 +1,11 @@
+2026-03-10 07:28:27,380 - ERROR - 登录初始化失败: patchright 未安装，请运行: pip install patchright
+Traceback (most recent call last):
+  File "/Users/jackwl/Code/gitcode/gitxPost/auto_publish_post.py", line 425, in initialize_login_session
+    browser, context, page = session.start()
+                             ~~~~~~~~~~~~~^^
+  File "/Users/jackwl/Code/gitcode/gitxPost/browser_cdp_session.py", line 210, in start
+    return self._connect_playwright()
+           ~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/Users/jackwl/Code/gitcode/gitxPost/browser_cdp_session.py", line 165, in _connect_playwright
+    raise ImportError("patchright 未安装，请运行: pip install patchright")
+ImportError: patchright 未安装，请运行: pip install patchright

@@ -469,6 +469,7 @@ def auto_publish_post(
     step_pause_ms: int = STEP_PAUSE_MS,
 ) -> bool:
     """自动发布 Post"""
+    print("[DEBUG] 进入 auto_publish_post 函数")
     session = None
     
     # 读取环境变量
@@ -477,29 +478,38 @@ def auto_publish_post(
     
     try:
         print("🔍 验证输入参数...")
+        print(f"[DEBUG] text={text[:50]}...")
         validate_text_length(text)
         validate_images(images)
         print("✅ 输入验证通过")
         
         print("\n🌐 启动真实 Google Chrome 并附着 CDP...")
+        print(f"[DEBUG] PROFILE_DIR={PROFILE_DIR}")
+        print("[DEBUG] 调用 create_session...")
         session = create_session(profile_dir=PROFILE_DIR)
+        print("[DEBUG] create_session 返回成功")
+        print("[DEBUG] 调用 session.start()...")
         browser, context, page = session.start()
+        print("[DEBUG] session.start() 返回成功")
         _activate_chrome_window()
         
         print(f"   ℹ️  使用持久化目录: {PROFILE_DIR}")
         
-        print(f"\n📄 打开 Post 编辑器: {POST_URL}")
-        page.goto(POST_URL, wait_until="domcontentloaded", timeout=60000)
-        page.wait_for_timeout(2500)
-        _activate_chrome_window()
-        
         print("\n🔐 检查登录状态...")
-        if not session.check_login_status(POST_URL):
+        print(f"[DEBUG] 调用 check_login_status({HOME_URL})...")
+        if not session.check_login_status(HOME_URL):
             raise RuntimeError(
                 "未检测到已登录的 post 会话，请先运行 `python auto_publish_post.py --setup-login` "
                 "或 `python xpost.py post-login` 完成一次手工登录"
             )
         print("✅ 已登录")
+        
+        print(f"\n📄 打开 Post 编辑器: {POST_URL}")
+        print("[DEBUG] 调用 page.goto...")
+        page.goto(POST_URL, wait_until="domcontentloaded", timeout=60000)
+        print("[DEBUG] page.goto 返回成功")
+        page.wait_for_timeout(2500)
+        _activate_chrome_window()
         
         HumanBehaviorSimulator.warmup_page(page)
         
@@ -540,6 +550,8 @@ def auto_publish_post(
 
 
 if __name__ == "__main__":
+    print("[DEBUG] 脚本启动")
+    print(f"[DEBUG] sys.argv = {sys.argv}")
     parser = argparse.ArgumentParser(description="X Post 自动发布工具")
     parser.add_argument("text", nargs="?", help="Post 文本内容")
     parser.add_argument("--images", nargs="+", help="图片路径（最多 4 张）")
@@ -548,13 +560,17 @@ if __name__ == "__main__":
     parser.add_argument("--observe-ms", type=int, default=STEP_PAUSE_MS, help="每个关键步骤后的可观察停顿毫秒数")
     parser.add_argument("--setup-login", action="store_true", help="仅初始化登录会话并保存持久化状态")
     parser.add_argument("--login-timeout", type=int, default=600, help="手工登录等待超时秒数")
+    print("[DEBUG] 开始解析参数")
     args = parser.parse_args()
+    print(f"[DEBUG] 参数解析完成: args={args}")
     
     if args.setup_login:
+        print("[DEBUG] 执行 setup-login")
         success = initialize_login_session(timeout=args.login_timeout)
     else:
         if not args.text:
             parser.error("text 是必填参数，除非使用 --setup-login")
+        print(f"[DEBUG] 调用 auto_publish_post, text={args.text}")
         success = auto_publish_post(
             text=args.text,
             images=args.images,
@@ -563,4 +579,5 @@ if __name__ == "__main__":
             step_pause_ms=args.observe_ms,
         )
     
+    print(f"[DEBUG] 执行完成, success={success}")
     sys.exit(0 if success else 1)
