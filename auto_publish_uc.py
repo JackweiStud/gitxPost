@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 X Article 全自动发布系统 (macOS 专用版)
-使用 undetected-chromedriver 实现反检测技术
-支持安全登录和完整发布功能
+使用共享浏览器会话层 (browser_cdp_session.py)
 """
 
 import os
@@ -12,13 +11,17 @@ import random
 import argparse
 from pathlib import Path
 
-import undetected_chromedriver as uc
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+# 导入共享浏览器会话层
+from browser_cdp_session import ChromeCDPSession, create_session
+
+try:
+    from patchright.sync_api import Error as PlaywrightError
+    from patchright.sync_api import TimeoutError as PlaywrightTimeoutError
+    from patchright.sync_api import Page
+except Exception:
+    PlaywrightError = Exception
+    PlaywrightTimeoutError = Exception
+    Page = object
 
 # 添加脚本路径
 script_dir = Path(__file__).parent / "pasreMarkDown/skills/x-article-publisher/scripts"
@@ -46,102 +49,49 @@ class HumanBehaviorSimulator:
         time.sleep(delay)
     
     @staticmethod
-    def human_type(driver, element, text, delay_range=(50, 150)):
-        """模拟人类打字速度"""
-        try:
-            element.click()
-            HumanBehaviorSimulator.random_delay(300, 800)
-            
-            for char in text:
-                element.send_keys(char)
-                time.sleep(random.uniform(*delay_range) / 1000)
-                # 偶尔停顿（模拟思考）
-                if random.random() < 0.1:
-                    time.sleep(random.uniform(0.3, 1.0))
-        except Exception as e:
-            print(f"⚠️  打字模拟失败: {e}")
-            # 降级方案：直接输入
-            element.send_keys(text)
-    
-    @staticmethod
-    def scroll_smoothly(driver, distance: int = 300):
+    def scroll_smoothly(page: Page, distance: int = 300):
         """平滑滚动"""
         try:
             steps = random.randint(5, 10)
             step_distance = distance / steps
             
             for _ in range(steps):
-                driver.execute_script(f"window.scrollBy(0, {step_distance})")
+                page.evaluate(f"window.scrollBy(0, {step_distance})")
                 time.sleep(random.uniform(0.05, 0.15))
         except:
             pass
     
     @staticmethod
-    def warmup_page(driver):
+    def warmup_page(page: Page):
         """页面预热 - 模拟真实用户行为"""
         print("   🔥 页面预热中...")
-        
-        # 随机滚动
-        HumanBehaviorSimulator.scroll_smoothly(driver, random.randint(100, 300))
+        HumanBehaviorSimulator.scroll_smoothly(page, random.randint(100, 300))
         HumanBehaviorSimulator.random_delay(500, 1500)
-        
-        # 随机移动鼠标
-        try:
-            action = ActionChains(driver)
-            for _ in range(random.randint(2, 4)):
-                x = random.randint(100, 800)
-                y = random.randint(100, 600)
-                action.move_by_offset(x - 400, y - 300).perform()
-                action.reset_actions()
-                HumanBehaviorSimulator.random_delay(200, 600)
-        except:
-            pass
-        
         print("   ✅ 预热完成")
 
 
-def create_driver():
-    """创建 undetected Chrome 驱动"""
-    print("🌐 启动反检测浏览器...")
-    print("   ⚠️  请确保已关闭所有 Chrome 窗口")
+def create_session_and_page(quiet=False):
+    """创建浏览器会话和页面"""
+    print("🌐 启动浏览器...")
+    if not quiet:
+        print("   ⚠️  使用共享浏览器会话层")
     
-    # 确保用户数据目录存在
     USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
     
-    # 指定 Chrome 版本以匹配系统安装的 Chrome
-    version_main_env = os.environ.get("XPOST_CHROME_VERSION_MAIN")
-    try:
-        version_main = int(version_main_env) if version_main_env else 145
-    except ValueError:
-        version_main = 145
-
-    options = uc.ChromeOptions()
-    options.add_argument(f"--user-data-dir={USER_DATA_DIR}")
-    options.add_argument("--profile-directory=Default")
-    options.add_argument("--no-first-run")
-    options.add_argument("--no-default-browser-check")
-    options.add_argument("--disable-notifications")
-    options.add_argument("--start-maximized")
-    options.add_argument("--disable-infobars")
-    options.add_argument("--no-sandbox")  # macOS 必需
-
-    driver = uc.Chrome(
-        options=options,
-        use_subprocess=True,
-        version_main=version_main
-    )
-    print("✅ 浏览器已启动（反检测模式）")
-    return driver
+    session = create_session(profile_dir=USER_DATA_DIR)
+    browser, context, page = session.start()
+    
+    print("✅ 浏览器已启动")
+    return session, page
 
 
-def check_login_status(driver):
+def check_login_status(page: Page):
     """检查是否已登录"""
     try:
-        # 检查 URL 是否包含 login
-        if "login" in driver.current_url.lower() or "flow/login" in driver.current_url.lower():
+        current_url = page.url
+        if "login" in current_url.lower() or "flow/login" in current_url.lower():
             return False
         
-        # 检查是否存在登录按钮
         login_indicators = [
             'a[href="/login"]',
             'a[href*="flow/login"]',
@@ -149,19 +99,19 @@ def check_login_status(driver):
         
         for selector in login_indicators:
             try:
-                element = driver.find_element(By.CSS_SELECTOR, selector)
-                if element.is_displayed():
+                locator = page.locator(selector)
+                if locator.count() > 0 and locator.first.is_visible():
                     print(f"   ℹ️  发现登录按钮: {selector}")
                     return False
-            except NoSuchElementException:
+            except:
                 continue
         
         return True
     except Exception:
-        return True  # 如果无法确定，假设已登录
+        return True
 
 
-def wait_for_login(driver, timeout=300):
+def wait_for_login(page: Page, timeout=300):
     """等待用户手动登录"""
     print()
     print("⚠️  检测到未登录状态！")
@@ -177,7 +127,7 @@ def wait_for_login(driver, timeout=300):
     
     start_time = time.time()
     while time.time() - start_time < timeout:
-        if check_login_status(driver):
+        if check_login_status(page):
             print("✅ 登录成功！")
             return True
         time.sleep(3)
@@ -186,7 +136,7 @@ def wait_for_login(driver, timeout=300):
     return False
 
 
-def click_write_button(driver):
+def click_write_button(page: Page):
     """检查并点击 Write 按钮（如果需要）"""
     write_selectors = [
         'a[data-testid="empty_state_button_text"]',
@@ -196,19 +146,19 @@ def click_write_button(driver):
     
     for selector in write_selectors:
         try:
-            write_btn = WebDriverWait(driver, 3).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
-            )
-            print("   👈 点击 'Write' 按钮...")
-            write_btn.click()
-            HumanBehaviorSimulator.random_delay(2000, 4000)
-            return True
+            locator = page.locator(selector)
+            if locator.count() > 0:
+                locator.first.wait_for(state="visible", timeout=3000)
+                print("   👈 点击 'Write' 按钮...")
+                locator.first.click()
+                HumanBehaviorSimulator.random_delay(2000, 4000)
+                return True
         except:
             continue
     return False
 
 
-def input_title(driver, title):
+def input_title(page: Page, title):
     """输入文章标题"""
     print(f"✍️  [4/7] 输入标题...")
     
@@ -222,28 +172,25 @@ def input_title(driver, title):
     
     for selector in title_selectors:
         try:
-            title_input = WebDriverWait(driver, 3).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, selector))
-            )
-            title_input.click()
-            HumanBehaviorSimulator.random_delay(500, 1000)
-            title_input.clear()
-            title_input.send_keys(title)
-            print(f"✅ 标题已输入: {title}")
-            return True
+            locator = page.locator(selector)
+            if locator.count() > 0:
+                locator.first.wait_for(state="visible", timeout=3000)
+                locator.first.click()
+                HumanBehaviorSimulator.random_delay(500, 1000)
+                locator.first.fill("")
+                locator.first.fill(title)
+                print(f"✅ 标题已输入: {title}")
+                return True
         except:
             continue
     
-    print("⚠️  未找到标题输入框，请手动输入")
-    # 尝试备用方案：直接键盘输入
+    print("⚠️  未找到标题输入框，尝试键盘输入")
     try:
-        ActionChains(driver).send_keys(title).perform()
+        page.keyboard.type(title)
     except:
         pass
     return False
-
-
-def paste_content(driver, html_content):
+def paste_content(page: Page, html_content):
     """粘贴文章内容（HTML格式）"""
     print("📝 [5/7] 粘贴文章内容...")
     
@@ -262,16 +209,17 @@ def paste_content(driver, html_content):
         
         for selector in content_selectors:
             try:
-                elements = driver.find_elements(By.CSS_SELECTOR, selector)
-                # 通常第二个 contenteditable 是内容区域（第一个是标题）
-                content_area = elements[1] if len(elements) > 1 else (elements[0] if elements else None)
+                locators = page.locator(selector)
+                count = locators.count()
+                # 通常第二个 contenteditable 是内容区域
+                content_area = locators.nth(1) if count > 1 else (locators.first if count > 0 else None)
                 
                 if content_area:
                     content_area.click()
                     HumanBehaviorSimulator.random_delay(500, 1000)
                     
                     # 粘贴内容 (Command+V)
-                    ActionChains(driver).key_down(Keys.COMMAND).send_keys('v').key_up(Keys.COMMAND).perform()
+                    page.keyboard.press("Meta+V")
                     
                     HumanBehaviorSimulator.random_delay(2000, 3000)
                     print(f"✅ 内容已粘贴 ({len(html_content)} 字符)")
@@ -287,7 +235,7 @@ def paste_content(driver, html_content):
         return False
 
 
-def get_editor_image_count(driver):
+def get_editor_image_count(page: Page):
     """统计编辑器内部图片数量"""
     try:
         editor_selectors = [
@@ -298,16 +246,17 @@ def get_editor_image_count(driver):
         
         for selector in editor_selectors:
             try:
-                editors = driver.find_elements(By.CSS_SELECTOR, selector)
-                if len(editors) > 1:
-                    editor = editors[1]  # 内容编辑器
-                elif editors:
-                    editor = editors[0]
+                locators = page.locator(selector)
+                count = locators.count()
+                if count > 1:
+                    editor = locators.nth(1)
+                elif count > 0:
+                    editor = locators.first
                 else:
                     continue
                     
-                imgs = editor.find_elements(By.TAG_NAME, "img")
-                return len(imgs)
+                imgs = editor.locator("img")
+                return imgs.count()
             except:
                 continue
         return 0
@@ -315,43 +264,43 @@ def get_editor_image_count(driver):
         return 0
 
 
-def find_placeholder_and_select(driver, placeholder):
+def find_placeholder_and_select(page: Page, placeholder):
     """在编辑器中查找占位符文本并选中它"""
     try:
         print(f"   🔍 搜索占位符: {placeholder[:40]}...")
         
-        # 使用 JavaScript 在编辑器内搜索并选中占位符
-        selected = driver.execute_script('''
-            const placeholder = arguments[0];
-            const editors = document.querySelectorAll('div[contenteditable="true"]');
-            const editor = editors.length > 1 ? editors[1] : editors[0];
-            if (!editor) return false;
-            
-            const walker = document.createTreeWalker(
-                editor,
-                NodeFilter.SHOW_TEXT,
-                null,
-                false
-            );
-            
-            let node;
-            while (node = walker.nextNode()) {
-                const text = node.textContent;
-                const index = text.indexOf(placeholder);
-                if (index !== -1) {
-                    const range = document.createRange();
-                    range.setStart(node, index);
-                    range.setEnd(node, index + placeholder.length);
-                    
-                    const selection = window.getSelection();
-                    selection.removeAllRanges();
-                    selection.addRange(range);
-                    
-                    node.parentElement.scrollIntoView({ block: 'center' });
-                    return true;
+        selected = page.evaluate('''
+            (placeholder) => {
+                const editors = document.querySelectorAll('div[contenteditable="true"]');
+                const editor = editors.length > 1 ? editors[1] : editors[0];
+                if (!editor) return false;
+                
+                const walker = document.createTreeWalker(
+                    editor,
+                    NodeFilter.SHOW_TEXT,
+                    null,
+                    false
+                );
+                
+                let node;
+                while (node = walker.nextNode()) {
+                    const text = node.textContent;
+                    const index = text.indexOf(placeholder);
+                    if (index !== -1) {
+                        const range = document.createRange();
+                        range.setStart(node, index);
+                        range.setEnd(node, index + placeholder.length);
+                        
+                        const selection = window.getSelection();
+                        selection.removeAllRanges();
+                        selection.addRange(range);
+                        
+                        node.parentElement.scrollIntoView({ block: 'center' });
+                        return true;
+                    }
                 }
+                return false;
             }
-            return false;
         ''', placeholder)
         
         if selected:
@@ -367,13 +316,11 @@ def find_placeholder_and_select(driver, placeholder):
         return False
 
 
-def wait_for_image_upload(driver, timeout=15):
+def wait_for_image_upload(page: Page, timeout=15):
     """等待图片上传完成"""
     try:
         print(f"   ⏳ 等待图片上传（最多 {timeout} 秒）...")
-        WebDriverWait(driver, timeout).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, 'img[src*="pbs.twimg.com"]'))
-        )
+        page.wait_for_selector('img[src*="pbs.twimg.com"]', timeout=timeout * 1000)
         print("   ✅ 图片上传完成")
         return True
     except:
@@ -381,7 +328,7 @@ def wait_for_image_upload(driver, timeout=15):
         return False
 
 
-def insert_content_images(driver, content_images):
+def insert_content_images(page: Page, content_images):
     """插入内容图片"""
     if not content_images:
         return
@@ -397,40 +344,38 @@ def insert_content_images(driver, content_images):
         placeholder = img.get('placeholder', '')
         
         try:
-            # 使用占位符定位
             found = False
             used_placeholder = False
             
             if placeholder:
                 print(f"   📍 使用占位符定位: {placeholder}")
-                found = find_placeholder_and_select(driver, placeholder)
+                found = find_placeholder_and_select(page, placeholder)
                 if found:
                     used_placeholder = True
             
             if found:
-                before_count = get_editor_image_count(driver)
+                before_count = get_editor_image_count(page)
                 print(f"   🔎 插入前图片数量: {before_count}")
                 
-                # 如果使用占位符定位，先删除选中的占位符文本
                 if used_placeholder:
                     print(f"   🗑️  删除占位符文本...")
-                    ActionChains(driver).send_keys(Keys.DELETE).perform()
+                    page.keyboard.press("Delete")
                     HumanBehaviorSimulator.random_delay(300, 500)
                 
                 # 复制图片到剪贴板
                 copy_image_to_clipboard(img['path'], quality=85)
                 HumanBehaviorSimulator.random_delay(500, 1000)
                 
-                # 粘贴图片 (Command+V)
+                # 粘贴图片
                 print(f"   📋 执行粘贴...")
-                ActionChains(driver).key_down(Keys.COMMAND).send_keys('v').key_up(Keys.COMMAND).perform()
+                page.keyboard.press("Meta+V")
                 
                 HumanBehaviorSimulator.random_delay(1000, 1500)
                 
                 # 等待图片上传
-                wait_for_image_upload(driver, timeout=15)
+                wait_for_image_upload(page, timeout=15)
                 
-                after_count = get_editor_image_count(driver)
+                after_count = get_editor_image_count(page)
                 if after_count > before_count:
                     print(f"   ✅ 图片 {idx} 已成功插入")
                 else:
@@ -446,7 +391,7 @@ def insert_content_images(driver, content_images):
     print()
 
 
-def insert_cover_image(driver, cover_image, cover_exists):
+def insert_cover_image(page: Page, cover_image, cover_exists):
     """插入封面图"""
     if not cover_image or not cover_exists:
         return
@@ -457,12 +402,11 @@ def insert_cover_image(driver, cover_image, cover_exists):
     try:
         # 方法1：使用 file input 上传
         try:
-            file_input = WebDriverWait(driver, 3).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, 'input[type="file"]'))
-            )
-            file_input.send_keys(str(cover_image))
-            print(f"✅ 封面图已上传 (File Input): {cover_image}")
-            cover_uploaded = True
+            file_input = page.locator('input[type="file"]')
+            if file_input.count() > 0:
+                file_input.first.set_input_files(str(cover_image))
+                print(f"✅ 封面图已上传 (File Input): {cover_image}")
+                cover_uploaded = True
         except Exception as e:
             print(f"   ℹ️  File Input 方式不可用: {e}")
         
@@ -479,19 +423,19 @@ def insert_cover_image(driver, cover_image, cover_exists):
             
             for selector in cover_selectors:
                 try:
-                    cover_btn = WebDriverWait(driver, 2).until(
-                        EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
-                    )
-                    cover_btn.click()
-                    HumanBehaviorSimulator.random_delay(500, 1000)
-                    
-                    # 粘贴 (Command+V)
-                    ActionChains(driver).key_down(Keys.COMMAND).send_keys('v').key_up(Keys.COMMAND).perform()
-                    
-                    HumanBehaviorSimulator.random_delay(2000, 3000)
-                    print(f"✅ 封面图已粘贴: {cover_image}")
-                    cover_uploaded = True
-                    break
+                    locator = page.locator(selector)
+                    if locator.count() > 0:
+                        locator.first.wait_for(state="visible", timeout=2000)
+                        locator.first.click()
+                        HumanBehaviorSimulator.random_delay(500, 1000)
+                        
+                        # 粘贴
+                        page.keyboard.press("Meta+V")
+                        
+                        HumanBehaviorSimulator.random_delay(2000, 3000)
+                        print(f"✅ 封面图已粘贴: {cover_image}")
+                        cover_uploaded = True
+                        break
                 except:
                     continue
         
@@ -503,19 +447,18 @@ def insert_cover_image(driver, cover_image, cover_exists):
                 
                 apply_selectors = [
                     'button[data-testid="applyButton"]',
-                    'button:contains("Apply")',
                 ]
                 
                 for selector in apply_selectors:
                     try:
-                        apply_btn = WebDriverWait(driver, 2).until(
-                            EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
-                        )
-                        print(f"   👈 点击 'Apply' 确认封面...")
-                        apply_btn.click()
-                        HumanBehaviorSimulator.random_delay(1000, 2000)
-                        print("   ✅ 封面已应用")
-                        break
+                        locator = page.locator(selector)
+                        if locator.count() > 0:
+                            locator.first.wait_for(state="visible", timeout=2000)
+                            print(f"   👈 点击 'Apply' 确认封面...")
+                            locator.first.click()
+                            HumanBehaviorSimulator.random_delay(1000, 2000)
+                            print("   ✅ 封面已应用")
+                            break
                     except:
                         continue
             except:
@@ -530,37 +473,35 @@ def insert_cover_image(driver, cover_image, cover_exists):
     print()
 
 
-def click_publish_button(driver):
+def click_publish_button(page: Page):
     """点击发布按钮"""
     print("🚀 [8/+] 自动点击发布...")
     
     publish_selectors = [
         'button[data-testid="tweetButtonInline"]',
-        'div[role="button"]:contains("Publish")',
-        'button:contains("Publish")',
     ]
     
     for selector in publish_selectors:
         try:
-            publish_btn = WebDriverWait(driver, 3).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
-            )
-            print(f"   找到发布按钮: {selector}")
-            publish_btn.click()
-            HumanBehaviorSimulator.random_delay(2000, 3000)
-            
-            # 可能有确认弹窗
-            try:
-                confirm_btn = WebDriverWait(driver, 3).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="confirmationSheetConfirm"]'))
-                )
-                confirm_btn.click()
-                print("   ✅ 已确认发布")
-            except:
-                pass
-            
-            print("✅ 发布成功！")
-            return True
+            locator = page.locator(selector)
+            if locator.count() > 0:
+                locator.first.wait_for(state="visible", timeout=3000)
+                print(f"   找到发布按钮: {selector}")
+                locator.first.click()
+                HumanBehaviorSimulator.random_delay(2000, 3000)
+                
+                # 可能有确认弹窗
+                try:
+                    confirm_locator = page.locator('button[data-testid="confirmationSheetConfirm"]')
+                    if confirm_locator.count() > 0:
+                        confirm_locator.first.wait_for(state="visible", timeout=3000)
+                        confirm_locator.first.click()
+                        print("   ✅ 已确认发布")
+                except:
+                    pass
+                
+                print("✅ 发布成功！")
+                return True
         except:
             continue
     
@@ -572,7 +513,7 @@ def auto_publish_article(markdown_file: str, publish: bool = False):
     """全自动发布文章主流程"""
     
     print("=" * 80)
-    print("🤖 X Article 全自动发布系统 (undetected-chromedriver 版)")
+    print("🤖 X Article 全自动发布系统 (Playwright 版)")
     print("=" * 80)
     print()
     
@@ -585,48 +526,48 @@ def auto_publish_article(markdown_file: str, publish: bool = False):
     print(f"   🖼️  内容图片: {len(result['content_images'])} 张")
     print()
     
-    driver = None
+    session = None
     try:
         # 创建浏览器
-        print("🌐 [2/7] 启动隐身浏览器...")
-        driver = create_driver()
+        print("🌐 [2/7] 启动浏览器...")
+        session, page = create_session_and_page()
         print()
         
         # 打开 Articles 页面
         print("🔗 [3/7] 打开 X Articles 编辑器...")
-        driver.get(ARTICLES_URL)
+        page.goto(ARTICLES_URL, wait_until="domcontentloaded", timeout=60000)
         HumanBehaviorSimulator.random_delay(2000, 4000)
         print("✅ 页面已加载")
         
         # 检查登录状态
-        if not check_login_status(driver):
-            if not wait_for_login(driver):
+        if not check_login_status(page):
+            if not wait_for_login(page):
                 print("❌ 登录失败，退出")
                 return False
         else:
             print("✅ 已登录")
         
-        # 点击 Write 按钮（如果需要）
-        click_write_button(driver)
+        # 点击 Write 按钮
+        click_write_button(page)
         
         # 页面预热
-        HumanBehaviorSimulator.warmup_page(driver)
+        HumanBehaviorSimulator.warmup_page(page)
         print()
         
         # 输入标题
-        input_title(driver, result['title'])
+        input_title(page, result['title'])
         HumanBehaviorSimulator.random_delay(1000, 2000)
         print()
         
         # 粘贴内容
-        paste_content(driver, result['html'])
+        paste_content(page, result['html'])
         print()
         
         # 插入内容图片
-        insert_content_images(driver, result['content_images'])
+        insert_content_images(page, result['content_images'])
         
         # 插入封面图
-        insert_cover_image(driver, result['cover_image'], result['cover_exists'])
+        insert_cover_image(page, result['cover_image'], result['cover_exists'])
         
         # 完成
         print("=" * 80)
@@ -638,7 +579,7 @@ def auto_publish_article(markdown_file: str, publish: bool = False):
         print("   2. 预览文章")
         
         if publish:
-            click_publish_button(driver)
+            click_publish_button(page)
         else:
             print("   3. 手动点击「保存草稿」或「发布」 (未开启 --publish)")
             print()
@@ -654,10 +595,10 @@ def auto_publish_article(markdown_file: str, publish: bool = False):
         return False
         
     finally:
-        if driver:
+        if session:
             print("\n🧹 正在释放浏览器资源...")
             try:
-                driver.quit()
+                session.close()
             except:
                 pass
             print("✅ 完成")
@@ -667,12 +608,17 @@ def main():
     parser = argparse.ArgumentParser(description='X Article 全自动发布系统')
     parser.add_argument('markdown_file', help='Markdown 文件路径')
     parser.add_argument('--publish', action='store_true', help='直接发布（默认保存草稿）')
+    parser.add_argument('--no-wait', action='store_true', help='完成后不等待用户按 Enter')
     
     args = parser.parse_args()
     
     if not os.path.exists(args.markdown_file):
         print(f"❌ 文件不存在: {args.markdown_file}")
         sys.exit(1)
+    
+    # 设置环境变量（供脚本内部检查）
+    if args.no_wait:
+        os.environ["XPOST_NO_WAIT"] = "1"
     
     success = auto_publish_article(args.markdown_file, args.publish)
     sys.exit(0 if success else 1)
