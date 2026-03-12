@@ -1,16 +1,7 @@
-# macOS 专用依赖
-undetected-chromedriver>=3.5.0
-selenium>=4.0.0
+# 共享浏览器会话层
 patchright>=1.58.1
-setuptools  # Python 3.12+ 需要
+setuptools
 
-# 剪贴板支持
+# macOS 剪贴板与图片处理
 pyobjc-framework-Cocoa>=10.0
-
-# Markdown 解析
-markdown>=3.5.0
-beautifulsoup4>=4.12.0
-html2text>=2020.1.16
-
-# 图片处理
 Pillow>=10.0.0

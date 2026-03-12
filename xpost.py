@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-xpost CLI：面向本地 Agent/自动化的 X Article 工具入口。
+xpost CLI：面向本地 Agent/自动化的 gitxPost 统一入口。
 
 功能：
 - init: 生成符合模板约束的文章骨架（可内嵌风格 Prompt）
 - validate: 严格按模板规则预检
 - parse: Markdown -> 结构化 JSON
-- publish: 自动化草稿/发布（默认草稿）
+- publish: X Articles 自动化草稿/发布（默认草稿）
+- post: X Post 自动化草稿/发布
+- post-login: 初始化 Post 登录态
 - doctor: 环境与依赖检查
 
 所有子命令均输出 JSON，便于 Agent/LLM 解析。
@@ -15,6 +17,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -30,6 +33,11 @@ STYLE_PROMPTS = {
     "zara": PROMPTS_DIR / "prompt_zara.md",
     "tech": PROMPTS_DIR / "prompt_tech.md",
     "fun": PROMPTS_DIR / "prompt_fun.md",
+}
+
+DEFAULT_SEED_IMAGES = {
+    "cover.png": BASE_DIR / "CreateMd" / "images" / "cover.png",
+    "demo1.png": BASE_DIR / "CreateMd" / "images" / "demo1.png",
 }
 
 
@@ -204,6 +212,12 @@ def _cmd_init(args):
     md_path.parent.mkdir(parents=True, exist_ok=True)
     images_dir = md_path.parent / "images"
     images_dir.mkdir(parents=True, exist_ok=True)
+
+    for name, seed_path in DEFAULT_SEED_IMAGES.items():
+        target_path = images_dir / name
+        if target_path.exists() or not seed_path.exists():
+            continue
+        shutil.copy2(seed_path, target_path)
 
     content = _build_init_content(args.topic, args.style, not args.no_prompt)
     _write_text(md_path, content)
@@ -443,13 +457,8 @@ def _detect_chrome_version():
 def _cmd_doctor(_args):
     deps = {}
     for mod in [
-        "undetected_chromedriver",
         "patchright",
-        "selenium",
         "PIL",
-        "markdown",
-        "bs4",
-        "html2text",
     ]:
         try:
             __import__(mod)
@@ -474,7 +483,7 @@ def _cmd_doctor(_args):
     if missing_deps:
         notes.append("检测到依赖缺失，建议先激活虚拟环境并安装 requirements.txt")
     if deps.get("patchright"):
-        notes.append("post 子命令使用真实 Google Chrome profile + Patchright CDP 附着，不再依赖 chromedriver 下载")
+        notes.append("Article、Post、Grok 当前都使用真实 Google Chrome profile + Patchright CDP 附着")
     if not clipboard_ok and sys.platform == "darwin":
         notes.append("剪贴板依赖缺失，确认已安装 pyobjc-framework-Cocoa")
     if not platform_ok:
@@ -498,7 +507,7 @@ def _cmd_doctor(_args):
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="xpost", description="X Article local CLI")
+    parser = argparse.ArgumentParser(prog="xpost", description="gitxPost local CLI")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_init = sub.add_parser("init", help="Create a new article skeleton")

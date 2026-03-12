@@ -12,6 +12,80 @@
 
 日期：2026-03-12
 
+## 本次补充：README、结构审计与开源整理
+
+范围：
+- README 与开源说明
+- 结构审计与整理清单
+- `xpost` CLI 配套收口
+- skills 与安装文档收口
+
+### 1. README 与结构审计更新
+
+涉及文件：
+- `README.md`
+- `docs/repo-structure-audit-2026-03-12.md`
+- `docs/supporting-capabilities-audit-2026-03-12.md`
+- `docs/open-source-cleanup-checklist-2026-03-12.md`
+
+变更：
+- 重写 README，覆盖 Article、Post、Grok、Markdown 创作、Prompt、Antigravity workflow、skills、CI、changelog 规则
+- 新增仓库结构审计文档，明确哪些目录合理、哪些属于历史命名
+- 新增支撑能力审计文档，复核 Markdown、Prompt、workflow、CLI、skills 这些非主链路能力
+- 新增开源整理清单，按“立即做 / 后续做 / 不建议动”分组
+
+效果：
+- 项目主文档更接近 GitHub 开源可读状态
+- 后续整理优先级已经有统一清单
+
+### 2. CLI 配套和依赖定义收口
+
+涉及文件：
+- `xpost.py`
+- `requirements.txt`
+- `pyproject.toml`
+- `scripts/install_cli.sh`
+
+变更：
+- `xpost` 顶层描述更新为 gitxPost 统一 CLI，不再只描述 Article
+- `doctor` 改为检查当前真实依赖：`patchright`、`Pillow`、剪贴板支持
+- `requirements.txt` 与 `pyproject.toml` 去掉已不再使用的旧依赖
+- `install_cli.sh` 统一改为 `.venv`
+- `xpost init` 现在会自动复制示例 `cover.png` 与 `demo1.png`，使新建文章后可直接通过 `validate`
+
+效果：
+- `xpost doctor` 不再误报旧依赖缺失
+- 新用户按 README 安装和初始化时，第一步体验更顺
+
+### 3. skills 文案对齐
+
+涉及文件：
+- `skills/xpost-cli/SKILL.md`
+- `skills/grok-hotposts-cli/SKILL.md`
+
+变更：
+- `xpost-cli` skill 补充了 `post`、`post-login`
+- skills 里的环境路径统一改为 `.venv`
+- `grok-hotposts-cli` 改为优先说明 `--json-only` 直出 JSON 的当前主路径
+
+效果：
+- Agent 层的调用说明和当前 CLI 实现一致
+
+### 本次验证
+
+已验证：
+- `python xpost.py doctor`
+- `python xpost.py init /tmp/gitxpost_readme_audit3.md --topic 'cleanup audit' --style fun --force`
+- `python xpost.py validate /tmp/gitxpost_readme_audit3.md`
+- `python xpost.py parse CreateMd/articleNew.md`
+- `python xpost.py --help`
+- `python xpost.py publish --help`
+- `python xpost.py post --help`
+
+当前边界：
+- Antigravity workflow 仍依赖外部运行环境，当前仓库内无法独立全自动验收
+- `CreateMd/`、`pasreMarkDown/` 仍是历史命名，当前只完成文档收口，尚未做目录重构
+
 范围：
 - Article：`undetected-chromedriver` 迁移到共享 CDP 会话层
 - Grok：`undetected-chromedriver` 迁移到共享 CDP 会话层

@@ -12,8 +12,8 @@ description: 通过 Grok AI 搜集 X (Twitter) 热门帖子，支持自定义主
 当 Agent 使用此 skill 时，**必须按以下完整流程执行**：
 
 1. **运行脚本**：根据用户需求构建命令并执行
-2. **从输出中提取 JSON 文件路径**：脚本成功时会输出 `📊 JSON 文件: hot_posts_output/hot_posts_YYYYMMDD_HHMMSS.json`，完整路径为 `/Users/jackwl/Code/gitcode/gitxPost/hot_posts_output/hot_posts_YYYYMMDD_HHMMSS.json`
-3. **读取该 JSON 文件内容**：使用 `cat` 或文件读取工具获取 JSON 内容
+2. **优先使用 `--json-only`**：直接从 stdout 获取最终 JSON
+3. **只有在显式使用文件输出模式时**：再去读取 `hot_posts_output/*.json`
 4. **将结果格式化呈现给用户**：以可读的表格/列表形式展示，包含以下信息：
    - 序号、作者、发帖时间
    - 中文摘要
@@ -21,7 +21,7 @@ description: 通过 Grok AI 搜集 X (Twitter) 热门帖子，支持自定义主
    - 帖子链接（可点击）
 
 **❌ 禁止**：只告诉用户「文件已保存到 xxx.json」就结束
-**✅ 必须**：读取 JSON 并直接呈现完整结果
+**✅ 必须**：直接读取 JSON 结果并呈现完整内容
 
 示例呈现格式：
 ```
@@ -80,7 +80,7 @@ Agent 在调用 `command_status` 时可以看到这些 stderr 进度信息，据
 
 ```
 步骤1: run_command（WaitMsBeforeAsync=10000）
-  命令: cd /Users/jackwl/Code/gitcode/gitxPost && source venv/bin/activate && python3 grok_hot_posts.py --json-only [其他参数]
+  命令: cd /Users/jackwl/Code/gitcode/gitxPost && source .venv/bin/activate && python3 grok_hot_posts.py --json-only [其他参数]
 
 步骤2: command_status（WaitDurationSeconds=300）
   等待命令完成，查看 stderr 进度和最终 stdout JSON 输出
@@ -93,7 +93,7 @@ Agent 在调用 `command_status` 时可以看到这些 stderr 进度信息，据
 1. 进入项目目录并激活虚拟环境：
    ```bash
    cd /Users/jackwl/Code/gitcode/gitxPost
-   source venv/bin/activate
+   source .venv/bin/activate
    ```
 2. 需要已登录 X 的 Chrome 配置文件（首次需手动登录）
 3. 需要 X Premium+ 订阅（Grok 访问权限）

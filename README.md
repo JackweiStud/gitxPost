@@ -1,88 +1,70 @@
 # gitxPost
 
-macOS 上的 X 自动化工具，当前包含两条独立链路：
+`gitxPost` 是一套面向 macOS 的 X 自动化工具集，覆盖从 Markdown 创作、AI 配图、X Articles 长文发布、X Post 短帖发布，到用 Grok 搜集热点内容的完整工作流。
 
-- `Article`：将 Markdown 长文发布到 X Articles
-- `Post`：发布 280 字符以内的短帖，可选带图
-- `Grok Hot Posts`：通过 Grok 搜集 X 热门帖子并输出 JSON
+当前项目适合两类使用方式：
 
-## 当前状态
+- 手工使用 CLI
+- 作为 Agent / Skill / 自动化系统的本地执行后端
 
-截至 2026-03-09，已经真实验证通过：
+## 核心能力
 
-- `post` 纯文本发布
-- `post` 单图发布
-- `post` 草稿模式
-- `article` 草稿链路
+项目当前已覆盖这些真实能力：
 
-当前仍要注意：
+- `Article`
+  - 从 Markdown 解析并发布到 X Articles
+  - 支持草稿、真发布、封面图、内容图
+- `Post`
+  - 发布 280 字以内短帖
+  - 支持草稿、真发布、最多 4 张图片
+- `Grok Hot Posts`
+  - 通过 Grok 搜集 X 热门帖子并输出结构化 JSON
+- `Markdown Authoring`
+  - 提供文章模板、示例、风格 Prompt
+- `AI Auto Images`
+  - 通过 Antigravity workflow 给文章自动配图
+- `CLI + Skills`
+  - 提供 `xpost` CLI
+  - 提供面向 Agent 的 skill 定义
+- `CI / 验收`
+  - 提供统一测试用例和测试报告模板
+- `Changelog`
+  - 项目要求每次提交前更新 `CHANGELOG.md`
 
-- `post` 首次登录必须人工完成
-- `post` 重点验证的是单图，多图建议继续专项回归
-- `article` 和 `post` 的底层实现不同，不要混为一套
+## 当前真实状态
+
+截至 2026-03-12，已经实测通过：
+
+- `Article` 草稿
+- `Article` 真发布
+- `Article` 内容图 / 封面图上传
+- `Post` 纯文本
+- `Post` 图文
+- `Grok` JSON 输出
 
 ## 技术路线
 
-### Article 链路
+当前三条自动化链路都已经统一到：
 
-- 入口：[`xpost.py`](/Users/jackwl/Code/gitcode/gitxPost/xpost.py) 的 `publish`
-- 核心实现：[`auto_publish_uc.py`](/Users/jackwl/Code/gitcode/gitxPost/auto_publish_uc.py)
-- 技术：`undetected-chromedriver`
-- 目标：X Articles 长文编辑器
+- 真实 Google Chrome profile
+- Patchright CDP 附着
+- 共享浏览器会话层：`browser_cdp_session.py`
 
-### Post 链路
+对应入口：
 
-- 入口：[`xpost.py`](/Users/jackwl/Code/gitcode/gitxPost/xpost.py) 的 `post` / `post-login`
-- 核心实现：[`auto_publish_post.py`](/Users/jackwl/Code/gitcode/gitxPost/auto_publish_post.py)
-- 技术：真实 Google Chrome profile + Patchright CDP 附着
-- 目标：X Post 短帖编辑器
+- `Article`
+  - CLI：`xpost publish`
+  - 核心实现：`auto_publish_uc.py`
+- `Post`
+  - CLI：`xpost post` / `xpost post-login`
+  - 核心实现：`auto_publish_post.py`
+- `Grok`
+  - CLI：`grok_hot_posts.py`
+  - 核心实现：`grok_hot_posts.py`
 
-### 热点搜索链路
+## 快速开始
 
-- 入口：[`grok_hot_posts.py`](/Users/jackwl/Code/gitcode/gitxPost/grok_hot_posts.py)
-- 技术：`undetected-chromedriver` + 已登录 X 会话 + Grok
-- 目标：按主题搜集 X 热门帖子并输出结构化 JSON
-
-## 目录结构
-
-```text
-gitxPost/
-├── xpost.py                         # CLI 主入口
-├── auto_publish_uc.py              # Article 自动化主流程
-├── auto_publish_post.py            # Post 自动化主流程
-├── grok_hot_posts.py               # Grok 热门帖子搜集
-├── config.py                       # Article 通用配置
-├── requirements.txt                # 运行依赖
-├── pyproject.toml                  # CLI 打包配置
-├── pyEnv.py                        # 环境辅助脚本
-├── .agent/workflows/               # Antigravity 工作流
-├── CreateMd/                       # 文章创作目录
-│   ├── template.md                 # 长文模板
-│   ├── articleNew.md               # 示例文章
-│   ├── prompts/                    # 写作风格 Prompt
-│   ├── images/                     # 示例图片
-│   └── testmd/                     # 旧测试文章样本
-├── pasreMarkDown/                  # Markdown 解析与复制辅助
-├── scripts/
-│   ├── install_cli.sh              # 安装本地 CLI
-│   └── agent_example.py            # Agent 调用示例
-├── docs/
-│   ├── x-post-implementation-overview-2026-03-09.md
-│   ├── post-lessons-learned-2026-03-09.md
-│   └── ...
-├── memory/                         # 项目分析与复盘
-├── chrome_data_mirror/             # 默认 Chrome 登录态目录
-└── hot_posts_output/               # 热帖抓取输出
-```
-
-## 环境要求
-
-- macOS
-- Python 3.9+
-- 已安装 Google Chrome
-- 建议使用 `.venv`
-
-## 安装
+### 1. 安装
 
 ```bash
 cd /Users/jackwl/Code/gitcode/gitxPost
@@ -94,243 +76,258 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-说明：
+### 2. 环境检查
 
-- `requirements.txt` 包含 `patchright`
-- `pyproject.toml` 主要用于本地 CLI 安装
-- 如果只执行 `pip install -e .`，`post` 依赖不一定完整，所以建议先装 `requirements.txt`
+```bash
+source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
+xpost doctor
+```
 
-## CLI 总览
+### 3. 首次登录
+
+项目默认复用本地 Chrome profile：
+
+- `chrome_data_mirror`：Article / Post / Grok 主 profile
+- `patchright_post_data`：Post 相关历史持久化目录，保留为本地运行态
+
+如果需要先初始化 Post 登录：
+
+```bash
+xpost post-login
+```
+
+## CLI 概览
 
 ```bash
 xpost init ...
 xpost validate ...
 xpost parse ...
 xpost publish ...
-xpost post-login
 xpost post ...
+xpost post-login ...
 xpost doctor
 ```
 
-所有命令都输出 JSON，便于 Agent 或脚本调用。
+所有子命令都输出 JSON，适合脚本和 Agent 调用。
 
-## Article 使用方式
+## 典型工作流
 
-### 1. 多风格写作
+### 1. 创作 Markdown 文章
 
-内置 3 种写作风格 Prompt：
-
-| 风格 | 文件 | 适用场景 |
-|------|------|----------|
-| Builder/洞察风 | `CreateMd/prompts/prompt_zara.md` | 经验分享、工具推荐 |
-| 技术硬核风 | `CreateMd/prompts/prompt_tech.md` | 技术教程、架构分析 |
-| 幽默风趣风 | `CreateMd/prompts/prompt_fun.md` | 科普、吐槽、轻松话题 |
-
-例如：
+生成文章骨架：
 
 ```bash
 xpost init CreateMd/your_article.md --topic "你的主题" --style zara
 ```
 
-### 2. 自动配图（Antigravity 工作流）
+校验格式：
 
-本项目内置 Antigravity 工作流：
+```bash
+xpost validate CreateMd/your_article.md
+```
+
+解析为 JSON：
+
+```bash
+xpost parse CreateMd/your_article.md
+```
+
+### 2. 使用多风格 Prompt 写文
+
+内置 3 种写作风格：
+
+| 风格 | 文件 | 场景 |
+|------|------|------|
+| `zara` | `CreateMd/prompts/prompt_zara.md` | 经验分享、产品洞察 |
+| `tech` | `CreateMd/prompts/prompt_tech.md` | 技术教程、架构分析 |
+| `fun` | `CreateMd/prompts/prompt_fun.md` | 轻松科普、幽默表达 |
+
+### 3. 用 Antigravity 自动配图
+
+工作流文件：
 
 - `.agent/workflows/auto-imgByMdCn.md`
 
-在 Antigravity 的对话中运行以下命令，可自动为指定 Markdown 插入配图：
+在 Antigravity 对话中执行：
 
 ```bash
 /auto-imgByMdCn.md CreateMd/your_article.md
 ```
 
-这个流程会：
+这个工作流会：
 
-1. 读取 Markdown 文件，识别图片占位符
-2. 分析上下文，构造图片生成 Prompt
-3. 调用 AI 图片生成工具
-4. 自动保存到文章 `images/` 目录
+1. 读取 Markdown
+2. 识别图片占位符
+3. 分析上下文并构造 Prompt
+4. 调用图片生成能力
+5. 写回文章 `images/` 目录
 
-说明：
+### 4. 发布 Article
 
-- 这个能力依赖 Antigravity 的 workflow 运行环境
-- 当前仓库里可以确认工作流文件存在
-- `scripts/antigravity_auto_img.sh` 这一层本地包装脚本当前不在仓库里，所以 README 不再把它写成现成命令入口
-
-### 3. 写文章
-
-按 [`CreateMd/template.md`](/Users/jackwl/Code/gitcode/gitxPost/CreateMd/template.md) 写 Markdown。  
-示例可参考 [`CreateMd/articleNew.md`](/Users/jackwl/Code/gitcode/gitxPost/CreateMd/articleNew.md)。
-
-### 4. 预检
+保存草稿：
 
 ```bash
-source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
-xpost validate CreateMd/articleNew.md
+xpost publish CreateMd/articleNew.md --no-wait
 ```
 
-### 5. 草稿或发布
+直接发布：
 
 ```bash
-# 草稿
-xpost publish CreateMd/articleNew.md
-
-# 直接发布
-xpost publish CreateMd/articleNew.md --publish
+xpost publish CreateMd/articleNew.md --publish --no-wait
 ```
 
-说明：
+### 5. 发布 Post
 
-- `article` 默认复用 [`chrome_data_mirror`](/Users/jackwl/Code/gitcode/gitxPost/chrome_data_mirror)
-- 如果 X 未登录，会在浏览器里提示你人工登录
-- 这条链路当前仍基于 `undetected-chromedriver`
-
-## Post 使用方式
-
-### 1. 首次初始化登录态
-
-`post` 不再自动完成首次登录。正确方式是先执行：
-
-```bash
-source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
-xpost post-login
-```
-
-然后在打开的真实 Chrome 里人工登录 X。登录成功后，状态会保存在默认 profile 里。
-
-### 2. 发纯文本 Post
+纯文本：
 
 ```bash
 xpost post "Hello world" --publish
 ```
 
-### 3. 发图文 Post
+图文：
 
 ```bash
 xpost post "这是一条图文 Post" --images /path/to/image.png --publish
 ```
 
-### 4. 草稿模式
+草稿：
 
 ```bash
-xpost post "先存草稿"
+xpost post "先存草稿" --no-wait
 ```
 
-### 5. 可观察模式
-
-调试时如果想看清楚输入、插图、点击过程：
+可观察模式：
 
 ```bash
 xpost post "Visible flow" --images /path/to/image.png --publish --observe-ms 2500
 ```
 
-## Post 参数
+### 6. 用 Grok 搜集热点
 
-```bash
-xpost post TEXT [--images ...] [--publish] [--profile-dir ...] [--no-wait] [--remote-debugging-port ...] [--observe-ms ...]
-```
-
-常用参数：
-
-- `text`：Post 文本内容
-- `--images`：最多 4 张图片
-- `--publish`：直接发布，否则默认为草稿
-- `--profile-dir`：自定义 Chrome profile
-- `--no-wait`：完成后不等待
-- `--remote-debugging-port`：真实 Chrome CDP 端口
-- `--observe-ms`：关键步骤可观察停顿
-
-`post-login` 参数：
-
-- `--profile-dir`
-- `--login-timeout`
-- `--remote-debugging-port`
-
-## doctor
-
-检查环境：
-
-```bash
-xpost doctor
-```
-
-会输出：
-
-- Python 版本
-- Chrome 版本
-- 关键依赖是否可用
-- `post` 当前使用的浏览器控制方式
-
-## X 热点搜索
-
-项目还支持通过 Grok 搜索 X 热门帖子，核心脚本是：
-
-- [`grok_hot_posts.py`](/Users/jackwl/Code/gitcode/gitxPost/grok_hot_posts.py)
-
-典型用途：
-
-- 搜集 AI 热点
-- 搜集科技动态
-- 搜集某个主题过去若干小时内的热门帖子
-
-基础用法：
+默认：
 
 ```bash
 source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
 python /Users/jackwl/Code/gitcode/gitxPost/grok_hot_posts.py --json-only
 ```
 
-自定义主题、时间范围和数量：
+自定义主题：
 
 ```bash
 python /Users/jackwl/Code/gitcode/gitxPost/grok_hot_posts.py \
-  --topics AI 科技 开源Github \
-  --hours 72 \
-  --count 10 \
+  --topics OpenClaw skills GitHub \
+  --hours 168 \
+  --count 5 \
   --json-only
+```
+
+## Skills 与 Agent 集成
+
+项目内置两个可直接复用的 skill：
+
+- `skills/xpost-cli/SKILL.md`
+- `skills/grok-hotposts-cli/SKILL.md`
+
+适用场景：
+
+- Agent 调用 `xpost` CLI 发布文章
+- Agent 调用 Grok CLI 搜集热点帖子
+
+## 测试与验收
+
+统一测试入口在 `CI/`：
+
+- `CI/README.md`
+- `CI/test-cases.md`
+- `CI/report-template.md`
+
+推荐最小回归集：
+
+1. `TC-01` Article 草稿
+2. `TC-03` Article 图片上传
+3. `TC-04` Grok JSON 输出
+4. `TC-06` Post 纯文本
+
+## 目录结构
+
+```text
+gitxPost/
+├── xpost.py
+├── auto_publish_uc.py
+├── auto_publish_post.py
+├── grok_hot_posts.py
+├── browser_cdp_session.py
+├── requirements.txt
+├── pyproject.toml
+├── CHANGELOG.md
+├── README.md
+├── CI/
+│   ├── README.md
+│   ├── test-cases.md
+│   └── report-template.md
+├── docs/
+│   ├── x-post-implementation-overview-2026-03-09.md
+│   ├── post-lessons-learned-2026-03-09.md
+│   ├── article-grok-cdp-migration-prd-2026-03-09.md
+│   ├── article-grok-cdp-migration-test-cases-2026-03-09.md
+│   ├── repo-structure-audit-2026-03-12.md
+│   ├── supporting-capabilities-audit-2026-03-12.md
+│   └── open-source-cleanup-checklist-2026-03-12.md
+├── CreateMd/
+│   ├── template.md
+│   ├── articleNew.md
+│   ├── agent_skill_guide.md
+│   ├── prompts/
+│   ├── images/
+│   └── testmd/
+├── skills/
+│   ├── xpost-cli/
+│   └── grok-hotposts-cli/
+├── scripts/
+│   └── install_cli.sh
+├── .agent/
+│   └── workflows/
+│       └── auto-imgByMdCn.md
+└── pasreMarkDown/
 ```
 
 说明：
 
-- 这条链路依赖已登录的 X 会话
-- 需要具备 Grok 可用权限
-- 结果会输出为 JSON，适合二次处理或给 Agent 消费
-- 详细调用说明可参考 [`skills/grok-hotposts-cli/SKILL.md`](/Users/jackwl/Code/gitcode/gitxPost/skills/grok-hotposts-cli/SKILL.md)
+- `CreateMd/` 当前是文章内容工作区，适合放 Markdown、图片、Prompt、示例
+- `pasreMarkDown/` 是历史保留目录，名字里有 typo，短期先保留，后续再考虑重构
+- `chrome_data_mirror/` 和 `patchright_post_data/` 属于本地运行态，不建议提交到 Git
 
-## 设计说明
+## 当前还缺什么
 
-### 为什么 Post 不继续走 chromedriver
+如果目标是“GitHub 开源后，别人拉下来就能理解、能用、能继续维护”，当前还建议补这几类内容：
 
-因为这次真实联调已经证明：
+- 更统一的目录命名
+  - `CreateMd/`、`pasreMarkDown/` 都偏历史命名，不够直观
+- 更清晰的示例分层
+  - 正式示例和历史测试样例目前仍有混放
+- 更明确的配置入口
+  - `config.py` 不是当前唯一配置源，后续需要收敛
+- 更自动化的验收
+  - 现在已有 `CI/` 文档，但还不是完全自动执行的 CI pipeline
+- 更清晰的对外边界
+  - 当前最佳运行环境是 macOS + 已登录的本地 Chrome profile，这一点已经应当在开源说明里持续强调
 
-- Chrome 自动升级会频繁打断 `chromedriver`
-- 运行时下载 driver 不稳定
-- 首次登录在干净自动化浏览器里容易被 X 风控
+推荐路线：
 
-所以 `post` 改成了：
+1. 先保持代码结构稳定，以 README + docs + CI 文档为主完成开源整理
+2. 后续再做目录重命名和更彻底的模块化重构
 
-- 人工在真实 Chrome 里登录一次
-- 后续只自动化已登录后的发布动作
+更详细的结构建议见：
 
-### 为什么 Article 仍保留旧链路
+- `docs/repo-structure-audit-2026-03-12.md`
 
-因为 Article 是已有老功能，当前已经能继续工作。  
-这次的目标是修好 `post`，并确保不要再把 `article` 的登录态破坏掉。
+## Changelog 规则
 
-## 相关文档
+项目要求：
 
-- [`docs/x-post-implementation-overview-2026-03-09.md`](/Users/jackwl/Code/gitcode/gitxPost/docs/x-post-implementation-overview-2026-03-09.md)
-- [`docs/post-lessons-learned-2026-03-09.md`](/Users/jackwl/Code/gitcode/gitxPost/docs/post-lessons-learned-2026-03-09.md)
-- [`docs/post-api-spec.md`](/Users/jackwl/Code/gitcode/gitxPost/docs/post-api-spec.md)
+- 每次准备 `git commit` 前，先更新 `CHANGELOG.md`
+- 如果改动影响测试或交付信心，顺手更新 `CI/` 文档
 
-## 已知边界
+相关规则文件：
 
-- `post` 当前重点验证的是单图，不代表多图所有情况都已充分覆盖
-- X 页面结构可能变化，后续建议为 `/home` 发帖入口补 fallback
-- `article` 当前只再次验证了草稿链路
-
-## 推荐维护原则
-
-- 不要把 `article` 和 `post` 强行统一到底层实现
-- `post` 优先保真实 Chrome profile 复用
-- 修改浏览器启动逻辑后，必须同时回归 `article` 和 `post`
+- `.cursor/rules/changelog-before-commit.mdc`
