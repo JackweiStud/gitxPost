@@ -28,8 +28,9 @@ doc/
 .claude/
 openspec/
 
-CreateMd/testmd/*
-CreateMd/testmd/
+content/drafts/*
+!content/drafts/.gitkeep
+content/examples/archive/
 hot_posts_output/*
 hot_posts_output
 patchright_post_data/

@@ -26,7 +26,7 @@ def _is_md_path(text: str) -> bool:
 
 def _default_md_path():
     ts = time.strftime("%Y%m%d_%H%M%S")
-    return Path.cwd() / "CreateMd" / f"article_{ts}.md"
+    return Path.cwd() / "content" / "drafts" / f"article_{ts}.md"
 
 
 def main():

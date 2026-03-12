@@ -24,7 +24,7 @@ except Exception:
     Page = object
 
 # 添加脚本路径
-script_dir = Path(__file__).parent / "pasreMarkDown/skills/x-article-publisher/scripts"
+script_dir = Path(__file__).parent / "article_tooling" / "scripts"
 sys.path.insert(0, str(script_dir))
 
 from parse_markdown import parse_markdown_file

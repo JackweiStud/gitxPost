@@ -28,10 +28,10 @@
 使用 `/auto-imgByMdCn` 工作流自动为文章配图。
 
 ### Step 6: 发布
-使用 `auto_publish.py` 自动发布到 X。
+使用 `xpost` CLI 发布到 X。
 
 ```bash
-python auto_publish.py <your_article.md> --publish
+xpost publish <your_article.md> --publish
 ```
 
 ---
@@ -62,5 +62,5 @@ python auto_publish.py <your_article.md> --publish
 生成文章后，可运行以下命令验证格式：
 
 ```bash
-python pasreMarkDown/skills/x-article-publisher/scripts/parse_markdown.py <your_article.md> --output json
+python article_tooling/scripts/parse_markdown.py <your_article.md> --output json
 ```

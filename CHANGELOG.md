@@ -12,6 +12,147 @@
 
 日期：2026-03-12
 
+## 本次补充：开源第二轮整理
+
+范围：
+- 目录结构重命名与收口
+- 历史 skill / plugin 资产分层
+- 文档入口与测试素材路径更新
+
+### 1. 内容目录重构
+
+涉及文件：
+- `content/`
+- `xpost.py`
+- `scripts/agent_example.py`
+- `CI/`
+- `README.md`
+
+变更：
+- 将 `CreateMd/` 重构为 `content/`
+- 统一形成 `content/template.md`、`content/prompt-guide.md`、`content/prompts/`、`content/examples/`、`content/drafts/`
+- `xpost` CLI、示例脚本、CI 测试素材路径切到新结构
+
+效果：
+- 仓库结构更适合 GitHub 开源
+- 示例、模板、草稿工作区职责更清楚
+
+### 2. Article 工具目录重构
+
+涉及文件：
+- `article_tooling/`
+- `auto_publish_uc.py`
+- `xpost.py`
+
+变更：
+- 将 `pasreMarkDown/` 重构为 `article_tooling/`
+- 将运行脚本上收为 `article_tooling/scripts/`
+- 代码运行路径切到 `article_tooling/scripts/`
+
+效果：
+- 去掉历史 typo
+- Article 解析与剪贴板脚本的语义更清楚
+
+### 3. skill 关系收口
+
+涉及文件：
+- `skills/README.md`
+- `docs/skill-topology-2026-03-12.md`
+
+变更：
+- repo 顶层只保留 `xpost-cli` 与 `grok-hotposts-cli` 两份活跃 skills
+- 历史 `x-article-publisher` skill 与 plugin 的说明统一收敛到文档
+- 新增 skill 拓扑文档，明确“保留 / 合并 / 历史参考”的关系
+
+效果：
+- skill 层入口更单一
+- 历史说明不再以旧 skill / plugin 文件的形式继续保留
+
+### 4. 旧配置清理
+
+涉及文件：
+- `config.py`
+- `pyEnv.py`
+
+变更：
+- 删除未被运行时代码使用的历史配置文件
+- 删除旧的 Playwright 环境检测脚本
+
+效果：
+- 仓库内不再保留误导性的伪主配置入口
+
+### 本次验证
+
+已验证：
+- `python -m py_compile xpost.py auto_publish_uc.py`
+- `python xpost.py doctor`
+- `python xpost.py init /tmp/gitxpost_v2_cleanup.md --topic 'cleanup pass' --style zara --force`
+- `python xpost.py validate /tmp/gitxpost_v2_cleanup.md`
+
+当前边界：
+- 示例文件名 `articleNew.md`、`agent_skill_guide.md` 仍可继续优化，但不影响运行
+
+## 本次补充：开源整理后的 smoke 与使用规范文档
+
+范围：
+- smoke 回归结果固化
+- README 收口
+- 使用与忽略规则文档补齐
+
+### 1. smoke 结果入档
+
+涉及文件：
+- `CI/report-template.md`
+
+变更：
+- 增加“2026-03-12 开源整理后 smoke”真实报告样例
+- 记录 `Article` 草稿、`Article` 图片上传、`Post` 纯文本、`Post` 图文、`Grok` JSON 输出的实际结果
+- 记录 `Post` 图文一次临时网络错误后重试通过的情况
+
+效果：
+- 后续团队做功能验收时，可以直接参考一份真实填写样例
+
+### 2. README 与使用规则收口
+
+涉及文件：
+- `README.md`
+- `docs/usage-and-ignore-guide-2026-03-12.md`
+
+变更：
+- 在 README 中补充最近一次 smoke 通过范围
+- 新增使用与忽略规则指南，明确主功能入口、本地运行态目录、应忽略文件、提交前检查顺序
+- README 增加对该指南和 `CI/` 的引用
+
+效果：
+- 新同事接手时更容易判断怎么用、哪些目录不能误提交
+
+### 3. Markdown 解析器补丁
+
+涉及文件：
+- `article_tooling/scripts/parse_markdown.py`
+
+变更：
+- 修复 `xpost init --style ...` 生成的 HTML 注释式 prompt 元数据被误解析为标题或正文的问题
+- 解析前先剥离 frontmatter 和 HTML 注释
+
+效果：
+- `xpost init -> validate -> parse` 重新稳定
+- 目录整理后补跑 CLI smoke 时没有再出现标题误识别
+
+### 本次验证
+
+已验证：
+- `python xpost.py doctor`
+- `python xpost.py init /tmp/gitxpost_smoke_support.md --topic 'support smoke' --style fun --force`
+- `python xpost.py validate /tmp/gitxpost_smoke_support.md`
+- `python xpost.py parse /tmp/gitxpost_smoke_support.md`
+- `python xpost.py post "smoke text after open-source cleanup" --no-wait`
+- `python xpost.py post "smoke image after open-source cleanup" --images content/examples/images/demo1.png --no-wait`
+- `python grok_hot_posts.py --topics "OpenClaw skills GitHub" --hours 168 --count 5 --json-only`
+
+当前边界：
+- Antigravity workflow 仍然依赖外部环境，不在本轮全自动 smoke 范围内
+
 ## 本次补充：README、结构审计与开源整理
 
 范围：
@@ -77,14 +218,14 @@
 - `python xpost.py doctor`
 - `python xpost.py init /tmp/gitxpost_readme_audit3.md --topic 'cleanup audit' --style fun --force`
 - `python xpost.py validate /tmp/gitxpost_readme_audit3.md`
-- `python xpost.py parse CreateMd/articleNew.md`
+- `python xpost.py parse content/examples/articleNew.md`
 - `python xpost.py --help`
 - `python xpost.py publish --help`
 - `python xpost.py post --help`
 
 当前边界：
 - Antigravity workflow 仍依赖外部运行环境，当前仓库内无法独立全自动验收
-- `CreateMd/`、`pasreMarkDown/` 仍是历史命名，当前只完成文档收口，尚未做目录重构
+- `content/`、`article_tooling/` 仍是历史命名，当前只完成文档收口，尚未做目录重构
 
 范围：
 - Article：`undetected-chromedriver` 迁移到共享 CDP 会话层

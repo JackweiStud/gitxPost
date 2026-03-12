@@ -26,8 +26,8 @@ from typing import Optional
 
 
 BASE_DIR = Path(__file__).resolve().parent
-SCRIPTS_DIR = BASE_DIR / "pasreMarkDown" / "skills" / "x-article-publisher" / "scripts"
-PROMPTS_DIR = BASE_DIR / "CreateMd" / "prompts"
+SCRIPTS_DIR = BASE_DIR / "article_tooling" / "scripts"
+PROMPTS_DIR = BASE_DIR / "content" / "prompts"
 
 STYLE_PROMPTS = {
     "zara": PROMPTS_DIR / "prompt_zara.md",
@@ -36,8 +36,8 @@ STYLE_PROMPTS = {
 }
 
 DEFAULT_SEED_IMAGES = {
-    "cover.png": BASE_DIR / "CreateMd" / "images" / "cover.png",
-    "demo1.png": BASE_DIR / "CreateMd" / "images" / "demo1.png",
+    "cover.png": BASE_DIR / "content" / "examples" / "images" / "cover.png",
+    "demo1.png": BASE_DIR / "content" / "examples" / "images" / "demo1.png",
 }
 
 

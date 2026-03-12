@@ -47,7 +47,7 @@ python /Users/jackwl/Code/gitcode/gitxPost/xpost.py doctor
 
 ```bash
 source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
-python /Users/jackwl/Code/gitcode/gitxPost/xpost.py publish /Users/jackwl/Code/gitcode/gitxPost/CreateMd/articleNew.md --no-wait
+python /Users/jackwl/Code/gitcode/gitxPost/xpost.py publish /Users/jackwl/Code/gitcode/gitxPost/content/examples/articleNew.md --no-wait
 ```
 
 预期：
@@ -65,7 +65,7 @@ python /Users/jackwl/Code/gitcode/gitxPost/xpost.py publish /Users/jackwl/Code/g
 
 ```bash
 source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
-python /Users/jackwl/Code/gitcode/gitxPost/xpost.py publish /Users/jackwl/Code/gitcode/gitxPost/CreateMd/articleNew.md --publish --no-wait
+python /Users/jackwl/Code/gitcode/gitxPost/xpost.py publish /Users/jackwl/Code/gitcode/gitxPost/content/examples/articleNew.md --publish --no-wait
 ```
 
 预期：
@@ -86,7 +86,7 @@ python /Users/jackwl/Code/gitcode/gitxPost/xpost.py publish /Users/jackwl/Code/g
 
 ```bash
 source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
-python /Users/jackwl/Code/gitcode/gitxPost/xpost.py publish /Users/jackwl/Code/gitcode/gitxPost/CreateMd/agent_skill_guide.md --no-wait
+python /Users/jackwl/Code/gitcode/gitxPost/xpost.py publish /Users/jackwl/Code/gitcode/gitxPost/content/examples/agent_skill_guide.md --no-wait
 ```
 
 预期：
@@ -153,7 +153,7 @@ python /Users/jackwl/Code/gitcode/gitxPost/xpost.py post "smoke test after chang
 ```bash
 source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
 python /Users/jackwl/Code/gitcode/gitxPost/xpost.py post "smoke image test" \
-  --images /Users/jackwl/Code/gitcode/gitxPost/CreateMd/images/demo1.png \
+  --images /Users/jackwl/Code/gitcode/gitxPost/content/examples/images/demo1.png \
   --no-wait
 ```
 

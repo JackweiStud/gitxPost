@@ -23,26 +23,26 @@ Use the local `xpost` CLI in this repo to:
 ### Init
 Create a skeleton article (optionally with topic/style):
 ```
-xpost init CreateMd/your_article.md --topic "Your topic" --style zara
+xpost init content/drafts/your_article.md --topic "Your topic" --style zara
 ```
 
 ### Validate
-Strictly validate against `CreateMd/template.md`:
+Strictly validate against `content/template.md`:
 ```
-xpost validate CreateMd/your_article.md
+xpost validate content/drafts/your_article.md
 ```
 
 ### Parse
 Convert Markdown to structured JSON:
 ```
-xpost parse CreateMd/your_article.md
+xpost parse content/drafts/your_article.md
 ```
 
 ### Publish
 Default is draft; use `--publish` to publish:
 ```
-xpost publish CreateMd/your_article.md
-xpost publish CreateMd/your_article.md --publish
+xpost publish content/drafts/your_article.md
+xpost publish content/drafts/your_article.md --publish
 ```
 
 ### Post

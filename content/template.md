@@ -1,6 +1,6 @@
 # X Article 格式规范 (最低要求)
 
-所有生成的文章必须满足以下格式，以确保 `auto_publish.py` 和 `parse_markdown.py` 能正常工作。
+所有生成的文章必须满足以下格式，以确保 `xpost publish` 和 `parse_markdown.py` 能正常工作。
 
 ---
 
@@ -104,7 +104,7 @@
 生成文章后，运行以下命令验证格式：
 
 ```bash
-python pasreMarkDown/skills/x-article-publisher/scripts/parse_markdown.py <your_article.md> --output json
+python article_tooling/scripts/parse_markdown.py <your_article.md> --output json
 ```
 
 预期输出应包含：

@@ -391,6 +391,20 @@ def extract_title(markdown: str) -> tuple[str, str]:
     return title, markdown
 
 
+def strip_frontmatter_and_comments(markdown: str) -> str:
+    """Remove YAML frontmatter and HTML comment blocks before parsing."""
+    content = markdown
+
+    if content.startswith('---'):
+        end_marker = content.find('---', 3)
+        if end_marker != -1:
+            content = content[end_marker + 3:].strip()
+
+    # Remove multiline HTML comments used for embedded prompt metadata.
+    content = re.sub(r'<!--.*?-->', '', content, flags=re.DOTALL)
+    return content.strip()
+
+
 def markdown_to_html(markdown: str) -> str:
     """Convert markdown to HTML for X Articles rich text paste."""
     html = markdown
@@ -458,11 +472,7 @@ def parse_markdown_file(filepath: str) -> dict:
     with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
 
-    # Skip YAML frontmatter if present
-    if content.startswith('---'):
-        end_marker = content.find('---', 3)
-        if end_marker != -1:
-            content = content[end_marker + 3:].strip()
+    content = strip_frontmatter_and_comments(content)
 
     # Extract title first (and remove H1 from markdown)
     title, content = extract_title(content)
