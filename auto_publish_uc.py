@@ -78,62 +78,63 @@ def create_session_and_page(quiet=False):
     
     USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
     
-    session = create_session(profile_dir=USER_DATA_DIR)
-    browser, context, page = session.start()
+    session = create_session(profile_dir=USER_DATA_DIR, headless=False)
+    page = session.create_task_page()
     
     print("✅ 浏览器已启动")
     return session, page
 
 
-def check_login_status(page: Page):
-    """检查是否已登录"""
-    try:
-        current_url = page.url
-        if "login" in current_url.lower() or "flow/login" in current_url.lower():
-            return False
+# 移除 auto_publish_uc.py 自己的 check_login_status 和 wait_for_login
+# def check_login_status(page: Page):
+#     """检查是否已登录"""
+#     try:
+#         current_url = page.url
+#         if "login" in current_url.lower() or "flow/login" in current_url.lower():
+#             return False
         
-        login_indicators = [
-            'a[href="/login"]',
-            'a[href*="flow/login"]',
-        ]
+#         login_indicators = [
+#             'a[href="/login"]',
+#             'a[href*="flow/login"]',
+#         ]
         
-        for selector in login_indicators:
-            try:
-                locator = page.locator(selector)
-                if locator.count() > 0 and locator.first.is_visible():
-                    print(f"   ℹ️  发现登录按钮: {selector}")
-                    return False
-            except:
-                continue
+#         for selector in login_indicators:
+#             try:
+#                 locator = page.locator(selector)
+#                 if locator.count() > 0 and locator.first.is_visible():
+#                     print(f"   ℹ️  发现登录按钮: {selector}")
+#                     return False
+#             except:
+#                 continue
         
-        return True
-    except Exception:
-        return True
+#         return True
+#     except Exception:
+#         return True
 
 
-def wait_for_login(page: Page, timeout=300):
-    """等待用户手动登录"""
-    print()
-    print("⚠️  检测到未登录状态！")
-    print("=" * 60)
-    print("📢 请在当前打开的 Chrome 浏览器中完成登录：")
-    print("   1. 输入您的 X 用户名/邮箱")
-    print("   2. 输入密码")
-    print("   3. 完成所有安全验证")
-    print("   4. 登录成功后脚本将自动继续")
-    print()
-    print(f"⏳ 等待登录中... (超时: {timeout}秒)")
-    print("=" * 60)
+# def wait_for_login(page: Page, timeout=300):
+#     """等待用户手动登录"""
+#     print()
+#     print("⚠️  检测到未登录状态！")
+#     print("=" * 60)
+#     print("📢 请在当前打开的 Chrome 浏览器中完成登录：")
+#     print("   1. 输入您的 X 用户名/邮箱")
+#     print("   2. 输入密码")
+#     ("   3. 完成所有安全验证")
+#     print("   4. 登录成功后脚本将自动继续")
+#     print()
+#     print(f"⏳ 等待登录中... (超时: {timeout}秒)")
+#     print("=" * 60)
     
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        if check_login_status(page):
-            print("✅ 登录成功！")
-            return True
-        time.sleep(3)
+#     start_time = time.time()
+#     while time.time() - start_time < timeout:
+#         if check_login_status(page):
+#             print("✅ 登录成功！")
+#             return True
+#         time.sleep(3)
     
-    print("❌ 登录超时")
-    return False
+#     print("❌ 登录超时")
+#     return False
 
 
 def click_write_button(page: Page):
@@ -167,20 +168,29 @@ def input_title(page: Page, title):
         'textarea[name="Article Title"]',
         'input[placeholder*="标题"]',
         'textarea[placeholder*="标题"]',
-        'div[contenteditable="true"]',
+        'textarea',
     ]
     
     for selector in title_selectors:
         try:
             locator = page.locator(selector)
             if locator.count() > 0:
-                locator.first.wait_for(state="visible", timeout=3000)
-                locator.first.click()
+                title_input = locator.first
+                title_input.wait_for(state="visible", timeout=3000)
+                title_input.click()
                 HumanBehaviorSimulator.random_delay(500, 1000)
-                locator.first.fill("")
-                locator.first.fill(title)
-                print(f"✅ 标题已输入: {title}")
-                return True
+                try:
+                    title_input.fill("")
+                except Exception:
+                    page.keyboard.press("Meta+A")
+                    HumanBehaviorSimulator.random_delay(200, 300)
+                    page.keyboard.press("Backspace")
+                HumanBehaviorSimulator.random_delay(200, 400)
+                title_input.fill(title)
+                value = title_input.input_value()
+                if value.strip() == title.strip():
+                    print(f"✅ 标题已输入: {title}")
+                    return True
         except:
             continue
     
@@ -201,7 +211,8 @@ def paste_content(page: Page, html_content):
         
         # 查找内容编辑区域
         content_selectors = [
-            'div[contenteditable="true"][data-testid="article"]',
+            'div[data-testid="composer"][contenteditable="true"]',
+            'div[data-testid="composer"][role="textbox"]',
             'div[contenteditable="true"][role="textbox"]',
             'div[contenteditable="true"]',
             'div.public-DraftEditor-content',
@@ -211,10 +222,10 @@ def paste_content(page: Page, html_content):
             try:
                 locators = page.locator(selector)
                 count = locators.count()
-                # 通常第二个 contenteditable 是内容区域
-                content_area = locators.nth(1) if count > 1 else (locators.first if count > 0 else None)
+                content_area = locators.first if count > 0 else None
                 
                 if content_area:
+                    content_area.wait_for(state="visible", timeout=3000)
                     content_area.click()
                     HumanBehaviorSimulator.random_delay(500, 1000)
                     
@@ -222,8 +233,10 @@ def paste_content(page: Page, html_content):
                     page.keyboard.press("Meta+V")
                     
                     HumanBehaviorSimulator.random_delay(2000, 3000)
-                    print(f"✅ 内容已粘贴 ({len(html_content)} 字符)")
-                    return True
+                    editor_text = (content_area.text_content() or "").strip()
+                    if editor_text:
+                        print(f"✅ 内容已粘贴 ({len(html_content)} 字符)")
+                        return True
             except:
                 continue
         
@@ -239,6 +252,7 @@ def get_editor_image_count(page: Page):
     """统计编辑器内部图片数量"""
     try:
         editor_selectors = [
+            'div[data-testid="composer"][contenteditable="true"]',
             'div[contenteditable="true"][data-testid="article"]',
             'div[contenteditable="true"][role="textbox"]',
             'div[contenteditable="true"]',
@@ -248,9 +262,7 @@ def get_editor_image_count(page: Page):
             try:
                 locators = page.locator(selector)
                 count = locators.count()
-                if count > 1:
-                    editor = locators.nth(1)
-                elif count > 0:
+                if count > 0:
                     editor = locators.first
                 else:
                     continue
@@ -271,8 +283,10 @@ def find_placeholder_and_select(page: Page, placeholder):
         
         selected = page.evaluate('''
             (placeholder) => {
-                const editors = document.querySelectorAll('div[contenteditable="true"]');
-                const editor = editors.length > 1 ? editors[1] : editors[0];
+                const editor =
+                  document.querySelector('div[data-testid="composer"][contenteditable="true"]') ||
+                  document.querySelector('div[contenteditable="true"][role="textbox"]') ||
+                  document.querySelector('div[contenteditable="true"]');
                 if (!editor) return false;
                 
                 const walker = document.createTreeWalker(
@@ -320,7 +334,10 @@ def wait_for_image_upload(page: Page, timeout=15):
     """等待图片上传完成"""
     try:
         print(f"   ⏳ 等待图片上传（最多 {timeout} 秒）...")
-        page.wait_for_selector('img[src*="pbs.twimg.com"]', timeout=timeout * 1000)
+        page.wait_for_selector(
+            'img[src*="pbs.twimg.com"], img[src^="blob:"]',
+            timeout=timeout * 1000
+        )
         print("   ✅ 图片上传完成")
         return True
     except:
@@ -373,10 +390,10 @@ def insert_content_images(page: Page, content_images):
                 HumanBehaviorSimulator.random_delay(1000, 1500)
                 
                 # 等待图片上传
-                wait_for_image_upload(page, timeout=15)
+                upload_ok = wait_for_image_upload(page, timeout=15)
                 
                 after_count = get_editor_image_count(page)
-                if after_count > before_count:
+                if after_count > before_count or upload_ok:
                     print(f"   ✅ 图片 {idx} 已成功插入")
                 else:
                     print(f"   ⚠️  图片 {idx} 插入可能失败，请检查")
@@ -478,6 +495,8 @@ def click_publish_button(page: Page):
     print("🚀 [8/+] 自动点击发布...")
     
     publish_selectors = [
+        'button:has-text("Publish")',
+        'button[data-testid="confirmationSheetConfirm"]',
         'button[data-testid="tweetButtonInline"]',
     ]
     
@@ -485,9 +504,10 @@ def click_publish_button(page: Page):
         try:
             locator = page.locator(selector)
             if locator.count() > 0:
-                locator.first.wait_for(state="visible", timeout=3000)
+                target = locator.first
+                target.wait_for(state="visible", timeout=3000)
                 print(f"   找到发布按钮: {selector}")
-                locator.first.click()
+                target.click()
                 HumanBehaviorSimulator.random_delay(2000, 3000)
                 
                 # 可能有确认弹窗
@@ -532,23 +552,24 @@ def auto_publish_article(markdown_file: str, publish: bool = False):
         print("🌐 [2/7] 启动浏览器...")
         session, page = create_session_and_page()
         print()
-        
+
+        # 检查登录状态 (使用 browser_cdp_session 提供的功能)
+        if not session.check_login_status():
+            if not session.wait_for_login():
+                print("❌ 登录失败，退出")
+                return False
+        else:
+            print("✅ 已登录")
+
         # 打开 Articles 页面
         print("🔗 [3/7] 打开 X Articles 编辑器...")
         page.goto(ARTICLES_URL, wait_until="domcontentloaded", timeout=60000)
         HumanBehaviorSimulator.random_delay(2000, 4000)
         print("✅ 页面已加载")
         
-        # 检查登录状态
-        if not check_login_status(page):
-            if not wait_for_login(page):
-                print("❌ 登录失败，退出")
-                return False
-        else:
-            print("✅ 已登录")
-        
         # 点击 Write 按钮
         click_write_button(page)
+
         
         # 页面预热
         HumanBehaviorSimulator.warmup_page(page)

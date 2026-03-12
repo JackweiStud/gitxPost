@@ -421,8 +421,8 @@ def initialize_login_session(profile_dir: Path = PROFILE_DIR, timeout: int = 600
     
     try:
         print("\n🌐 启动真实 Google Chrome...")
-        session = create_session(profile_dir=profile_dir)
-        browser, context, page = session.start()
+        session = create_session(profile_dir=profile_dir, headless=False)
+        page = session.create_task_page()
         
         print(f"   ℹ️  使用持久化目录: {profile_dir}")
         
@@ -486,11 +486,9 @@ def auto_publish_post(
         print("\n🌐 启动真实 Google Chrome 并附着 CDP...")
         print(f"[DEBUG] PROFILE_DIR={PROFILE_DIR}")
         print("[DEBUG] 调用 create_session...")
-        session = create_session(profile_dir=PROFILE_DIR)
+        session = create_session(profile_dir=PROFILE_DIR, headless=False)
         print("[DEBUG] create_session 返回成功")
-        print("[DEBUG] 调用 session.start()...")
-        browser, context, page = session.start()
-        print("[DEBUG] session.start() 返回成功")
+        page = session.create_task_page()
         _activate_chrome_window()
         
         print(f"   ℹ️  使用持久化目录: {PROFILE_DIR}")
