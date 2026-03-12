@@ -461,22 +461,32 @@ def insert_cover_image(page: Page, cover_image, cover_exists):
             try:
                 print("   ⏳ 等待图片编辑器弹窗...")
                 HumanBehaviorSimulator.random_delay(2000, 3000)
-                
-                apply_selectors = [
-                    'button[data-testid="applyButton"]',
+
+                apply_candidates = [
+                    page.get_by_role("button", name="Apply"),
+                    page.locator('button[data-testid="applyButton"]'),
                 ]
-                
-                for selector in apply_selectors:
+
+                for locator in apply_candidates:
                     try:
-                        locator = page.locator(selector)
-                        if locator.count() > 0:
-                            locator.first.wait_for(state="visible", timeout=2000)
-                            print(f"   👈 点击 'Apply' 确认封面...")
-                            locator.first.click()
-                            HumanBehaviorSimulator.random_delay(1000, 2000)
-                            print("   ✅ 封面已应用")
-                            break
-                    except:
+                        if locator.count() == 0:
+                            continue
+                        button = locator.first
+                        button.wait_for(state="visible", timeout=5000)
+                        print("   👈 点击 'Apply' 确认封面...")
+                        try:
+                            button.click(timeout=5000)
+                        except Exception:
+                            button.click(timeout=5000, force=True)
+                        HumanBehaviorSimulator.random_delay(1500, 2500)
+                        try:
+                            button.wait_for(state="hidden", timeout=8000)
+                        except Exception:
+                            pass
+                        print("   ✅ 封面已应用")
+                        break
+                    except Exception as exc:
+                        print(f"   ℹ️  Apply 按钮点击失败: {exc}")
                         continue
             except:
                 pass
@@ -493,40 +503,103 @@ def insert_cover_image(page: Page, cover_image, cover_exists):
 def click_publish_button(page: Page):
     """点击发布按钮"""
     print("🚀 [8/+] 自动点击发布...")
-    
-    publish_selectors = [
-        'button:has-text("Publish")',
+
+    try:
+        page.wait_for_function(
+            """() => {
+                const button = Array.from(document.querySelectorAll('button')).find((item) => {
+                    const text = (item.innerText || '').trim();
+                    return text === 'Publish' && !item.disabled && !item.closest('#layers');
+                });
+                return !!button;
+            }""",
+            timeout=20000,
+        )
+    except Exception as exc:
+        print(f"   ⚠️  等待发布按钮可用超时: {exc}")
+
+    try:
+        initial_clicked = page.evaluate(
+            """() => {
+                const button = Array.from(document.querySelectorAll('button')).find((item) => {
+                    const text = (item.innerText || '').trim();
+                    const style = window.getComputedStyle(item);
+                    const visible = style.display !== 'none' && style.visibility !== 'hidden';
+                    return text === 'Publish' && !item.disabled && visible && !item.closest('#layers');
+                });
+                if (!button) return false;
+                button.click();
+                return true;
+            }"""
+        )
+        if not initial_clicked:
+            print("   ⚠️  未找到编辑页 Publish 按钮")
+            return False
+        print("   ✅ 已点击编辑页 Publish")
+        HumanBehaviorSimulator.random_delay(1200, 1800)
+    except Exception as exc:
+        print(f"   ⚠️  点击编辑页 Publish 失败: {exc}")
+        return False
+
+    confirm_clicked = False
+
+    confirm_selectors = [
         'button[data-testid="confirmationSheetConfirm"]',
-        'button[data-testid="tweetButtonInline"]',
+        'button[aria-label="Publish"]',
     ]
-    
-    for selector in publish_selectors:
+
+    for selector in confirm_selectors:
         try:
             locator = page.locator(selector)
-            if locator.count() > 0:
-                target = locator.first
-                target.wait_for(state="visible", timeout=3000)
-                print(f"   找到发布按钮: {selector}")
-                target.click()
+            if locator.count() == 0:
+                continue
+            button = locator.first
+            button.wait_for(state="visible", timeout=8000)
+            if button.is_disabled():
+                continue
+            button.click(timeout=5000)
+            confirm_clicked = True
+            print(f"   ✅ 已点击确认发布按钮: {selector}")
+            HumanBehaviorSimulator.random_delay(2000, 3000)
+            break
+        except Exception as exc:
+            print(f"   ℹ️  确认发布按钮点击失败 {selector}: {exc}")
+
+    if not confirm_clicked:
+        try:
+            confirm_clicked = page.evaluate(
+                """() => {
+                    const layers = document.querySelector('#layers');
+                    if (!layers) return false;
+                    const button = Array.from(layers.querySelectorAll('button')).find((item) => {
+                        const text = (item.innerText || '').trim();
+                        const aria = item.getAttribute('aria-label');
+                        const style = window.getComputedStyle(item);
+                        const visible = style.display !== 'none' && style.visibility !== 'hidden';
+                        return visible && !item.disabled && (text === 'Publish' || aria === 'Publish');
+                    });
+                    if (!button) return false;
+                    button.click();
+                    return true;
+                }"""
+            )
+            if confirm_clicked:
+                print("   ✅ 已通过 DOM 兜底点击确认发布")
                 HumanBehaviorSimulator.random_delay(2000, 3000)
-                
-                # 可能有确认弹窗
-                try:
-                    confirm_locator = page.locator('button[data-testid="confirmationSheetConfirm"]')
-                    if confirm_locator.count() > 0:
-                        confirm_locator.first.wait_for(state="visible", timeout=3000)
-                        confirm_locator.first.click()
-                        print("   ✅ 已确认发布")
-                except:
-                    pass
-                
-                print("✅ 发布成功！")
-                return True
-        except:
-            continue
-    
-    print("⚠️  未找到发布按钮，请手动发布")
-    return False
+        except Exception as exc:
+            print(f"   ⚠️  DOM 兜底确认发布失败: {exc}")
+
+    if not confirm_clicked:
+        print("   ⚠️  未找到确认发布按钮")
+        return False
+
+    try:
+        page.wait_for_load_state("networkidle", timeout=10000)
+    except Exception:
+        pass
+
+    print("✅ 发布动作已执行")
+    return True
 
 
 def auto_publish_article(markdown_file: str, publish: bool = False):

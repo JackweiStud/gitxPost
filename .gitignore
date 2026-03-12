@@ -33,4 +33,7 @@ hot_posts_output
 patchright_post_data/
 .cache/
 .playwright-cli/
-
+debug_output/
+*.backup
+*.log
+CI/reports/

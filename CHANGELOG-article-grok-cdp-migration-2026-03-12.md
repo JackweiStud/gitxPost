@@ -170,8 +170,11 @@
 - Grok JSON 输出
 - Post 纯文本草稿回归
 
-已补代码但未做真实线上发布验证：
-- Article `--publish`
+已实测通过：
+- Article 真发布
 
-说明：
-- 这一步未自动执行，是因为真实发布会直接把长文发到账号上，需要用户明确确认
+补充说明：
+- Article 发布最终采用“两步发布”处理
+- 第一步：编辑页右上角 `Publish`
+- 第二步：`Publish Article` 确认层中的 `Publish`
+- 已在 `Published` 列表中回查到标题 `macOS 效率革命：我如何利用 AI 构建专属的语音输入法`

@@ -1,5 +1,8 @@
 # 测试用例：Article 与 Grok 迁移验收
 
+> 这份文档已并入统一测试目录，请以后优先维护：
+> [`/Users/jackwl/Code/gitcode/gitxPost/CI/test-cases.md`](/Users/jackwl/Code/gitcode/gitxPost/CI/test-cases.md)
+
 **项目**: `gitxPost`  
 **日期**: 2026-03-09  
 **用途**: 验证 `Article` 与 `Grok 热点搜索` 从 `undetected-chromedriver` 迁移到“真实 Chrome profile + Patchright CDP”后，功能没有丢失、没有被破坏
