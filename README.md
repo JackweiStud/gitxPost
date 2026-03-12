@@ -224,12 +224,14 @@ gitxPost/
 
 ## Skills 关系
 
-当前 repo 级 skills 只保留两类“正在使用的入口”：
+当前 repo 级 skills 现在保留三类“正在使用的入口”：
 
 - `skills/xpost-cli/SKILL.md`
   - 统一处理 Article / Post 的 CLI 工作流
 - `skills/grok-hotposts-cli/SKILL.md`
   - 处理 Grok 热点搜索
+- `skills/content-workflow/SKILL.md`
+  - 处理 Markdown 起稿、Prompt 选择、Antigravity 配图与发布前准备
 
 历史上独立存在的 `x-article-publisher` skill 已经不再作为 repo 主入口。  
 它的可复用脚本保留在 `article_tooling/scripts/`，历史说明统一收敛到文档。

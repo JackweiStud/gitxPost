@@ -153,6 +153,52 @@
 当前边界：
 - Antigravity workflow 仍然依赖外部环境，不在本轮全自动 smoke 范围内
 
+## 本次补充：skills 面向 Codex agent 收口
+
+范围：
+- repo 级 skills 重构
+- Codex 触发友好性增强
+
+### 1. skills 拆分为三层职责
+
+涉及文件：
+- `skills/xpost-cli/SKILL.md`
+- `skills/grok-hotposts-cli/SKILL.md`
+- `skills/content-workflow/SKILL.md`
+- `skills/README.md`
+- `docs/skill-topology-2026-03-12.md`
+
+变更：
+- 保留 `xpost-cli` 作为执行与发布入口
+- 保留 `grok-hotposts-cli` 作为热点搜索入口
+- 新增 `content-workflow`，承接 Markdown 起稿、Prompt 选择、Antigravity 配图和发布前准备
+
+效果：
+- Codex agent 更容易区分“写内容”“发内容”“搜热点”
+- 减少 skill 触发时的职责重叠
+
+### 2. 为 Codex 补充 skill 元数据
+
+涉及文件：
+- `skills/xpost-cli/agents/openai.yaml`
+- `skills/grok-hotposts-cli/agents/openai.yaml`
+- `skills/content-workflow/agents/openai.yaml`
+
+变更：
+- 为 3 个活跃 skill 增加 `display_name`、`short_description`、`default_prompt`
+
+效果：
+- 后续接入 Codex agent 时，skills 更容易展示和理解
+
+### 3. 旧 skill 说明改写为 Codex 友好格式
+
+变更：
+- 移除过长、偏旧工具语境的 skill 说明
+- 改为当前 repo 命令、当前目录结构、当前运行习惯
+
+效果：
+- 新 skill 文档更短、更聚焦、更贴近当前项目的真实用法
+
 ## 本次补充：README、结构审计与开源整理
 
 范围：

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Grok Hot Posts"
+  short_description: "Collect X hot posts as structured JSON"
+  default_prompt: "Use the local Grok hot-posts CLI to collect structured X results for a topic and summarize the best posts."

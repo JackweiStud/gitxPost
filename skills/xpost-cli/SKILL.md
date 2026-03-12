@@ -1,76 +1,87 @@
 ---
 name: xpost-cli
-description: 使用本地 xpost CLI 处理 gitxPost 的核心工作流。适用于中文请求如：生成文章骨架/模板、模板校验/预检、解析 Markdown 为 JSON、保存草稿或发布到 X Articles、发布 X Post、xpost 命令、Markdown 发布。
+description: Use gitxPost's local xpost CLI to scaffold articles, validate or parse markdown, save or publish X Articles, create X Posts, initialize Post login sessions, and run doctor checks. Use when a user asks to run xpost commands, draft or publish an Article, publish a Post, or troubleshoot the local gitxPost CLI.
 ---
-# xpost CLI Skill
+# xpost CLI
 
-## Scope
-Use the local `xpost` CLI in this repo to:
-- init: generate an article skeleton
-- validate: enforce template constraints
-- parse: produce structured JSON
-- publish: save Article draft or publish
-- post: save Post draft or publish
-- post-login: initialize and persist Post login session
-- doctor: check environment/deps
+## Use this skill when
 
-## Prerequisites
-- Run inside the repo: `/Users/jackwl/Code/gitcode/gitxPost`
-- .venv is active and CLI installed: `pip install -e .`
+- The user wants to run `xpost` commands
+- The task involves `Article` draft or publish
+- The task involves `Post` draft, image post, or `post-login`
+- The user wants to check whether the local gitxPost environment is healthy
 
-## Commands
+## Preferred command pattern
 
-### Init
-Create a skeleton article (optionally with topic/style):
-```
-xpost init content/drafts/your_article.md --topic "Your topic" --style zara
+Run from the repo root and prefer the explicit Python entrypoint:
+
+```bash
+cd /Users/jackwl/Code/gitcode/gitxPost
+source .venv/bin/activate
+python xpost.py ...
 ```
 
-### Validate
-Strictly validate against `content/template.md`:
-```
-xpost validate content/drafts/your_article.md
+Use `xpost` directly only if the editable CLI is already confirmed to work.
+
+## Core workflows
+
+### Environment check
+
+```bash
+python xpost.py doctor
 ```
 
-### Parse
-Convert Markdown to structured JSON:
-```
-xpost parse content/drafts/your_article.md
+If dependencies are missing, run:
+
+```bash
+./scripts/install_cli.sh
 ```
 
-### Publish
-Default is draft; use `--publish` to publish:
+### Markdown workflow
+
+```bash
+python xpost.py init content/drafts/your_article.md --topic "Your topic" --style zara
+python xpost.py validate content/drafts/your_article.md
+python xpost.py parse content/drafts/your_article.md
 ```
-xpost publish content/drafts/your_article.md
-xpost publish content/drafts/your_article.md --publish
+
+### Article
+
+Draft:
+
+```bash
+python xpost.py publish content/drafts/your_article.md --no-wait
+```
+
+Publish:
+
+```bash
+python xpost.py publish content/drafts/your_article.md --publish --no-wait
 ```
 
 ### Post
-Publish a short post or save a draft:
-```
-xpost post "Hello world" --publish
-xpost post "Draft first" --no-wait
-xpost post "Image post" --images /path/to/image.png --publish
+
+Text:
+
+```bash
+python xpost.py post "Hello world" --publish
 ```
 
-### Post Login
-Initialize the reusable Chrome login session for Post:
-```
-xpost post-login
+Image post:
+
+```bash
+python xpost.py post "Image post" --images /absolute/path/to/image.png --publish
 ```
 
-### Doctor
-Check environment and dependencies:
-```
-xpost doctor
+Login initialization:
+
+```bash
+python xpost.py post-login
 ```
 
-## Output
-All commands return JSON. For `publish`, the output includes:
-- `missing_images`
-- `missing_images_count`
-- `timings` (parse_ms, publish_ms, total_ms)
+## Guardrails
 
-## Usage Notes
-- If dependencies are missing, run `./scripts/install_cli.sh`
-- If `publish` fails with module import errors, ensure you are in the repo and `.venv` is active
+- Confirm with the user before any real external publish action
+- Use absolute image paths for `--images`
+- Prefer `content/drafts/` for working files and `content/examples/` only for smoke or reference
+- If the user is still writing or choosing a style, use `skills/content-workflow/` first, then come back here for publish

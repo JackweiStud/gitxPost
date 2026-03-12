@@ -18,6 +18,8 @@
   - 负责 Article / Post 的统一 CLI 能力
 - `skills/grok-hotposts-cli/SKILL.md`
   - 负责 Grok 热点搜索
+- `skills/content-workflow/SKILL.md`
+  - 负责 Markdown 起稿、Prompt 选择、Antigravity 配图与发布前准备
 
 ### 已被合并的历史 skill
 
@@ -37,6 +39,7 @@
 skills/
 ├── xpost-cli/
 ├── grok-hotposts-cli/
+├── content-workflow/
 └── README.md
 
 article_tooling/
@@ -60,6 +63,14 @@ article_tooling/
 - 与 `xpost` CLI 不同，它是独立脚本入口
 - 主题明确，边界清晰
 
+### `content-workflow`
+
+保留原因：
+
+- 把“写内容”和“发内容”拆开，降低 skill 触发歧义
+- 能把 Prompt、模板、Antigravity workflow 收在一个入口里
+- 更适合 Codex agent 在内容准备阶段使用
+
 ### `x-article-publisher`
 
 不再保留为主入口的原因：
@@ -72,8 +83,8 @@ article_tooling/
 
 ### 立即执行
 
-- repo 顶层只继续维护 `xpost-cli` 与 `grok-hotposts-cli`
-- 历史 skill 留在 `article_tooling/legacy_*`
+- repo 顶层维护 `xpost-cli`、`grok-hotposts-cli`、`content-workflow`
+- 历史 skill 说明只保留在文档
 
 ### 后续可选
 

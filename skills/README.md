@@ -1,15 +1,24 @@
 # Skills 说明
 
-当前仓库里的 skills 分成两类：
+当前仓库里的 skills 现在按 Codex 更容易理解的职责拆成三类：
 
 ## 1. 当前主入口 skills
 
-这两份是当前仍在维护、推荐对外使用的 repo 级 skills：
+这三份是当前仍在维护、推荐给 Codex agent 使用的 repo 级 skills：
 
 - `skills/xpost-cli/SKILL.md`
-  - 统一处理 Article / Post 的 CLI 工作流
+  - 统一处理 Article / Post 的 CLI 执行与发布
 - `skills/grok-hotposts-cli/SKILL.md`
-  - 处理 Grok 热点搜索
+  - 处理 Grok 热点搜索与 JSON 输出
+- `skills/content-workflow/SKILL.md`
+  - 处理 Markdown 起稿、Prompt 选择、Antigravity 配图与发布前准备
+
+每个活跃 skill 现在都带有：
+
+- `SKILL.md`
+- `agents/openai.yaml`
+
+这样更适合后续给 Codex agent 直接接入和展示。
 
 ## 2. 历史说明
 
@@ -26,5 +35,8 @@
 
 ## 建议
 
-- 新开发、新集成：优先使用 `skills/xpost-cli/` 和 `skills/grok-hotposts-cli/`
+- 新开发、新集成：优先使用这三份 skills
+- 写内容时先用 `content-workflow`
+- 真正执行发布时再切到 `xpost-cli`
+- 做热点搜索时使用 `grok-hotposts-cli`
 - 历史资料查阅：看 `docs/skill-topology-2026-03-12.md`

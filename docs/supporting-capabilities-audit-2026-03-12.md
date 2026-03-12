@@ -84,7 +84,8 @@
 ### 状态
 
 - `skills/xpost-cli/` 与 `skills/grok-hotposts-cli/` 现在是 repo 主入口
-- 历史 `x-article-publisher` 已下沉为 `article_tooling/legacy_*`
+- 新增 `skills/content-workflow/`，承接 Markdown 起稿与配图准备
+- 历史 `x-article-publisher` 说明已完全收敛到 `docs/skill-topology-2026-03-12.md`
 
 ### 结论
 
