@@ -20,7 +20,9 @@ chrome_data_mirror/
 temp/
 doc/
 
-.cursor/
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/*.mdc
 .agent/*
 !.agent/workflows/
 .claude/

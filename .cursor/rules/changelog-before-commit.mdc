@@ -1,0 +1,11 @@
+---
+description: Always update CHANGELOG.md before making a commit in gitxPost
+alwaysApply: true
+---
+
+# Update CHANGELOG Before Commit
+
+- Before any `git commit`, update [`CHANGELOG.md`](/Users/jackwl/Code/gitcode/gitxPost/CHANGELOG.md).
+- Record the user-facing outcome, key technical changes, validation results, and any important limits or follow-up work.
+- If the change also affects testing or release confidence, update the relevant file under [`CI/`](/Users/jackwl/Code/gitcode/gitxPost/CI) in the same work session.
+- Do not create a commit first and “fix the changelog later”.
