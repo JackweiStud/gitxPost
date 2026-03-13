@@ -16,6 +16,8 @@
 
 - `skills/xpost-cli/SKILL.md`
   - 负责 Article / Post 的统一 CLI 能力
+- `skills/x-radar-cli/SKILL.md`
+  - 负责 X Radar 的 scan / analyze / daily / weekly / accounts
 - `skills/grok-hotposts-cli/SKILL.md`
   - 负责 Grok 热点搜索
 - `skills/content-workflow/SKILL.md`
@@ -38,6 +40,7 @@
 ```text
 skills/
 ├── xpost-cli/
+├── x-radar-cli/
 ├── grok-hotposts-cli/
 ├── content-workflow/
 └── README.md
@@ -53,8 +56,16 @@ article_tooling/
 保留原因：
 
 - 它是当前统一入口
-- 覆盖 Article / Post / doctor / init / parse / validate
+- 覆盖 Article / Post / doctor / init / parse / validate / generate
 - 对 repo 用户最直接
+
+### `x-radar-cli`
+
+保留原因：
+
+- Radar 的用户意图与“发内容”明显不同
+- 包含 scan / analyze / daily / weekly / accounts，一套职责自洽
+- 更适合 OpenClaw / Codex agent 做情报任务时稳定触发
 
 ### `grok-hotposts-cli`
 
@@ -83,10 +94,10 @@ article_tooling/
 
 ### 立即执行
 
-- repo 顶层维护 `xpost-cli`、`grok-hotposts-cli`、`content-workflow`
+- repo 顶层维护 `xpost-cli`、`x-radar-cli`、`grok-hotposts-cli`、`content-workflow`
 - 历史 skill 说明只保留在文档
 
 ### 后续可选
 
 - 历史说明只保留在当前文档，不再单独维护旧 skill / plugin 文件
-- 如果未来 `xpost` CLI 继续扩展，可考虑把 `grok` 也并入统一 CLI，再决定是否收口 `grok-hotposts-cli`
+- 如果未来 Radar 与 Grok 的职责进一步重叠，再决定是否继续收口 skill 数量

@@ -1,21 +1,20 @@
 ---
 name: xpost-cli
-description: Use gitxPost's local xpost CLI to scaffold articles, generate real markdown from a skeleton, validate or parse markdown, save or publish X Articles, create X Posts, run X radar commands, initialize Post login sessions, and run doctor checks. Use when a user asks to run xpost commands, generate or publish an Article, publish a Post, run X radar, or troubleshoot the local gitxPost CLI.
+description: 使用 gitxPost 本地 xpost CLI 处理文章骨架生成、文章成文、Markdown 校验与解析、X Articles 草稿或发布、X Post 发布、Post 登录初始化以及 doctor 环境检查。当用户提到运行 xpost 命令、生成或发布文章、发布 Post、初始化 Post 登录态、排查 gitxPost CLI 问题时使用。
 ---
 # xpost CLI
 
 ## Use this skill when
 
-- The user wants to run `xpost` commands
-- The task involves `Article` draft or publish
-- The task involves generating a full article from a markdown skeleton
-- The task involves `Post` draft, image post, or `post-login`
-- The task involves X radar scan, analysis, or account management
-- The user wants to check whether the local gitxPost environment is healthy
+- 用户想运行 `xpost` 命令
+- 任务涉及 `Article` 草稿或发布
+- 任务涉及把 Markdown 骨架生成成完整文章
+- 任务涉及 `Post` 草稿、图文 Post 或 `post-login`
+- 用户想检查本地 gitxPost 环境是否正常
 
 ## Preferred command pattern
 
-Run from the repo root and prefer the explicit Python entrypoint:
+在仓库根目录执行，优先使用显式 Python 入口：
 
 ```bash
 cd /Users/jackwl/Code/gitcode/gitxPost
@@ -23,7 +22,7 @@ source .venv/bin/activate
 python xpost.py ...
 ```
 
-Use `xpost` directly only if the editable CLI is already confirmed to work.
+只有在已经确认 editable CLI 可用时，才直接使用 `xpost`。
 
 ## Core workflows
 
@@ -33,7 +32,7 @@ Use `xpost` directly only if the editable CLI is already confirmed to work.
 python xpost.py doctor
 ```
 
-If dependencies are missing, run:
+如果依赖缺失，执行：
 
 ```bash
 ./scripts/install_cli.sh
@@ -48,17 +47,17 @@ python xpost.py validate content/drafts/your_article.md
 python xpost.py parse content/drafts/your_article.md
 ```
 
-If the repo is configured with `~/.openclaw/scripts/tokenmax.sh`, `generate` can call the local LLM API without extra flags.
+`generate` 会从项目 `.env` 或当前 shell 环境变量读取 LLM 配置。
 
 ### Article
 
-Draft:
+草稿：
 
 ```bash
 python xpost.py publish content/drafts/your_article.md --no-wait
 ```
 
-Publish:
+发布：
 
 ```bash
 python xpost.py publish content/drafts/your_article.md --publish --no-wait
@@ -66,48 +65,28 @@ python xpost.py publish content/drafts/your_article.md --publish --no-wait
 
 ### Post
 
-Text:
+纯文本：
 
 ```bash
 python xpost.py post "Hello world" --publish
 ```
 
-Image post:
+图文 Post：
 
 ```bash
 python xpost.py post "Image post" --images /absolute/path/to/image.png --publish
 ```
 
-Login initialization:
+登录初始化：
 
 ```bash
 python xpost.py post-login
 ```
 
-### X Radar
-
-Scan:
-
-```bash
-python xpost.py radar-scan
-```
-
-Analyze:
-
-```bash
-python xpost.py radar-analyze --days 7
-```
-
-Manage accounts:
-
-```bash
-python xpost.py radar-accounts list
-python xpost.py radar-accounts add NewAccount "reason"
-```
-
 ## Guardrails
 
-- Confirm with the user before any real external publish action
-- Use absolute image paths for `--images`
-- Prefer `content/drafts/` for working files and `content/examples/` only for smoke or reference
-- If the user is still writing or choosing a style, use `skills/content-workflow/` first, then come back here for publish
+- 任何真实外发动作前，都先和用户确认
+- `--images` 使用绝对路径
+- 工作文件优先放在 `content/drafts/`，`content/examples/` 只作为 smoke 或参考
+- 如果用户还在写作、定风格、定结构，先用 `skills/content-workflow/`，准备好后再回到这里发布
+- 如果用户要做 X Radar 的扫描、分析、日报、周报或账号管理，改用 `skills/x-radar-cli/`

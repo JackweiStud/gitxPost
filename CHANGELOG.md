@@ -10,6 +10,151 @@
   - 仍未解决的边界或风险
 - 如果改动影响验收方式或测试结论，需要同步更新 `CI/` 目录下的文档。
 
+日期：2026-03-13
+
+## 本次补充：移除 tokenmax.sh 回退，统一改为 `.env`
+
+范围：
+- `xpost` LLM 配置来源收口
+- README / 使用指南 / skill 文档同步
+
+### 1. 移除 `~/.openclaw/scripts/tokenmax.sh` 代码依赖
+
+涉及文件：
+- `xpost.py`
+
+变更：
+- 删除 `TOKENMAX_SCRIPT` 常量
+- 删除 `_read_tokenmax_config()`
+- `generate`、`radar-daily`、`radar-weekly` 不再从 `tokenmax.sh` 读取 API Key / URL / model
+- 统一只从项目根目录 `.env` 或当前 shell 环境变量读取：
+  - `XPOST_LLM_API_KEY`
+  - `XPOST_LLM_API_URL`
+  - `XPOST_LLM_MODEL`
+  - `XPOST_RADAR_LLM_MODEL`
+
+效果：
+- 项目配置入口更单一
+- 同事不再依赖本机 OpenClaw 私有脚本
+- 开源与交接时更容易解释
+
+### 2. 补充 `.env` 配置示例与文档
+
+涉及文件：
+- `.env.example`
+- `.gitignore`
+- `README.md`
+- `docs/usage-and-ignore-guide-2026-03-12.md`
+- `skills/xpost-cli/SKILL.md`
+
+变更：
+- 新增 `.env.example`
+- `.gitignore` 忽略 `.env`
+- README 和使用指南改为明确推荐 `.env`
+- skill 文档去掉 `tokenmax.sh` 回退说明
+
+效果：
+- 新同事按 `.env.example` 就能配置本地 LLM
+- 项目文档与当前代码行为一致
+
+### 3. 拆分 Radar 专用 skill
+
+涉及文件：
+- `skills/xpost-cli/SKILL.md`
+- `skills/xpost-cli/agents/openai.yaml`
+- `skills/x-radar-cli/SKILL.md`
+- `skills/x-radar-cli/agents/openai.yaml`
+- `skills/README.md`
+- `README.md`
+- `docs/skill-topology-2026-03-12.md`
+- `docs/supporting-capabilities-audit-2026-03-12.md`
+
+变更：
+- 将 Radar 相关触发从 `xpost-cli` 中拆出
+- 新增 `x-radar-cli`，专门负责 scan / analyze / daily / weekly / accounts
+- `xpost-cli` 收窄为 Article / Post / doctor / generate / validate / publish
+
+效果：
+- OpenClaw / Codex agent 更容易按用户意图命中正确 skill
+- 减少“发内容”和“做情报”两类任务的触发歧义
+
+## 本次补充：Radar 日报/周报第一版开发
+
+范围：
+- Radar 日报/周报设计文档补充
+- `xpost` Radar 日报与周报 CLI
+- README / xinfo / CI / skills 文档同步
+
+### 1. Radar 日报/周报命令落地
+
+涉及文件：
+- `xpost.py`
+
+变更：
+- 新增 `xpost radar-daily`
+- 新增 `xpost radar-weekly`
+- 两条命令默认复用 TokenMax API Key / URL，并默认使用 `claude-opus-4-6`
+- `radar-daily` 基于 `RESULT.json + interests.json` 生成 `xinfo/log/day/YYYY-MM-DD.md`
+- `radar-weekly` 基于 `*_analysis.json + actions.json` 生成 `xinfo/log/week/YYYY-MM-DD.md`
+- 两条命令都会将新增行动追加到 `xinfo/log/actions.json`
+- 为 LLM 调用补充 JSON 容错、一次重试，以及 `curl --http1.1` 与轻量网络重试
+
+效果：
+- Radar 不再只有“扫”和“分析”，开始具备正式的日报/周报生产层
+- 后续 OpenClaw cron 可以直接消费落地 Markdown，而不是依赖命令 stdout
+
+### 2. Radar 设计文档补充
+
+涉及文件：
+- `docs/radar-daily-migration-design-2026-03-13.md`
+
+变更：
+- 补充“推荐 cron 执行顺序”
+- 明确 `*_analysis.json` 的生产者是 `radar-analyze`
+- 明确周报正文归档推荐为 `xinfo/log/week/YYYY-MM-DD.md`
+- 明确日报与周报默认使用 TokenMax Opus
+
+效果：
+- 后续日报/周报调度顺序、文件语义和模型口径统一
+
+### 3. README / xinfo / CI / skill 文档同步
+
+涉及文件：
+- `README.md`
+- `xinfo/README.md`
+- `CI/test-cases.md`
+- `CI/report-template.md`
+- `skills/xpost-cli/SKILL.md`
+
+变更：
+- README 与 `xinfo/README.md` 增加 `radar-daily` / `radar-weekly` 用法与结果文件说明
+- CI 新增 `TC-10 Radar 日报生成` 与 `TC-11 Radar 周报生成`
+- `xpost-cli` skill 增加 Radar 日报/周报说明
+
+效果：
+- 日报/周报能力的使用方式、验收方式和 Agent 入口保持一致
+
+### 本次验证
+
+已验证：
+- `python -m py_compile xpost.py`
+- `python xpost.py radar-daily --help`
+- `python xpost.py radar-weekly --help`
+- `python xpost.py radar-daily --output /tmp/gitxpost-radar-daily.md --max-tokens 2200`
+- `python xpost.py radar-weekly --output /tmp/gitxpost-radar-weekly.md --max-tokens 2600`
+
+实际结果：
+- `radar-daily` 成功生成 `/tmp/gitxpost-radar-daily.md`
+- `radar-weekly` 成功生成 `/tmp/gitxpost-radar-weekly.md`
+- 两条命令都返回 `ok=true`
+- 两条命令都成功追加了 `actions.json`
+- 使用模型：`claude-opus-4-6`
+
+当前边界：
+- 分发层（Telegram / OpenClaw cron）仍未并入 repo 内 CLI
+- `interests.json` 目前若不存在会自动创建空模板，但后续仍建议由用户维护真实画像
+- 周报对 `topic_trend` 的价值仍依赖连续多周快照积累
+
 日期：2026-03-12
 
 ## 本次补充：开源第二轮整理
@@ -504,7 +649,7 @@
 - 新增 `xpost generate <md_path>`
 - 支持从 `xpost init` 生成的嵌入 Prompt 中提取风格和主题
 - 支持直接调用本地 LLM messages API 生成完整 Markdown 正文
-- 默认优先读取 `XPOST_LLM_API_*` 环境变量；如果本机存在 `~/.openclaw/scripts/tokenmax.sh`，自动回退使用其中的 TokenMax 配置
+- 默认优先读取 `XPOST_LLM_API_*` 环境变量；旧版曾支持本地 TokenMax 配置回退
 - 写回文章前自动生成 `*.skeleton.<timestamp>.md` 备份
 - 生成完成后自动做一次 `validate`，并检查模板占位句子是否仍残留
 
@@ -565,3 +710,27 @@
 当前边界：
 - `xpost generate` 依赖可用的本地 LLM API 配置；若上游服务暂时不可用，会直接返回错误
 - `radar-scan` 的成功率仍受外部 RSS/Nitter 实例状态影响
+
+### 4. 收口 X 相关 skills，并改为中文触发文案
+
+涉及文件：
+- `skills/xpost-cli/SKILL.md`
+- `skills/xpost-cli/agents/openai.yaml`
+- `skills/x-radar-cli/SKILL.md`
+- `skills/x-radar-cli/agents/openai.yaml`
+- `skills/grok-hotposts-cli/SKILL.md`
+- `skills/content-workflow/SKILL.md`
+- `skills/README.md`
+- `docs/skill-topology-2026-03-12.md`
+- `docs/supporting-capabilities-audit-2026-03-12.md`
+- `README.md`
+
+变更：
+- 将 `xpost-cli` 的职责收窄为 Article / Post / doctor / generate 等内容发布命令
+- 新增 `x-radar-cli`，专门承接 `radar-scan`、`radar-analyze`、`radar-daily`、`radar-weekly`、`radar-accounts`
+- 将 4 个活跃 `SKILL.md` 的 frontmatter 描述与正文统一改为中文，仅保留标题层级为英文
+- 同步调整 skill 拓扑文档与 README，明确各 skill 的触发边界
+
+效果：
+- OpenClaw / Codex 在中文语境下更容易匹配到正确 skill
+- 内容发布与雷达情报两类任务不再争抢同一个 skill 触发入口

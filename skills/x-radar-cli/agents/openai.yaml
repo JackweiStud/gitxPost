@@ -1,0 +1,4 @@
+interface:
+  display_name: "X Radar CLI"
+  short_description: "Scan, analyze, and generate X radar reports"
+  default_prompt: "Use the local gitxPost radar CLI to scan X sources, analyze radar results, generate daily or weekly radar markdown, or manage monitored accounts."

@@ -83,8 +83,10 @@
 
 ### 状态
 
-- `skills/xpost-cli/` 与 `skills/grok-hotposts-cli/` 现在是 repo 主入口
-- 新增 `skills/content-workflow/`，承接 Markdown 起稿与配图准备
+- `skills/xpost-cli/` 现在只负责 Article / Post 的执行与发布
+- 新增 `skills/x-radar-cli/`，承接 Radar 的 scan / analyze / daily / weekly / accounts
+- `skills/grok-hotposts-cli/` 继续负责 Grok 热点搜索
+- `skills/content-workflow/` 承接 Markdown 起稿与配图准备
 - 历史 `x-article-publisher` 说明已完全收敛到 `docs/skill-topology-2026-03-12.md`
 
 ### 结论

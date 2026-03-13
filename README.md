@@ -10,6 +10,7 @@
 - X Post 短帖发布
 - Grok 热点搜索
 - X 雷达扫描 / 网络分析 / 账号管理
+- X 雷达日报 / 周报生成
 - CLI 与 Agent skills 集成
 - 测试验收与 changelog 约束
 
@@ -30,6 +31,8 @@
 - `Post` 图文
 - `Grok` JSON 输出
 - `xpost init -> validate -> parse`
+- `Radar` 日报生成
+- `Radar` 周报生成
 
 ## 技术路线
 
@@ -65,6 +68,32 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
+### 1.1 配置 `.env`
+
+项目现在支持从仓库根目录自动读取 `.env`，适合放本地 LLM API 配置。
+
+推荐先复制：
+
+```bash
+cp /Users/jackwl/Code/gitcode/gitxPost/.env.example /Users/jackwl/Code/gitcode/gitxPost/.env
+```
+
+然后编辑 `.env`：
+
+```dotenv
+XPOST_LLM_API_KEY=your_tokenmax_api_key
+XPOST_LLM_API_URL=https://tokenmax.vip/v1/messages
+XPOST_LLM_MODEL=claude-sonnet-4-6
+XPOST_RADAR_LLM_MODEL=claude-opus-4-6
+```
+
+说明：
+
+- `xpost generate` 默认读取 `XPOST_LLM_*`
+- `xpost radar-daily` / `xpost radar-weekly` 默认读取 `XPOST_RADAR_LLM_MODEL`，未设置时回退到 `XPOST_LLM_MODEL`
+- 若你已经手动 `export` 了同名环境变量，显式环境变量优先生效
+- `.env` 已加入 `.gitignore`，不会进入仓库
+
 ### 2. 环境检查
 
 ```bash
@@ -97,6 +126,8 @@ xpost post ...
 xpost post-login ...
 xpost radar-scan ...
 xpost radar-analyze ...
+xpost radar-daily ...
+xpost radar-weekly ...
 xpost radar-accounts ...
 xpost doctor
 ```
@@ -145,7 +176,7 @@ xpost generate content/drafts/your_article.md
   - `XPOST_LLM_API_KEY`
   - `XPOST_LLM_API_URL`
   - `XPOST_LLM_MODEL`
-- 如果本机存在 `~/.openclaw/scripts/tokenmax.sh`，会自动把其中的 `API_KEY` / `MESSAGES_URL` 作为回退配置
+- 这些变量现在也可以直接写在项目根目录 `.env` 中
 - 默认模型优先使用 `claude-sonnet-4-6`
 - 原骨架会先自动备份成 `*.skeleton.<timestamp>.md`
 
@@ -317,6 +348,18 @@ xpost radar-scan
 xpost radar-analyze --days 7
 ```
 
+日报：
+
+```bash
+xpost radar-daily
+```
+
+周报：
+
+```bash
+xpost radar-weekly
+```
+
 账号管理：
 
 ```bash
@@ -337,6 +380,10 @@ xpost radar-accounts restore NewAccount
   - `xinfo/log/day/YYYY-MM-DD.log`
   - `xinfo/log/day/YYYY-MM-DD_result.json`
   - `xinfo/log/day/YYYY-MM-DD_analysis.json`
+- 天级日报正文：
+  - `xinfo/log/day/YYYY-MM-DD.md`
+- 周报正文：
+  - `xinfo/log/week/YYYY-MM-DD.md`
 - 周级趋势快照：
   - `xinfo/log/trends/YYYY-WW.json`
 
@@ -346,8 +393,22 @@ xpost radar-accounts restore NewAccount
 - `day/*.log`：按天保留
 - `day/*_result.json`：按天保留
 - `day/*_analysis.json`：按天保留
+- `day/*.md`：按天保留，保存日报正文
+- `week/*.md`：按生成日期保留，保存周报正文
 - `trends/*.json`：按周保留
 - `ideas.md`：滚动保留最近几天内容，不是严格按天拆分
+
+LLM 使用说明：
+
+- 项目根目录 `.env` 支持本地配置：
+  - `XPOST_LLM_API_KEY`
+  - `XPOST_LLM_API_URL`
+  - `XPOST_LLM_MODEL`
+  - `XPOST_RADAR_LLM_MODEL`
+- `radar-daily` 和 `radar-weekly` 默认走 TokenMax 的 Opus 路径
+- 默认模型优先：`claude-opus-4-6`
+- 如需覆盖，可传 `--model`
+- `radar-scan` / `radar-analyze` 本身不依赖 LLM
 
 ## 目录结构
 
@@ -368,6 +429,7 @@ gitxPost/
 ├── skills/
 │   ├── README.md
 │   ├── xpost-cli/
+│   ├── x-radar-cli/
 │   ├── grok-hotposts-cli/
 │   └── content-workflow/
 ├── content/
@@ -388,10 +450,12 @@ gitxPost/
 
 ## Skills 关系
 
-当前 repo 级 skills 现在保留三类“正在使用的入口”：
+当前 repo 级 skills 现在保留四类“正在使用的入口”：
 
 - `skills/xpost-cli/SKILL.md`
   - 统一处理 Article / Post 的 CLI 工作流
+- `skills/x-radar-cli/SKILL.md`
+  - 统一处理 Radar 的 scan / analyze / daily / weekly / accounts
 - `skills/grok-hotposts-cli/SKILL.md`
   - 处理 Grok 热点搜索
 - `skills/content-workflow/SKILL.md`

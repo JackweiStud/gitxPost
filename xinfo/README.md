@@ -22,7 +22,8 @@ gitxPost/xinfo/
     ├── .ideas_seen.json    # 结构化记录：每条 URL 带 source / type / seen_at
     ├── interests.json      # ⭐ 个人兴趣画像（AI 筛选依据，可随时编辑）
     ├── actions.json        # 📋 行动追踪（AI 自动写入，手动更新 status）
-    ├── day/                # 持久化日志：YYYY-MM-DD.log + _analysis.json
+    ├── day/                # 天级结果：.log / _result.json / _analysis.json / .md
+    ├── week/               # 周报正文归档：YYYY-MM-DD.md
     ├── trends/             # 热点趋势周快照：YYYY-WW.json（用于趋势对比）
     └── account_backups/    # manage_accounts.py 每次修改前的自动备份
 ```
@@ -55,6 +56,10 @@ python xpost.py radar-scan
   - 天级扫描结果快照
 - `log/day/YYYY-MM-DD_analysis.json`
   - 天级分析结果
+- `log/day/YYYY-MM-DD.md`
+  - 天级日报正文
+- `log/week/YYYY-MM-DD.md`
+  - 周报正文归档
 - `log/trends/YYYY-WW.json`
   - 周级趋势快照
 - `log/ideas.md`
@@ -73,6 +78,34 @@ python xinfo/analyze_network.py 7 --json
 ```
 
 `--json` 模式自动保存 `log/day/YYYY-MM-DD_analysis.json` 和 `log/trends/YYYY-WW.json`（热点趋势周快照）。
+
+### 2.1 生成日报
+
+```bash
+python xpost.py radar-daily
+```
+
+默认行为：
+
+- 读取 `RESULT.json`
+- 读取 `log/interests.json`
+- 生成 `log/day/YYYY-MM-DD.md`
+- 追加 `log/actions.json`
+- 默认使用 TokenMax Opus（`claude-opus-4-6`）
+
+### 2.2 生成周报
+
+```bash
+python xpost.py radar-weekly
+```
+
+默认行为：
+
+- 读取 `log/day/YYYY-MM-DD_analysis.json`
+- 读取 `log/actions.json`
+- 生成 `log/week/YYYY-MM-DD.md`
+- 可继续追加 `log/actions.json`
+- 默认使用 TokenMax Opus（`claude-opus-4-6`）
 
 ### 3. 管理监控账号
 

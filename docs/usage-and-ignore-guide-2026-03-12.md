@@ -119,8 +119,10 @@ xpost generate content/drafts/your_article.md
 
 说明：
 
-- 默认优先读取 `XPOST_LLM_API_KEY` / `XPOST_LLM_API_URL` / `XPOST_LLM_MODEL`
-- 如果本机存在 `~/.openclaw/scripts/tokenmax.sh`，会自动把其中的 TokenMax 配置作为回退
+- 默认读取项目 `.env` 或当前 shell 中的：
+  - `XPOST_LLM_API_KEY`
+  - `XPOST_LLM_API_URL`
+  - `XPOST_LLM_MODEL`
 - 原骨架会自动备份为 `*.skeleton.<timestamp>.md`
 
 校验与解析：

@@ -12,6 +12,7 @@
 3. Chrome 升级后不再因 driver 匹配问题导致核心功能失效
 4. Markdown 起稿到成文的生成闭环可用
 5. X 雷达扫描与分析入口可用
+6. X 雷达日报与周报生成链路可用
 
 ## 2. 测试前提
 
@@ -214,6 +215,42 @@ python /Users/jackwl/Code/gitcode/gitxPost/xpost.py radar-analyze --days 7
 预期：
 - 返回 JSON：`ok=true`
 - 结果中包含 `network`、`account_stats`、`hot_topics`、`top_posts`
+
+### TC-10 Radar 日报生成
+
+目标：
+- 验证 `radar-daily` 能基于扫描结果生成日报 Markdown，并更新行动追踪
+
+执行：
+
+```bash
+source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
+python /Users/jackwl/Code/gitcode/gitxPost/xpost.py radar-daily
+```
+
+预期：
+- 返回 JSON：`ok=true`
+- 生成 `xinfo/log/day/YYYY-MM-DD.md`
+- 返回中包含 `actions_added`
+- 默认模型为 TokenMax Opus 路径
+
+### TC-11 Radar 周报生成
+
+目标：
+- 验证 `radar-weekly` 能基于分析结果生成周报 Markdown，并更新行动追踪
+
+执行：
+
+```bash
+source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
+python /Users/jackwl/Code/gitcode/gitxPost/xpost.py radar-weekly
+```
+
+预期：
+- 返回 JSON：`ok=true`
+- 生成 `xinfo/log/week/YYYY-MM-DD.md`
+- 返回中包含 `actions_added`
+- 默认模型为 TokenMax Opus 路径
 
 ## 5. 增量补充规则
 

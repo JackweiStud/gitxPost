@@ -12,6 +12,8 @@ xpost CLI：面向本地 Agent/自动化的 gitxPost 统一入口。
 - post-login: 初始化 Post 登录态
 - radar-scan: 运行 X 雷达扫描
 - radar-analyze: 运行 X 雷达分析
+- radar-daily: 基于扫描结果生成 Radar 日报
+- radar-weekly: 基于分析结果生成 Radar 周报
 - radar-accounts: 管理 X 雷达监控账号
 - doctor: 环境与依赖检查
 
@@ -25,6 +27,7 @@ import shutil
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -33,7 +36,9 @@ BASE_DIR = Path(__file__).resolve().parent
 SCRIPTS_DIR = BASE_DIR / "article_tooling" / "scripts"
 PROMPTS_DIR = BASE_DIR / "content" / "prompts"
 XINFO_DIR = BASE_DIR / "xinfo"
-TOKENMAX_SCRIPT = Path.home() / ".openclaw" / "scripts" / "tokenmax.sh"
+XINFO_LOG_DIR = XINFO_DIR / "log"
+XINFO_DAY_DIR = XINFO_LOG_DIR / "day"
+XINFO_WEEK_DIR = XINFO_LOG_DIR / "week"
 
 STYLE_PROMPTS = {
     "zara": PROMPTS_DIR / "prompt_zara.md",
@@ -52,6 +57,31 @@ PLACEHOLDER_HINTS = [
     "给出行动建议或 CTA",
     "[在这里填入你的主题",
 ]
+
+
+def _load_project_dotenv(dotenv_path: Path):
+    if not dotenv_path.exists():
+        return
+    try:
+        lines = dotenv_path.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        return
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key or key in os.environ:
+            continue
+        if value.startswith(("'", '"')) and value.endswith(("'", '"')) and len(value) >= 2:
+            value = value[1:-1]
+        os.environ[key] = value
+
+
+_load_project_dotenv(BASE_DIR / ".env")
 
 
 def _print_json(payload):
@@ -270,45 +300,35 @@ def _strip_markdown_fences(text: str) -> str:
     return stripped.strip()
 
 
-def _read_tokenmax_config():
-    if not TOKENMAX_SCRIPT.exists():
-        return {}
-    try:
-        content = TOKENMAX_SCRIPT.read_text(encoding="utf-8")
-    except Exception:
-        return {}
-
-    result = {}
-    key_match = re.search(r'^API_KEY="([^"]+)"', content, re.M)
-    url_match = re.search(r'^MESSAGES_URL="([^"]+)"', content, re.M)
-    preferred_match = re.search(r'"(claude-sonnet-[^"]+)"', content)
-    model_match = preferred_match or re.search(r'"(claude-[^"]+)"', content)
-    if key_match:
-        result["api_key"] = key_match.group(1)
-    if url_match:
-        result["api_url"] = url_match.group(1)
-    if model_match:
-        result["model"] = model_match.group(1)
-    return result
-
-
 def _resolve_generate_config(args):
-    tokenmax_cfg = _read_tokenmax_config()
     api_key = (
         os.environ.get("XPOST_LLM_API_KEY")
-        or tokenmax_cfg.get("api_key")
     )
     api_url = (
         args.api_url
         or os.environ.get("XPOST_LLM_API_URL")
-        or tokenmax_cfg.get("api_url")
         or "https://tokenmax.vip/v1/messages"
     )
     model = (
         args.model
         or os.environ.get("XPOST_LLM_MODEL")
-        or tokenmax_cfg.get("model")
         or "claude-sonnet-4-6"
+    )
+    return {"api_key": api_key, "api_url": api_url, "model": model}
+
+
+def _resolve_radar_llm_config(args):
+    api_key = os.environ.get("XPOST_LLM_API_KEY")
+    api_url = (
+        args.api_url
+        or os.environ.get("XPOST_LLM_API_URL")
+        or "https://tokenmax.vip/v1/messages"
+    )
+    model = (
+        args.model
+        or os.environ.get("XPOST_RADAR_LLM_MODEL")
+        or os.environ.get("XPOST_LLM_MODEL")
+        or "claude-opus-4-6"
     )
     return {"api_key": api_key, "api_url": api_url, "model": model}
 
@@ -375,6 +395,12 @@ def _call_messages_api(api_url: str, api_key: str, model: str, prompt: str, max_
             [
                 "curl",
                 "-sS",
+                "--http1.1",
+                "--retry",
+                "2",
+                "--retry-all-errors",
+                "--connect-timeout",
+                "30",
                 "-X",
                 "POST",
                 api_url,
@@ -415,6 +441,245 @@ def _call_messages_api(api_url: str, api_key: str, model: str, prompt: str, max_
     if not text:
         raise RuntimeError("LLM 返回为空")
     return _strip_markdown_fences(text)
+
+
+def _parse_json_response(raw_text: str):
+    text = _strip_markdown_fences(raw_text).strip()
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
+
+    decoder = json.JSONDecoder()
+    for idx, ch in enumerate(text):
+        if ch != "{":
+            continue
+        try:
+            obj, _ = decoder.raw_decode(text[idx:])
+            return obj
+        except Exception:
+            continue
+    raise ValueError("LLM 返回无法解析为 JSON")
+
+
+def _normalize_radar_report_payload(raw_text: str):
+    try:
+        parsed = _parse_json_response(raw_text)
+    except Exception:
+        return {
+            "markdown": raw_text.strip(),
+            "actions": [],
+        }
+
+    if isinstance(parsed, str):
+        return {
+            "markdown": parsed.strip(),
+            "actions": [],
+        }
+
+    if not isinstance(parsed, dict):
+        raise ValueError("LLM 返回格式异常：不是对象")
+
+    markdown = (
+        parsed.get("markdown")
+        or parsed.get("report")
+        or parsed.get("content")
+        or parsed.get("daily_markdown")
+        or parsed.get("weekly_markdown")
+        or ""
+    )
+    actions = parsed.get("actions")
+    if actions is None:
+        actions = parsed.get("new_actions", [])
+    if not isinstance(actions, list):
+        actions = []
+
+    return {
+        "markdown": str(markdown).strip(),
+        "actions": actions,
+    }
+
+
+def _generate_radar_report(prompt: str, llm_cfg: dict, max_tokens: int):
+    attempts = [
+        prompt,
+        prompt
+        + "\n\n补充要求：如果上一次没有严格按 JSON 返回，这一次请只返回 JSON 对象，并确保 `markdown` 字段非空。",
+    ]
+    last_error = None
+    for candidate_prompt in attempts:
+        try:
+            raw = _call_messages_api(
+                llm_cfg["api_url"],
+                llm_cfg["api_key"],
+                llm_cfg["model"],
+                candidate_prompt,
+                max_tokens,
+            )
+            payload = _normalize_radar_report_payload(raw)
+            if payload.get("markdown"):
+                return payload
+            last_error = RuntimeError("LLM 未返回 markdown")
+        except Exception as exc:
+            last_error = exc
+    raise last_error or RuntimeError("LLM 返回异常")
+
+
+def _read_json_file(path: Path, default=None):
+    if not path.exists():
+        if default is None:
+            raise FileNotFoundError(str(path))
+        return default
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _write_json_file(path: Path, payload):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _today_str():
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def _now_str():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _default_interests_payload():
+    return {
+        "focus": [],
+        "recent_context": [],
+        "ignore": [],
+    }
+
+
+def _default_actions_payload():
+    return {
+        "actions": [],
+    }
+
+
+def _ensure_support_file(path: Path, default_payload):
+    if path.exists():
+        return False
+    _write_json_file(path, default_payload)
+    return True
+
+
+def _append_actions(actions_path: Path, new_actions):
+    payload = _read_json_file(actions_path, default=_default_actions_payload())
+    items = payload.setdefault("actions", [])
+    added = []
+    today = _today_str()
+    for item in new_actions or []:
+        action = (item.get("action") or "").strip()
+        if not action:
+            continue
+        normalized = {
+            "action": action,
+            "date": item.get("date") or today,
+            "status": item.get("status") or "pending",
+            "source_link": item.get("source_link") or "",
+            "source_account": item.get("source_account") or "",
+        }
+        items.append(normalized)
+        added.append(normalized)
+    _write_json_file(actions_path, payload)
+    return added
+
+
+def _wrap_report_markdown(body: str, metadata: dict):
+    frontmatter = ["---"]
+    for key, value in metadata.items():
+        frontmatter.append(f'{key}: "{str(value).replace("\"", "\\\"")}"')
+    frontmatter.append("---")
+    frontmatter.append("")
+    return "\n".join(frontmatter) + body.strip() + "\n"
+
+
+def _build_radar_daily_prompt(result_payload: dict, interests_payload: dict):
+    summary = result_payload.get("summary", {})
+    preview = summary.get("new_ideas_preview", [])
+    return "\n".join(
+        [
+            "你是一个严格基于真实 X 扫描结果生成中文日报的分析助手。",
+            "禁止编造任何链接、账号、产品、数据或观点；只能使用输入 JSON 中真实存在的字段。",
+            "请返回 JSON 对象，不要解释，不要代码围栏。",
+            "",
+            "返回格式：",
+            "{",
+            '  "markdown": "完整日报 Markdown 文本",',
+            '  "actions": [',
+            '    {"action":"具体行动","source_link":"原文链接","source_account":"@账号"}',
+            "  ]",
+            "}",
+            "",
+            "日报要求：",
+            "1. 顶部使用 `📅 YYYY年M月D日`。",
+            "2. 先输出 `🌐 今日热议话题`，归纳 3-5 个真实话题簇；每个话题只基于输入内容。",
+            "3. 再按需要输出这些中文分类：`🔧 值得试用的新工具/产品`、`🧠 有价值的行业洞察或趋势`、`💰 商业机会或变现思路`、`📌 可这周实践的具体行动`。",
+            "4. 每条内容格式固定为：",
+            "   • **名称/要点**：一句话说明。",
+            "     — @来源账号 · [原文↗](url)",
+            "5. 每类最多 8 条，总数不超过 20 条；没有合适内容就省略该类。",
+            "6. 严格依据兴趣画像 focus / recent_context 筛选；ignore 中相关内容一律跳过。",
+            "7. `actions` 数组只保留来自 `📌 可这周实践的具体行动` 的条目。",
+            "",
+            "兴趣画像 JSON：",
+            json.dumps(interests_payload, ensure_ascii=False, indent=2),
+            "",
+            "扫描结果 JSON：",
+            json.dumps(
+                {
+                    "summary": summary,
+                    "successful_accounts": result_payload.get("successful_accounts"),
+                    "failed_accounts": result_payload.get("failed_accounts"),
+                    "new_items_count": result_payload.get("new_items_count"),
+                    "elapsed_str": result_payload.get("elapsed_str"),
+                    "preview_count": len(preview),
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+        ]
+    )
+
+
+def _build_radar_weekly_prompt(analysis_payload: dict, actions_payload: dict):
+    pending_actions = [
+        item for item in actions_payload.get("actions", []) if item.get("status") == "pending"
+    ][:5]
+    return "\n".join(
+        [
+            "你是一个严格基于真实 X 分析结果生成中文周报的分析助手。",
+            "禁止编造任何链接、账号、产品、数据或观点；只能使用输入 JSON 中真实存在的字段。",
+            "请返回 JSON 对象，不要解释，不要代码围栏。",
+            "",
+            "返回格式：",
+            "{",
+            '  "markdown": "完整周报 Markdown 文本",',
+            '  "actions": [',
+            '    {"action":"本周新增行动","source_link":"原文链接","source_account":"@账号"}',
+            "  ]",
+            "}",
+            "",
+            "周报要求：",
+            "1. 顶部标题为 `📊 X 创意雷达周报 YYYY-MM-DD`。",
+            "2. 先输出 `📈 本周热点话题 Top5`：先阅读 `hot_topics.keywords` 全部关键词，再语义聚类成 5 个真实话题簇，禁止直接照抄关键词当话题名。",
+            "3. 若 `topic_trend.status == ok`，对应话题后标注 📈 / 📉 / 🆕。",
+            "4. 再输出：`🌐 二度人脉推荐`、`💡 本周亮点推文`、`📋 行动追踪`、`🔧 账号调整建议`。",
+            "5. `📋 行动追踪` 里包含“上周 pending 行动”和“本周新增行动”。",
+            "6. `🔧 账号调整建议` 要给出 `✅ 建议保留` 和 `❌ 建议移除`。",
+            "7. `actions` 数组只保留“本周新增行动”的新增项。",
+            "",
+            "分析结果 JSON：",
+            json.dumps(analysis_payload, ensure_ascii=False, indent=2),
+            "",
+            "已有 pending actions JSON：",
+            json.dumps(pending_actions, ensure_ascii=False, indent=2),
+        ]
+    )
 
 
 def _backup_file(path: Path):
@@ -503,13 +768,13 @@ def _cmd_generate(args):
 
     cfg = _resolve_generate_config(args)
     if not cfg["api_key"]:
-        _print_json(
-            {
-                "ok": False,
-                "error": "未找到 LLM API Key。请设置 XPOST_LLM_API_KEY，或准备 ~/.openclaw/scripts/tokenmax.sh 作为本机回退配置。",
-            }
-        )
-        return 1
+            _print_json(
+                {
+                    "ok": False,
+                    "error": "未找到 LLM API Key。请在项目 .env 或当前 shell 中设置 XPOST_LLM_API_KEY。",
+                }
+            )
+            return 1
 
     raw_markdown = _read_text(md_path)
     try:
@@ -830,6 +1095,153 @@ def _cmd_radar_analyze(args):
     return 0 if ok else 1
 
 
+def _cmd_radar_daily(args):
+    result_path = Path(args.result_file).expanduser() if args.result_file else XINFO_DIR / "RESULT.json"
+    interests_path = Path(args.interests_file).expanduser() if args.interests_file else XINFO_LOG_DIR / "interests.json"
+    actions_path = Path(args.actions_file).expanduser() if args.actions_file else XINFO_LOG_DIR / "actions.json"
+    output_path = Path(args.output).expanduser() if args.output else XINFO_DAY_DIR / f"{_today_str()}.md"
+
+    if not result_path.exists():
+        _print_json({"ok": False, "error": f"扫描结果不存在: {result_path}"})
+        return 1
+
+    created_support = []
+    if _ensure_support_file(interests_path, _default_interests_payload()):
+        created_support.append(str(interests_path))
+    if _ensure_support_file(actions_path, _default_actions_payload()):
+        created_support.append(str(actions_path))
+
+    result_payload = _read_json_file(result_path)
+    interests_payload = _read_json_file(interests_path, default=_default_interests_payload())
+
+    llm_cfg = _resolve_radar_llm_config(args)
+    if not llm_cfg.get("api_key"):
+        _print_json(
+            {
+                "ok": False,
+                "error": "未找到 Radar LLM API Key。请在项目 .env 或当前 shell 中设置 XPOST_LLM_API_KEY。",
+            }
+        )
+        return 1
+
+    summary = result_payload.get("summary", {})
+    status = summary.get("status")
+    preview = summary.get("new_ideas_preview", [])
+    if status == "no_new" or not preview:
+        body = "\n".join(
+            [
+                f"📅 {datetime.now().year}年{datetime.now().month}月{datetime.now().day}日",
+                "",
+                "📭 今日暂无新推文",
+            ]
+        )
+        report_json = {"markdown": body, "actions": []}
+    else:
+        try:
+            prompt = _build_radar_daily_prompt(result_payload, interests_payload)
+            report_json = _generate_radar_report(prompt, llm_cfg, args.max_tokens)
+        except Exception as exc:
+            _print_json({"ok": False, "error": f"Radar 日报生成失败: {exc}"})
+            return 1
+
+    markdown_body = (report_json.get("markdown") or "").strip()
+    if not markdown_body:
+        _print_json({"ok": False, "error": "Radar 日报生成失败：LLM 未返回 markdown"})
+        return 1
+
+    added_actions = _append_actions(actions_path, report_json.get("actions", []))
+    report_text = _wrap_report_markdown(
+        markdown_body,
+        {
+            "report_type": "radar_daily",
+            "generated_at": _now_str(),
+            "llm_model": llm_cfg["model"],
+            "source_result_file": str(result_path),
+        },
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(report_text, encoding="utf-8")
+
+    _print_json(
+        {
+            "ok": True,
+            "command": "radar-daily",
+            "output_path": str(output_path),
+            "actions_path": str(actions_path),
+            "actions_added": added_actions,
+            "llm_model": llm_cfg["model"],
+            "created_support_files": created_support,
+        }
+    )
+    return 0
+
+
+def _cmd_radar_weekly(args):
+    analysis_path = Path(args.analysis_file).expanduser() if args.analysis_file else XINFO_DAY_DIR / f"{_today_str()}_analysis.json"
+    actions_path = Path(args.actions_file).expanduser() if args.actions_file else XINFO_LOG_DIR / "actions.json"
+    output_path = Path(args.output).expanduser() if args.output else XINFO_WEEK_DIR / f"{_today_str()}.md"
+
+    if not analysis_path.exists():
+        _print_json({"ok": False, "error": f"分析结果不存在: {analysis_path}"})
+        return 1
+
+    created_support = []
+    if _ensure_support_file(actions_path, _default_actions_payload()):
+        created_support.append(str(actions_path))
+
+    analysis_payload = _read_json_file(analysis_path)
+    actions_payload = _read_json_file(actions_path, default=_default_actions_payload())
+
+    llm_cfg = _resolve_radar_llm_config(args)
+    if not llm_cfg.get("api_key"):
+        _print_json(
+            {
+                "ok": False,
+                "error": "未找到 Radar LLM API Key。请在项目 .env 或当前 shell 中设置 XPOST_LLM_API_KEY。",
+            }
+        )
+        return 1
+
+    try:
+        prompt = _build_radar_weekly_prompt(analysis_payload, actions_payload)
+        report_json = _generate_radar_report(prompt, llm_cfg, args.max_tokens)
+    except Exception as exc:
+        _print_json({"ok": False, "error": f"Radar 周报生成失败: {exc}"})
+        return 1
+
+    markdown_body = (report_json.get("markdown") or "").strip()
+    if not markdown_body:
+        _print_json({"ok": False, "error": "Radar 周报生成失败：LLM 未返回 markdown"})
+        return 1
+
+    added_actions = _append_actions(actions_path, report_json.get("actions", []))
+    report_text = _wrap_report_markdown(
+        markdown_body,
+        {
+            "report_type": "radar_weekly",
+            "generated_at": _now_str(),
+            "llm_model": llm_cfg["model"],
+            "source_analysis_file": str(analysis_path),
+            "scope_days": analysis_payload.get("scope_days", 7),
+        },
+    )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(report_text, encoding="utf-8")
+
+    _print_json(
+        {
+            "ok": True,
+            "command": "radar-weekly",
+            "output_path": str(output_path),
+            "actions_path": str(actions_path),
+            "actions_added": added_actions,
+            "llm_model": llm_cfg["model"],
+            "created_support_files": created_support,
+        }
+    )
+    return 0
+
+
 def _cmd_radar_accounts(args):
     script_path = XINFO_DIR / "manage_accounts.py"
     if not script_path.exists():
@@ -990,6 +1402,25 @@ def main():
     p_radar_analyze.add_argument("--days", type=int, help="Only analyze recent N days")
     p_radar_analyze.add_argument("--text", action="store_true", help="Return human-readable text instead of JSON")
     p_radar_analyze.set_defaults(func=_cmd_radar_analyze)
+
+    p_radar_daily = sub.add_parser("radar-daily", help="Generate X radar daily markdown report")
+    p_radar_daily.add_argument("--result-file", help="Scan result JSON path (default: xinfo/RESULT.json)")
+    p_radar_daily.add_argument("--interests-file", help="Interests JSON path (default: xinfo/log/interests.json)")
+    p_radar_daily.add_argument("--actions-file", help="Actions JSON path (default: xinfo/log/actions.json)")
+    p_radar_daily.add_argument("--output", help="Output markdown path (default: xinfo/log/day/YYYY-MM-DD.md)")
+    p_radar_daily.add_argument("--model", help="LLM model override (default: claude-opus-4-6)")
+    p_radar_daily.add_argument("--api-url", help="LLM messages API URL override")
+    p_radar_daily.add_argument("--max-tokens", type=int, default=3200, help="LLM max tokens for daily report")
+    p_radar_daily.set_defaults(func=_cmd_radar_daily)
+
+    p_radar_weekly = sub.add_parser("radar-weekly", help="Generate X radar weekly markdown report")
+    p_radar_weekly.add_argument("--analysis-file", help="Analysis JSON path (default: xinfo/log/day/YYYY-MM-DD_analysis.json)")
+    p_radar_weekly.add_argument("--actions-file", help="Actions JSON path (default: xinfo/log/actions.json)")
+    p_radar_weekly.add_argument("--output", help="Output markdown path (default: xinfo/log/week/YYYY-MM-DD.md)")
+    p_radar_weekly.add_argument("--model", help="LLM model override (default: claude-opus-4-6)")
+    p_radar_weekly.add_argument("--api-url", help="LLM messages API URL override")
+    p_radar_weekly.add_argument("--max-tokens", type=int, default=3600, help="LLM max tokens for weekly report")
+    p_radar_weekly.set_defaults(func=_cmd_radar_weekly)
 
     p_radar_accounts = sub.add_parser("radar-accounts", help="Manage X radar accounts")
     p_radar_accounts.add_argument("action", choices=["list", "add", "remove", "restore"], help="Account action")

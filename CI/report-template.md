@@ -25,6 +25,8 @@
 | TC-07 Post 图文 |  |  |
 | TC-08 Radar 扫描 |  |  |
 | TC-09 Radar 分析 |  |  |
+| TC-10 Radar 日报生成 |  |  |
+| TC-11 Radar 周报生成 |  |  |
 
 ## 3. 实际结果
 

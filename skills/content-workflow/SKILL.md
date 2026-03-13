@@ -1,22 +1,22 @@
 ---
 name: content-workflow
-description: Guide gitxPost's Markdown article workflow: choose a writing style, scaffold drafts, generate a real article with xpost, optionally run the Antigravity image workflow, validate and parse markdown, and prepare the result for X Article publish. Use when users ask to write an X article, choose zara or tech or fun prompt styles, add article images, or prepare markdown for publication.
+description: 引导 gitxPost 的 Markdown 文章工作流：选择写作风格、生成草稿骨架、用 xpost 生成真实文章、按需运行 Antigravity 配图流程、校验并解析 Markdown，并为 X Article 发布做准备。当用户提到写 X 文章、选择 zara 或 tech 或 fun 风格、添加文章配图、准备发布 Markdown 时使用。
 ---
 # Content Workflow
 
 ## Use this skill when
-
-- The user is still writing or planning an article
-- The user asks which prompt style to use
-- The user wants to scaffold a markdown article before publishing
-- The user wants to turn a skeleton into a real article body
-- The user wants to prepare article images with the Antigravity workflow
+- 帮我写文章、post、帖子
+- 用户还在规划或撰写文章
+- 用户在问该选哪种 prompt 风格
+- 用户想在发布前先生成 Markdown 文章骨架
+- 用户想把骨架稿补成真实成文
+- 用户想结合 Antigravity 处理文章配图
 
 ## Style selection
 
-- `zara`: product insight, experience sharing, tool recommendation
-- `tech`: engineering walkthrough, architecture, implementation details
-- `fun`: light, conversational, meme-friendly or science-pop tone
+- `zara`：产品洞察、经验分享、工具推荐
+- `tech`：工程拆解、架构分析、实现细节
+- `fun`：轻松口语、梗感表达、偏科普语气
 
 ## Preferred workflow
 
@@ -36,29 +36,29 @@ python xpost.py init content/drafts/your_article.md --topic "Your topic" --style
 
 ### 3. Generate the real article
 
-Preferred path:
+推荐路径：
 
 ```bash
 python xpost.py generate content/drafts/your_article.md
 ```
 
-This command uses the embedded style prompt from `xpost init` and writes a publishable markdown article in place.
+这个命令会读取 `xpost init` 写入文件顶部的风格 Prompt，并直接把可发布的 Markdown 文章回写到原文件。
 
-Manual fallback:
+人工兜底路径：
 
-- Open the generated markdown
-- Copy the embedded prompt block into Claude / OpenClaw / Codex
-- Ask it to output final markdown only, preserving image paths and footer structure
+- 打开生成的 Markdown 草稿
+- 复制顶部嵌入的 Prompt 区块到 Claude / OpenClaw / Codex
+- 明确要求它只输出最终 Markdown，保留图片路径和文末结构
 
 ### 4. Optional: auto-generate images with Antigravity
 
-In Antigravity, run:
+在 Antigravity 中执行：
 
 ```bash
 /auto-imgByMdCn.md content/drafts/your_article.md
 ```
 
-Use this only when the external Antigravity workflow is available.
+只有在外部 Antigravity 工作流可用时才走这一步。
 
 ### 5. Validate and parse before publish
 
@@ -69,12 +69,12 @@ python xpost.py parse content/drafts/your_article.md
 
 ### 6. Hand off for publish
 
-When the markdown is ready, switch to `xpost-cli` for:
+当 Markdown 准备完成后，切换到 `xpost-cli` 做发布：
 
 - `python xpost.py publish ...`
 
 ## Guardrails
 
-- Use `content/drafts/` for in-progress writing
-- Keep `content/examples/` as stable reference or smoke fixtures
-- Do not jump straight to publish while the user is still choosing tone, structure, or images
+- 写作中的内容优先放在 `content/drafts/`
+- `content/examples/` 只保留稳定示例或 smoke 样本
+- 当用户还在确定语气、结构或配图时，不要直接跳到发布步骤
