@@ -1,4 +1,4 @@
 interface:
   display_name: "Content Workflow"
-  short_description: "Draft Markdown articles with prompts and image flow"
-  default_prompt: "Use gitxPost's content workflow to scaffold an article, choose the right prompt style, validate the markdown, and prepare it for publish."
+  short_description: "Scaffold and generate Markdown articles with prompts"
+  default_prompt: "Use gitxPost's content workflow to scaffold an article, choose the right prompt style, generate a full markdown article, validate it, and prepare it for publish."

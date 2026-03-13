@@ -34,6 +34,9 @@ content/examples/archive/
 hot_posts_output/*
 hot_posts_output
 patchright_post_data/
+xinfo/RESULT.json
+xinfo/log/
+xinfo/*.log
 .cache/
 .playwright-cli/
 debug_output/

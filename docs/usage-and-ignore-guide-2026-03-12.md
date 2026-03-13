@@ -65,6 +65,29 @@ xpost post-login
 python /Users/jackwl/Code/gitcode/gitxPost/grok_hot_posts.py --topics "OpenClaw skills GitHub" --hours 168 --count 5 --json-only
 ```
 
+### 2.4 X 雷达
+
+扫描：
+
+```bash
+xpost radar-scan
+```
+
+分析：
+
+```bash
+xpost radar-analyze --days 7
+```
+
+账号管理：
+
+```bash
+xpost radar-accounts list
+xpost radar-accounts add NewAccount "推荐原因"
+xpost radar-accounts remove NewAccount
+xpost radar-accounts restore NewAccount
+```
+
 ## 3. Markdown 创作工作流
 
 初始化文章骨架：
@@ -77,16 +100,28 @@ xpost init content/drafts/your_article.md --topic "你的主题" --style tech
 
 - `xpost init` 只生成文章骨架，不会直接生成完整正文
 - `--style` 会把对应 Prompt 写进 Markdown 顶部注释
-- 真正的正文需要再交给 Claude / OpenClaw / Codex 等外部 LLM 生成，并覆盖模板占位内容
+- 真正的正文可以通过 `xpost generate` 直接生成，也可以再交给 Claude / OpenClaw / Codex 等外部 LLM 生成，并覆盖模板占位内容
 
 推荐最小闭环：
 
 1. `xpost init ...`
-2. 打开生成的 Markdown，基于顶部 Prompt 让 LLM 输出完整文章
+2. `xpost generate ...`
 3. 用 Antigravity 自动配图
 4. `xpost validate ...`
 5. `xpost publish ... --no-wait`
 6. 确认后再 `xpost publish ... --publish --no-wait`
+
+生成正文：
+
+```bash
+xpost generate content/drafts/your_article.md
+```
+
+说明：
+
+- 默认优先读取 `XPOST_LLM_API_KEY` / `XPOST_LLM_API_URL` / `XPOST_LLM_MODEL`
+- 如果本机存在 `~/.openclaw/scripts/tokenmax.sh`，会自动把其中的 TokenMax 配置作为回退
+- 原骨架会自动备份为 `*.skeleton.<timestamp>.md`
 
 校验与解析：
 
@@ -122,6 +157,7 @@ Antigravity 自动配图：
 - `content/`
 - `article_tooling/scripts/`
 - `skills/`
+- `xinfo/`
 - `docs/`
 - `CI/`
 - `xpost.py`

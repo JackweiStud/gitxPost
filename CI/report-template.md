@@ -15,6 +15,7 @@
 
 | 用例 | 状态 | 备注 |
 |------|------|------|
+| TC-00 Article 成文生成 |  |  |
 | TC-01 Article 草稿 |  |  |
 | TC-02 Article 真发布 |  |  |
 | TC-03 Article 图片上传 |  |  |
@@ -22,6 +23,8 @@
 | TC-05 Chrome 升级风险回归 |  |  |
 | TC-06 Post 纯文本 |  |  |
 | TC-07 Post 图文 |  |  |
+| TC-08 Radar 扫描 |  |  |
+| TC-09 Radar 分析 |  |  |
 
 ## 3. 实际结果
 

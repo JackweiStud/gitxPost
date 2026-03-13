@@ -1,4 +1,4 @@
 interface:
   display_name: "gitxPost CLI"
-  short_description: "Draft and publish X Articles or Posts"
-  default_prompt: "Use the local gitxPost CLI to prepare, validate, draft, or publish an X Article or X Post."
+  short_description: "Generate, draft, publish, and scan X workflows"
+  default_prompt: "Use the local gitxPost CLI to generate article markdown, validate it, draft or publish an X Article or X Post, or run X radar commands."

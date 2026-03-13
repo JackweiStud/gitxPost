@@ -1,7 +1,7 @@
 # gitxPost 统一测试用例
 
 日期基线：2026-03-12
-适用范围：`Article` / `Grok` / `Post`
+适用范围：`Article` / `Grok` / `Post` / `Radar`
 
 ## 1. 测试目标
 
@@ -10,6 +10,8 @@
 1. 功能改动后核心业务仍可用
 2. 共享浏览器会话层改动不会误伤现有链路
 3. Chrome 升级后不再因 driver 匹配问题导致核心功能失效
+4. Markdown 起稿到成文的生成闭环可用
+5. X 雷达扫描与分析入口可用
 
 ## 2. 测试前提
 
@@ -37,6 +39,24 @@ python /Users/jackwl/Code/gitcode/gitxPost/xpost.py doctor
 - 输出内容是否符合预期
 
 ## 4. 测试用例
+
+### TC-00 Article 成文生成
+
+目标：
+- 验证 `xpost generate` 能把文章骨架扩写成真实 Markdown 成文
+
+执行：
+
+```bash
+source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
+python /Users/jackwl/Code/gitcode/gitxPost/xpost.py init /tmp/gitxpost_tc00.md --topic "OpenClaw ACP 避坑指南" --style zara --force
+python /Users/jackwl/Code/gitcode/gitxPost/xpost.py generate /private/tmp/gitxpost_tc00.md --model claude-sonnet-4-6
+```
+
+预期：
+- 返回 JSON：`ok=true`
+- 生成结果通过 `validate`
+- 结果中不再保留模板占位句子
 
 ### TC-01 Article 草稿
 
@@ -161,6 +181,39 @@ python /Users/jackwl/Code/gitcode/gitxPost/xpost.py post "smoke image test" \
 - 文本成功输入
 - 图片成功上传
 - 返回 JSON：`ok=true`
+
+### TC-08 Radar 扫描
+
+目标：
+- 验证迁入 repo 的 X 雷达扫描入口可用
+
+执行：
+
+```bash
+source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
+python /Users/jackwl/Code/gitcode/gitxPost/xpost.py radar-scan
+```
+
+预期：
+- 返回 JSON：`ok=true`
+- `xinfo/RESULT.json` 被写入
+- 输出中包含 `successful_accounts`、`failed_accounts`、`new_items_count`
+
+### TC-09 Radar 分析
+
+目标：
+- 验证 X 雷达分析入口可用并输出结构化 JSON
+
+执行：
+
+```bash
+source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
+python /Users/jackwl/Code/gitcode/gitxPost/xpost.py radar-analyze --days 7
+```
+
+预期：
+- 返回 JSON：`ok=true`
+- 结果中包含 `network`、`account_stats`、`hot_topics`、`top_posts`
 
 ## 5. 增量补充规则
 

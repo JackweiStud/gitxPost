@@ -4,11 +4,15 @@ xpost CLI：面向本地 Agent/自动化的 gitxPost 统一入口。
 
 功能：
 - init: 生成符合模板约束的文章骨架（可内嵌风格 Prompt）
+- generate: 调用 LLM API 将文章骨架扩写成真实 Markdown 成文
 - validate: 严格按模板规则预检
 - parse: Markdown -> 结构化 JSON
 - publish: X Articles 自动化草稿/发布（默认草稿）
 - post: X Post 自动化草稿/发布
 - post-login: 初始化 Post 登录态
+- radar-scan: 运行 X 雷达扫描
+- radar-analyze: 运行 X 雷达分析
+- radar-accounts: 管理 X 雷达监控账号
 - doctor: 环境与依赖检查
 
 所有子命令均输出 JSON，便于 Agent/LLM 解析。
@@ -28,6 +32,8 @@ from typing import Optional
 BASE_DIR = Path(__file__).resolve().parent
 SCRIPTS_DIR = BASE_DIR / "article_tooling" / "scripts"
 PROMPTS_DIR = BASE_DIR / "content" / "prompts"
+XINFO_DIR = BASE_DIR / "xinfo"
+TOKENMAX_SCRIPT = Path.home() / ".openclaw" / "scripts" / "tokenmax.sh"
 
 STYLE_PROMPTS = {
     "zara": PROMPTS_DIR / "prompt_zara.md",
@@ -39,6 +45,13 @@ DEFAULT_SEED_IMAGES = {
     "cover.png": BASE_DIR / "content" / "examples" / "images" / "cover.png",
     "demo1.png": BASE_DIR / "content" / "examples" / "images" / "demo1.png",
 }
+
+PLACEHOLDER_HINTS = [
+    "开场段落：直接命中痛点",
+    "写一段正文内容",
+    "给出行动建议或 CTA",
+    "[在这里填入你的主题",
+]
 
 
 def _print_json(payload):
@@ -133,6 +146,10 @@ def _validate_markdown(md_path: Path):
         if not abs_path.exists():
             errors.append({"code": "E_IMAGE_MISSING", "message": f"图片文件不存在: {path} (line {img['line']})"})
 
+    for hint in PLACEHOLDER_HINTS:
+        if hint in content:
+            warnings.append({"code": "W_TEMPLATE_PLACEHOLDER", "message": f"检测到模板占位内容尚未替换: {hint}"})
+
     ok = len(errors) == 0
     return ok, errors, warnings
 
@@ -195,6 +212,221 @@ def _build_init_content(topic: Optional[str], style: Optional[str], include_prom
     )
 
     return f"{prompt_block}{skeleton}"
+
+
+def _extract_prompt_block(md_text: str):
+    if not md_text.lstrip().startswith("<!--"):
+        return None
+    match = re.match(r"\s*<!--\n(.*?)\n-->\s*", md_text, re.S)
+    if not match:
+        return None
+    raw_block = match.group(0)
+    body = match.group(1)
+
+    style = None
+    topic = None
+    prompt_lines = []
+    in_prompt = False
+    for line in body.splitlines():
+        if line.startswith("STYLE:"):
+            style = line.split(":", 1)[1].strip() or None
+            continue
+        if line.startswith("TOPIC:"):
+            topic = line.split(":", 1)[1].strip() or None
+            continue
+        if line.strip() == "PROMPT:":
+            in_prompt = True
+            continue
+        if in_prompt:
+            prompt_lines.append(line)
+
+    return {
+        "raw_block": raw_block,
+        "style": style,
+        "topic": topic,
+        "prompt": "\n".join(prompt_lines).strip(),
+    }
+
+
+def _strip_prompt_block(md_text: str) -> str:
+    prompt_meta = _extract_prompt_block(md_text)
+    if not prompt_meta:
+        return md_text
+    return md_text.replace(prompt_meta["raw_block"], "", 1).lstrip()
+
+
+def _extract_h1_title(md_text: str) -> Optional[str]:
+    for _, line in _iter_significant_lines(md_text.splitlines(True)):
+        if re.match(r"^#\s+.+", line.strip()):
+            return re.sub(r"^#\s+", "", line.strip())
+    return None
+
+
+def _strip_markdown_fences(text: str) -> str:
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = re.sub(r"^```[a-zA-Z0-9_-]*\n", "", stripped)
+        stripped = re.sub(r"\n```$", "", stripped)
+    return stripped.strip()
+
+
+def _read_tokenmax_config():
+    if not TOKENMAX_SCRIPT.exists():
+        return {}
+    try:
+        content = TOKENMAX_SCRIPT.read_text(encoding="utf-8")
+    except Exception:
+        return {}
+
+    result = {}
+    key_match = re.search(r'^API_KEY="([^"]+)"', content, re.M)
+    url_match = re.search(r'^MESSAGES_URL="([^"]+)"', content, re.M)
+    preferred_match = re.search(r'"(claude-sonnet-[^"]+)"', content)
+    model_match = preferred_match or re.search(r'"(claude-[^"]+)"', content)
+    if key_match:
+        result["api_key"] = key_match.group(1)
+    if url_match:
+        result["api_url"] = url_match.group(1)
+    if model_match:
+        result["model"] = model_match.group(1)
+    return result
+
+
+def _resolve_generate_config(args):
+    tokenmax_cfg = _read_tokenmax_config()
+    api_key = (
+        os.environ.get("XPOST_LLM_API_KEY")
+        or tokenmax_cfg.get("api_key")
+    )
+    api_url = (
+        args.api_url
+        or os.environ.get("XPOST_LLM_API_URL")
+        or tokenmax_cfg.get("api_url")
+        or "https://tokenmax.vip/v1/messages"
+    )
+    model = (
+        args.model
+        or os.environ.get("XPOST_LLM_MODEL")
+        or tokenmax_cfg.get("model")
+        or "claude-sonnet-4-6"
+    )
+    return {"api_key": api_key, "api_url": api_url, "model": model}
+
+
+def _build_generation_prompt(md_path: Path, raw_markdown: str, style: Optional[str], topic: Optional[str]):
+    embedded = _extract_prompt_block(raw_markdown)
+    prompt_text = embedded["prompt"] if embedded and embedded.get("prompt") else None
+    resolved_style = style or (embedded.get("style") if embedded else None)
+    resolved_topic = topic or (embedded.get("topic") if embedded else None) or _extract_h1_title(raw_markdown) or md_path.stem
+    if not prompt_text and resolved_style:
+        prompt_text = _load_prompt(resolved_style)
+
+    if not prompt_text:
+        raise ValueError("未找到可用 Prompt。请先用 xpost init --style 生成骨架，或在 generate 时显式传入 --style。")
+
+    skeleton = _strip_prompt_block(raw_markdown)
+    image_lines = re.findall(r"^\s*!\[[^\]]*\]\(([^)]+)\)\s*$", skeleton, re.M)
+    footer_match = re.search(r"\[@[^\]]+\]\([^)]+\)", skeleton)
+    footer_text = footer_match.group(0) if footer_match else "[@YourHandle](https://x.com/yourhandle)"
+
+    return "\n".join(
+        [
+            "你是一位擅长写 X Article 的专业作者。",
+            "请基于给定的风格 Prompt 和当前 Markdown 骨架，输出一份可以直接发布的完整 Markdown 文章。",
+            "",
+            "严格要求：",
+            "1. 只输出最终 Markdown，不要解释，不要代码围栏。",
+            "2. 必须以 H1 标题开头。",
+            "3. 保留图片占位位置，且图片路径必须继续使用相对路径。",
+            "4. 第一张图片必须保留为封面图。",
+            "5. 替换掉所有模板占位句子，写成真实、完整、可读的正文。",
+            "6. 保留结尾链接结构；若需更新签名，可只改链接文本，不改 Markdown 结构。",
+            "7. 默认使用中文输出；若主题明显为英文，再酌情使用英文。",
+            "",
+            f"主题：{resolved_topic}",
+            f"风格：{resolved_style or 'embedded'}",
+            f"图片路径：{', '.join(image_lines) if image_lines else '无'}",
+            f"结尾链接：{footer_text}",
+            "",
+            "风格 Prompt：",
+            prompt_text,
+            "",
+            "当前 Markdown 骨架：",
+            skeleton,
+        ]
+    )
+
+
+def _call_messages_api(api_url: str, api_key: str, model: str, prompt: str, max_tokens: int):
+    payload = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "temperature": 0.6,
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt,
+            }
+        ],
+    }
+    payload_json = json.dumps(payload, ensure_ascii=False)
+    try:
+        proc = subprocess.run(
+            [
+                "curl",
+                "-sS",
+                "-X",
+                "POST",
+                api_url,
+                "-H",
+                f"Authorization: Bearer {api_key}",
+                "-H",
+                "Content-Type: application/json",
+                "-H",
+                "Anthropic-Version: 2023-06-01",
+                "-d",
+                payload_json,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+    except Exception as exc:
+        raise RuntimeError(f"LLM API 请求失败: {exc}") from exc
+
+    if proc.returncode != 0:
+        raise RuntimeError(f"curl 请求失败: {proc.stderr.strip() or proc.stdout.strip()}")
+
+    raw = proc.stdout
+    try:
+        data = json.loads(raw)
+    except Exception as exc:
+        raise RuntimeError(f"LLM API 返回非 JSON: {raw[:300]}") from exc
+
+    if data.get("type") != "message":
+        err = data.get("error", {}).get("message") or data.get("message") or raw[:300]
+        raise RuntimeError(f"LLM API 返回异常: {err}")
+
+    parts = []
+    for item in data.get("content", []):
+        if item.get("type") == "text":
+            parts.append(item.get("text", ""))
+    text = "\n".join(parts).strip()
+    if not text:
+        raise RuntimeError("LLM 返回为空")
+    return _strip_markdown_fences(text)
+
+
+def _backup_file(path: Path):
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    backup_path = path.with_name(f"{path.stem}.skeleton.{ts}{path.suffix}")
+    shutil.copy2(path, backup_path)
+    return backup_path
+
+
+def _run_python_script(script_path: Path, extra_args):
+    cmd = [sys.executable, str(script_path), *extra_args]
+    return subprocess.run(cmd, capture_output=True, text=True, cwd=str(script_path.parent))
 
 
 def _cmd_init(args):
@@ -261,6 +493,82 @@ def _cmd_parse(args):
     except Exception as exc:
         _print_json({"ok": False, "error": f"解析失败: {exc}"})
         return 1
+
+
+def _cmd_generate(args):
+    md_path = Path(args.md_path).expanduser().resolve()
+    if not md_path.exists():
+        _print_json({"ok": False, "error": "Markdown 文件不存在"})
+        return 1
+
+    cfg = _resolve_generate_config(args)
+    if not cfg["api_key"]:
+        _print_json(
+            {
+                "ok": False,
+                "error": "未找到 LLM API Key。请设置 XPOST_LLM_API_KEY，或准备 ~/.openclaw/scripts/tokenmax.sh 作为本机回退配置。",
+            }
+        )
+        return 1
+
+    raw_markdown = _read_text(md_path)
+    try:
+        prompt = _build_generation_prompt(md_path, raw_markdown, args.style, args.topic)
+    except Exception as exc:
+        _print_json({"ok": False, "error": f"生成 Prompt 失败: {exc}"})
+        return 1
+
+    start_ts = time.time()
+    try:
+        generated = _call_messages_api(
+            api_url=cfg["api_url"],
+            api_key=cfg["api_key"],
+            model=cfg["model"],
+            prompt=prompt,
+            max_tokens=args.max_tokens,
+        )
+    except Exception as exc:
+        _print_json({"ok": False, "error": f"LLM 生成失败: {exc}"})
+        return 1
+
+    output_path = Path(args.output).expanduser().resolve() if args.output else md_path
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    backup_path = None
+    if output_path == md_path:
+        backup_path = _backup_file(md_path)
+
+    _write_text(output_path, generated + ("\n" if not generated.endswith("\n") else ""))
+    ok, errors, warnings = _validate_markdown(output_path)
+    total_ms = int((time.time() - start_ts) * 1000)
+
+    placeholder_hits = [hint for hint in PLACEHOLDER_HINTS if hint in generated]
+    if placeholder_hits:
+        warnings.append(
+            {
+                "code": "W_PLACEHOLDER_LEFT",
+                "message": f"生成结果中仍然包含模板占位语句: {', '.join(placeholder_hits)}",
+            }
+        )
+
+    _print_json(
+        {
+            "ok": ok and not placeholder_hits,
+            "md_path": str(output_path),
+            "backup_path": str(backup_path) if backup_path else None,
+            "model": cfg["model"],
+            "api_url": cfg["api_url"],
+            "generated_chars": len(generated),
+            "validate": {
+                "ok": ok,
+                "errors": errors,
+                "warnings": warnings,
+            },
+            "timings": {
+                "total_ms": total_ms,
+            },
+        }
+    )
+    return 0 if ok and not placeholder_hits else 1
 
 
 def _cmd_publish(args):
@@ -440,6 +748,121 @@ def _cmd_post_login(args):
         return 1
 
 
+def _cmd_radar_scan(_args):
+    script_path = XINFO_DIR / "x_ideas_scan.py"
+    result_path = XINFO_DIR / "RESULT.json"
+    day_result_path = XINFO_DIR / "log" / "day" / f"{time.strftime('%Y-%m-%d')}_result.json"
+    if not script_path.exists():
+        _print_json({"ok": False, "error": "xinfo 扫描脚本不存在"})
+        return 1
+
+    start_ts = time.time()
+    proc = _run_python_script(script_path, [])
+    total_ms = int((time.time() - start_ts) * 1000)
+
+    parsed = None
+    if result_path.exists():
+        try:
+            parsed = json.loads(result_path.read_text(encoding="utf-8"))
+        except Exception:
+            parsed = None
+
+    ok = proc.returncode == 0 and (parsed is None or parsed.get("success", True))
+
+    _print_json(
+        {
+            "ok": ok,
+            "command": "radar-scan",
+            "result_path": str(result_path),
+            "day_result_path": str(day_result_path),
+            "result": parsed,
+            "stdout_tail": proc.stdout[-1200:] if proc.stdout else "",
+            "stderr_tail": proc.stderr[-1200:] if proc.stderr else "",
+            "timings": {
+                "total_ms": total_ms,
+            },
+        }
+    )
+    return 0 if ok else 1
+
+
+def _cmd_radar_analyze(args):
+    script_path = XINFO_DIR / "analyze_network.py"
+    if not script_path.exists():
+        _print_json({"ok": False, "error": "xinfo 分析脚本不存在"})
+        return 1
+
+    cmd_args = []
+    if args.days is not None:
+        cmd_args.append(str(args.days))
+    if not args.text:
+        cmd_args.append("--json")
+
+    start_ts = time.time()
+    proc = _run_python_script(script_path, cmd_args)
+    total_ms = int((time.time() - start_ts) * 1000)
+
+    parsed = None
+    if not args.text and proc.stdout:
+        try:
+            parsed = json.loads(proc.stdout)
+        except Exception:
+            parsed = None
+
+    ok = proc.returncode == 0
+    if parsed and isinstance(parsed, dict) and parsed.get("error"):
+        ok = False
+
+    _print_json(
+        {
+            "ok": ok,
+            "command": "radar-analyze",
+            "json_mode": not args.text,
+            "days": args.days,
+            "result": parsed,
+            "stdout_tail": proc.stdout[-2000:] if proc.stdout else "",
+            "stderr_tail": proc.stderr[-1200:] if proc.stderr else "",
+            "timings": {
+                "total_ms": total_ms,
+            },
+        }
+    )
+    return 0 if ok else 1
+
+
+def _cmd_radar_accounts(args):
+    script_path = XINFO_DIR / "manage_accounts.py"
+    if not script_path.exists():
+        _print_json({"ok": False, "error": "xinfo 账号管理脚本不存在"})
+        return 1
+
+    if args.action in {"add", "remove", "restore"} and not args.username:
+        _print_json({"ok": False, "error": f"radar-accounts {args.action} 需要 username"})
+        return 1
+    if args.action == "add" and not args.note:
+        _print_json({"ok": False, "error": "radar-accounts add 需要 note"})
+        return 1
+
+    cmd_args = [args.action]
+    if args.username:
+        cmd_args.append(args.username)
+    if args.note:
+        cmd_args.append(args.note)
+
+    proc = _run_python_script(script_path, cmd_args)
+    _print_json(
+        {
+            "ok": proc.returncode == 0,
+            "command": "radar-accounts",
+            "action": args.action,
+            "username": args.username,
+            "stdout": proc.stdout.strip(),
+            "stderr": proc.stderr.strip(),
+        }
+    )
+    return 0 if proc.returncode == 0 else 1
+
+
 def _detect_chrome_version():
     chrome_bin = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
     if not chrome_bin.exists():
@@ -518,6 +941,16 @@ def main():
     p_init.add_argument("--force", action="store_true", help="Overwrite if file exists")
     p_init.set_defaults(func=_cmd_init)
 
+    p_generate = sub.add_parser("generate", help="Generate a full article from markdown skeleton")
+    p_generate.add_argument("md_path", help="Markdown skeleton path")
+    p_generate.add_argument("--output", help="Optional output path (default: overwrite md_path)")
+    p_generate.add_argument("--style", choices=sorted(STYLE_PROMPTS.keys()), help="Prompt style override")
+    p_generate.add_argument("--topic", help="Topic override for LLM prompt")
+    p_generate.add_argument("--model", help="LLM model override")
+    p_generate.add_argument("--api-url", help="LLM messages API URL override")
+    p_generate.add_argument("--max-tokens", type=int, default=4000, help="LLM max tokens for generation")
+    p_generate.set_defaults(func=_cmd_generate)
+
     p_validate = sub.add_parser("validate", help="Validate markdown format")
     p_validate.add_argument("md_path", help="Markdown path")
     p_validate.set_defaults(func=_cmd_validate)
@@ -549,6 +982,20 @@ def main():
     p_post_login.add_argument("--login-timeout", type=int, default=600, help="Manual login timeout in seconds")
     p_post_login.add_argument("--remote-debugging-port", type=int, help="Chrome CDP port override")
     p_post_login.set_defaults(func=_cmd_post_login)
+
+    p_radar_scan = sub.add_parser("radar-scan", help="Run X radar scan")
+    p_radar_scan.set_defaults(func=_cmd_radar_scan)
+
+    p_radar_analyze = sub.add_parser("radar-analyze", help="Run X radar analysis")
+    p_radar_analyze.add_argument("--days", type=int, help="Only analyze recent N days")
+    p_radar_analyze.add_argument("--text", action="store_true", help="Return human-readable text instead of JSON")
+    p_radar_analyze.set_defaults(func=_cmd_radar_analyze)
+
+    p_radar_accounts = sub.add_parser("radar-accounts", help="Manage X radar accounts")
+    p_radar_accounts.add_argument("action", choices=["list", "add", "remove", "restore"], help="Account action")
+    p_radar_accounts.add_argument("username", nargs="?", help="Account username")
+    p_radar_accounts.add_argument("note", nargs="?", help="Optional note for add")
+    p_radar_accounts.set_defaults(func=_cmd_radar_accounts)
 
     p_doctor = sub.add_parser("doctor", help="Check environment and deps")
     p_doctor.set_defaults(func=_cmd_doctor)

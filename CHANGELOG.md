@@ -484,3 +484,84 @@
 效果：
 - 新同事可以直接按 runbook 走通文章生产最小闭环
 - 项目边界和协作方式更清楚
+
+## 本次补充：补齐 LLM 成文与 X 雷达 CLI
+
+范围：
+- `xpost` CLI 能直接把文章骨架生成成正式 Markdown
+- `xInfo` 迁入仓库并接入统一 CLI
+
+### 1. 新增 Article 成文生成命令
+
+涉及文件：
+- `xpost.py`
+- `README.md`
+- `docs/usage-and-ignore-guide-2026-03-12.md`
+- `skills/xpost-cli/SKILL.md`
+- `skills/content-workflow/SKILL.md`
+
+变更：
+- 新增 `xpost generate <md_path>`
+- 支持从 `xpost init` 生成的嵌入 Prompt 中提取风格和主题
+- 支持直接调用本地 LLM messages API 生成完整 Markdown 正文
+- 默认优先读取 `XPOST_LLM_API_*` 环境变量；如果本机存在 `~/.openclaw/scripts/tokenmax.sh`，自动回退使用其中的 TokenMax 配置
+- 写回文章前自动生成 `*.skeleton.<timestamp>.md` 备份
+- 生成完成后自动做一次 `validate`，并检查模板占位句子是否仍残留
+
+效果：
+- `topic/style -> 骨架 -> 成文 -> 配图 -> 发布` 现在可以在 `xpost` CLI 中闭环
+- 同事不必再手动复制 Prompt 才能从骨架变成正文
+
+### 2. 迁入 X 雷达并统一 CLI 入口
+
+涉及文件：
+- `xinfo/README.md`
+- `xinfo/x_ideas_scan.py`
+- `xinfo/analyze_network.py`
+- `xinfo/manage_accounts.py`
+- `xpost.py`
+- `.gitignore`
+
+变更：
+- 将 `xInfo` 的核心扫描、分析、账号管理脚本迁入 `gitxPost/xinfo/`
+- 新增统一 CLI：
+  - `xpost radar-scan`
+  - `xpost radar-analyze`
+  - `xpost radar-accounts`
+- 为 `xinfo/log/` 与 `xinfo/RESULT.json` 补充忽略规则
+- 去掉 `x_ideas_scan.py` 中遗留的调试打印
+
+效果：
+- X 雷达能力不再需要切回旧项目执行
+- `gitxPost` 现在统一承接 Article、Post、Grok、Radar 四类能力
+
+### 3. 验收用例补充
+
+涉及文件：
+- `CI/test-cases.md`
+- `CI/report-template.md`
+
+变更：
+- 新增 `TC-00 Article 成文生成`
+- 新增 `TC-08 Radar 扫描`
+- 新增 `TC-09 Radar 分析`
+
+效果：
+- 新增功能后有明确的回归入口，不会只靠手工记忆验收
+
+### 本次验证
+
+已验证：
+- `python -m py_compile xpost.py xinfo/x_ideas_scan.py xinfo/analyze_network.py xinfo/manage_accounts.py`
+- `python xpost.py --help`
+- `python xpost.py generate --help`
+- `python xpost.py radar-analyze --help`
+- `python xpost.py radar-accounts list`
+- `python xpost.py init /tmp/gitxpost_generate_smoke.md --topic "OpenClaw ACP 为什么能替代我自建的 tmux worker" --style zara --force`
+- `python xpost.py generate /private/tmp/gitxpost_generate_smoke.md --model claude-sonnet-4-6 --max-tokens 2200`
+- `python xpost.py radar-scan`
+- `python xpost.py radar-analyze --days 7`
+
+当前边界：
+- `xpost generate` 依赖可用的本地 LLM API 配置；若上游服务暂时不可用，会直接返回错误
+- `radar-scan` 的成功率仍受外部 RSS/Nitter 实例状态影响

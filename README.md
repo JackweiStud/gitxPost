@@ -6,8 +6,10 @@
 - 多风格 Prompt
 - Antigravity 自动配图工作流
 - X Articles 长文发布
+- LLM 生成真实文章正文
 - X Post 短帖发布
 - Grok 热点搜索
+- X 雷达扫描 / 网络分析 / 账号管理
 - CLI 与 Agent skills 集成
 - 测试验收与 changelog 约束
 
@@ -21,6 +23,7 @@
 截至 2026-03-12，已经实测通过：
 
 - `Article` 草稿
+- `Article` LLM 成文生成
 - `Article` 真发布
 - `Article` 内容图 / 封面图上传
 - `Post` 纯文本
@@ -86,11 +89,15 @@ xpost post-login
 
 ```bash
 xpost init ...
+xpost generate ...
 xpost validate ...
 xpost parse ...
 xpost publish ...
 xpost post ...
 xpost post-login ...
+xpost radar-scan ...
+xpost radar-analyze ...
+xpost radar-accounts ...
 xpost doctor
 ```
 
@@ -124,9 +131,33 @@ xpost init content/drafts/your_article.md --topic "你的主题" --style zara
 - 会自动复制示例 `cover.png` 和 `demo1.png`
 - 会在 Markdown 顶部写入 HTML 注释形式的 Prompt 元数据
 
-### 2. 用 Claude / OpenClaw / Codex 生成正文
+### 2. 用 xpost 直接生成正文
 
-`xpost init` 之后，不要立刻发布。先打开生成的 Markdown，把占位正文替换成正式文章。
+`xpost init` 之后，可以直接让 `xpost generate` 调用本地配置的 LLM API，把占位正文扩写成正式文章。
+
+```bash
+xpost generate content/drafts/your_article.md
+```
+
+说明：
+
+- 默认优先读取环境变量：
+  - `XPOST_LLM_API_KEY`
+  - `XPOST_LLM_API_URL`
+  - `XPOST_LLM_MODEL`
+- 如果本机存在 `~/.openclaw/scripts/tokenmax.sh`，会自动把其中的 `API_KEY` / `MESSAGES_URL` 作为回退配置
+- 默认模型优先使用 `claude-sonnet-4-6`
+- 原骨架会先自动备份成 `*.skeleton.<timestamp>.md`
+
+也可以覆盖输出路径：
+
+```bash
+xpost generate content/drafts/your_article.md --output content/drafts/your_article.generated.md
+```
+
+### 3. 也可以手动用 Claude / OpenClaw / Codex 生成正文
+
+如果你想手工控制写作过程，也可以不用 `xpost generate`，而是把骨架交给 Claude / OpenClaw / Codex 继续扩写。
 
 推荐操作：
 
@@ -146,7 +177,7 @@ xpost init content/drafts/your_article.md --topic "你的主题" --style zara
 4. 替换掉所有模板占位句子，不要输出解释
 ```
 
-### 3. 校验与解析 Markdown
+### 4. 校验与解析 Markdown
 
 ```bash
 xpost validate content/drafts/your_article.md
@@ -159,7 +190,7 @@ xpost parse content/drafts/your_article.md
 - `parse` 只把 Markdown 解析成 JSON
 - 这两个命令都不会生成正文
 
-### 4. 使用多风格 Prompt 写文
+### 5. 使用多风格 Prompt 写文
 
 内置 3 种写作风格：
 
@@ -173,7 +204,7 @@ Prompt 使用说明见：
 
 - `content/prompt-guide.md`
 
-### 5. 用 Antigravity 自动配图
+### 6. 用 Antigravity 自动配图
 
 工作流文件：
 
@@ -191,7 +222,7 @@ Prompt 使用说明见：
 - 依赖 Antigravity 自身的 workflow 运行环境
 - 不属于本仓库内可完全独立自测的脚本能力
 
-### 6. 最小闭环：从主题到发布 Article
+### 7. 最小闭环：从主题到发布 Article
 
 如果同事想走“主题/风格 -> 成文 -> 配图 -> 发布”的最小闭环，推荐直接按下面顺序操作：
 
@@ -201,7 +232,14 @@ xpost init content/drafts/your_article.md --topic "OpenClaw acp避坑指南" --s
 
 然后：
 
-1. 用 Claude / OpenClaw / Codex 基于顶部 Prompt 生成完整正文，覆盖模板占位内容
+1. 运行：
+
+```bash
+xpost generate content/drafts/your_article.md
+```
+
+如果你更想手工写作，也可以改为让 Claude / OpenClaw / Codex 基于顶部 Prompt 生成完整正文，覆盖模板占位内容
+
 2. 在 Antigravity 中执行：
 
 ```bash
@@ -230,7 +268,7 @@ xpost publish content/drafts/your_article.md --publish --no-wait
 
 - `docs/article-minimal-loop-runbook-2026-03-13.md`
 
-### 7. 发布 Article
+### 8. 发布 Article
 
 保存草稿：
 
@@ -244,7 +282,7 @@ xpost publish content/examples/articleNew.md --no-wait
 xpost publish content/examples/articleNew.md --publish --no-wait
 ```
 
-### 8. 发布 Post
+### 9. 发布 Post
 
 纯文本：
 
@@ -258,12 +296,58 @@ xpost post "Hello world" --publish
 xpost post "This is an image post" --images /path/to/image.png --publish
 ```
 
-### 9. 用 Grok 搜集热点
+### 10. 用 Grok 搜集热点
 
 ```bash
 source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
 python /Users/jackwl/Code/gitcode/gitxPost/grok_hot_posts.py --json-only
 ```
+
+### 11. 用 xpost 统一入口运行 X 雷达
+
+扫描：
+
+```bash
+xpost radar-scan
+```
+
+分析：
+
+```bash
+xpost radar-analyze --days 7
+```
+
+账号管理：
+
+```bash
+xpost radar-accounts list
+xpost radar-accounts add NewAccount "推荐原因"
+xpost radar-accounts remove NewAccount
+xpost radar-accounts restore NewAccount
+```
+
+结果文件说明：
+
+- 最新扫描快照（每次覆盖）：
+  - `xinfo/RESULT.json`
+- 扫描明细与去重状态：
+  - `xinfo/log/ideas.md`
+  - `xinfo/log/.ideas_seen.json`
+- 天级日志与分析结果：
+  - `xinfo/log/day/YYYY-MM-DD.log`
+  - `xinfo/log/day/YYYY-MM-DD_result.json`
+  - `xinfo/log/day/YYYY-MM-DD_analysis.json`
+- 周级趋势快照：
+  - `xinfo/log/trends/YYYY-WW.json`
+
+存储粒度说明：
+
+- `RESULT.json`：最新一次扫描结果，不按天保留
+- `day/*.log`：按天保留
+- `day/*_result.json`：按天保留
+- `day/*_analysis.json`：按天保留
+- `trends/*.json`：按周保留
+- `ideas.md`：滚动保留最近几天内容，不是严格按天拆分
 
 ## 目录结构
 
@@ -274,6 +358,7 @@ gitxPost/
 ├── auto_publish_post.py
 ├── grok_hot_posts.py
 ├── browser_cdp_session.py
+├── xinfo/
 ├── requirements.txt
 ├── pyproject.toml
 ├── CHANGELOG.md
@@ -283,7 +368,8 @@ gitxPost/
 ├── skills/
 │   ├── README.md
 │   ├── xpost-cli/
-│   └── grok-hotposts-cli/
+│   ├── grok-hotposts-cli/
+│   └── content-workflow/
 ├── content/
 │   ├── template.md
 │   ├── prompt-guide.md

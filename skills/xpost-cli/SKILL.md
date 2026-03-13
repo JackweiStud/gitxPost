@@ -1,6 +1,6 @@
 ---
 name: xpost-cli
-description: Use gitxPost's local xpost CLI to scaffold articles, validate or parse markdown, save or publish X Articles, create X Posts, initialize Post login sessions, and run doctor checks. Use when a user asks to run xpost commands, draft or publish an Article, publish a Post, or troubleshoot the local gitxPost CLI.
+description: Use gitxPost's local xpost CLI to scaffold articles, generate real markdown from a skeleton, validate or parse markdown, save or publish X Articles, create X Posts, run X radar commands, initialize Post login sessions, and run doctor checks. Use when a user asks to run xpost commands, generate or publish an Article, publish a Post, run X radar, or troubleshoot the local gitxPost CLI.
 ---
 # xpost CLI
 
@@ -8,7 +8,9 @@ description: Use gitxPost's local xpost CLI to scaffold articles, validate or pa
 
 - The user wants to run `xpost` commands
 - The task involves `Article` draft or publish
+- The task involves generating a full article from a markdown skeleton
 - The task involves `Post` draft, image post, or `post-login`
+- The task involves X radar scan, analysis, or account management
 - The user wants to check whether the local gitxPost environment is healthy
 
 ## Preferred command pattern
@@ -41,9 +43,12 @@ If dependencies are missing, run:
 
 ```bash
 python xpost.py init content/drafts/your_article.md --topic "Your topic" --style zara
+python xpost.py generate content/drafts/your_article.md
 python xpost.py validate content/drafts/your_article.md
 python xpost.py parse content/drafts/your_article.md
 ```
+
+If the repo is configured with `~/.openclaw/scripts/tokenmax.sh`, `generate` can call the local LLM API without extra flags.
 
 ### Article
 
@@ -77,6 +82,27 @@ Login initialization:
 
 ```bash
 python xpost.py post-login
+```
+
+### X Radar
+
+Scan:
+
+```bash
+python xpost.py radar-scan
+```
+
+Analyze:
+
+```bash
+python xpost.py radar-analyze --days 7
+```
+
+Manage accounts:
+
+```bash
+python xpost.py radar-accounts list
+python xpost.py radar-accounts add NewAccount "reason"
 ```
 
 ## Guardrails
