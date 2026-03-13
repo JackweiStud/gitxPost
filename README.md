@@ -307,6 +307,7 @@ gitxPost/
 - `docs/open-source-cleanup-checklist-2026-03-12.md`
 - `docs/skill-topology-2026-03-12.md`
 - `docs/usage-and-ignore-guide-2026-03-12.md`
+- `docs/progress-summary-2026-03-12.md`
 
 ## Changelog 规则
 
