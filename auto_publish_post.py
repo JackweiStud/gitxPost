@@ -37,8 +37,8 @@ PROFILE_DIR = Path(os.environ.get("XPOST_PROFILE_DIR") or (BASE_DIR / "chrome_da
 POST_URL = "https://x.com/compose/post"
 LOGIN_URL = "https://x.com/i/flow/login"
 HOME_URL = "https://x.com/home"
-MAX_TEXT_LENGTH = 280
-MAX_IMAGES = 4
+MAX_TEXT_LENGTH = 1000
+MAX_IMAGES = 10
 STEP_PAUSE_MS = int(os.environ.get("XPOST_STEP_PAUSE_MS", "900"))
 
 SELECTORS = {
