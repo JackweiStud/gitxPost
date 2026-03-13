@@ -39,6 +39,7 @@ XINFO_DIR = BASE_DIR / "xinfo"
 XINFO_LOG_DIR = XINFO_DIR / "log"
 XINFO_DAY_DIR = XINFO_LOG_DIR / "day"
 XINFO_WEEK_DIR = XINFO_LOG_DIR / "week"
+XINFO_RUNTIME_DIR = XINFO_LOG_DIR / "runtime"
 
 STYLE_PROMPTS = {
     "zara": PROMPTS_DIR / "prompt_zara.md",
@@ -57,6 +58,12 @@ PLACEHOLDER_HINTS = [
     "给出行动建议或 CTA",
     "[在这里填入你的主题",
 ]
+
+
+class RadarReportGenerationError(RuntimeError):
+    def __init__(self, message: str, attempt_logs=None):
+        super().__init__(message)
+        self.attempt_logs = attempt_logs or []
 
 
 def _load_project_dotenv(dotenv_path: Path):
@@ -94,6 +101,25 @@ def _read_text(path: Path) -> str:
 
 def _write_text(path: Path, content: str):
     path.write_text(content, encoding="utf-8")
+
+
+def _append_jsonl(path: Path, payload):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def _runtime_log_path(command: str) -> Path:
+    return XINFO_RUNTIME_DIR / f"{_today_str()}_{command}.jsonl"
+
+
+def _truncate_text(text: Optional[str], limit: int = 1500) -> str:
+    if not text:
+        return ""
+    text = str(text)
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "...<truncated>"
 
 
 def _strip_frontmatter(text: str) -> str:
@@ -377,7 +403,15 @@ def _build_generation_prompt(md_path: Path, raw_markdown: str, style: Optional[s
     )
 
 
-def _call_messages_api(api_url: str, api_key: str, model: str, prompt: str, max_tokens: int):
+def _call_messages_api(
+    api_url: str,
+    api_key: str,
+    model: str,
+    prompt: str,
+    max_tokens: int,
+    *,
+    return_debug: bool = False,
+):
     payload = {
         "model": model,
         "max_tokens": max_tokens,
@@ -433,11 +467,22 @@ def _call_messages_api(api_url: str, api_key: str, model: str, prompt: str, max_
         err = data.get("error", {}).get("message") or data.get("message") or raw[:300]
         raise RuntimeError(f"LLM API 返回异常: {err}")
 
+    content_items = data.get("content", [])
     parts = []
-    for item in data.get("content", []):
-        if item.get("type") == "text":
+    content_types = []
+    for item in content_items:
+        content_type = item.get("type")
+        if content_type:
+            content_types.append(content_type)
+        if content_type == "text":
             parts.append(item.get("text", ""))
     text = "\n".join(parts).strip()
+    if return_debug:
+        return {
+            "text": _strip_markdown_fences(text) if text else "",
+            "raw_response": raw,
+            "content_types": content_types,
+        }
     if not text:
         raise RuntimeError("LLM 返回为空")
     return _strip_markdown_fences(text)
@@ -500,29 +545,97 @@ def _normalize_radar_report_payload(raw_text: str):
     }
 
 
+def _looks_like_markdown_report(text: str) -> bool:
+    sample = (text or "").strip()
+    if not sample:
+        return False
+    markers = [
+        "📅 ",
+        "📊 ",
+        "## ",
+        "### ",
+        "原文↗",
+        "值得试用的新工具/产品",
+        "本周热点话题 Top5",
+    ]
+    return any(marker in sample for marker in markers)
+
+
 def _generate_radar_report(prompt: str, llm_cfg: dict, max_tokens: int):
     attempts = [
-        prompt,
-        prompt
-        + "\n\n补充要求：如果上一次没有严格按 JSON 返回，这一次请只返回 JSON 对象，并确保 `markdown` 字段非空。",
+        {
+            "label": "json",
+            "prompt": prompt,
+            "mode": "json",
+        },
+        {
+            "label": "strict_json",
+            "prompt": prompt
+            + "\n\n补充要求：如果上一次没有严格按 JSON 返回，这一次请只返回 JSON 对象，并确保 `markdown` 字段非空。",
+            "mode": "json",
+        },
+        {
+            "label": "markdown_fallback",
+            "prompt": prompt
+            + "\n\n最终兜底要求：如果你无法稳定返回 JSON，请直接只返回完整 Markdown 正文，不要 JSON，不要解释，不要代码围栏。",
+            "mode": "markdown",
+        },
     ]
     last_error = None
-    for candidate_prompt in attempts:
+    attempt_logs = []
+    for attempt in attempts:
         try:
-            raw = _call_messages_api(
+            response = _call_messages_api(
                 llm_cfg["api_url"],
                 llm_cfg["api_key"],
                 llm_cfg["model"],
-                candidate_prompt,
+                attempt["prompt"],
                 max_tokens,
+                return_debug=True,
             )
-            payload = _normalize_radar_report_payload(raw)
+            raw_text = response["text"]
+            if attempt["mode"] == "markdown":
+                payload = {
+                    "markdown": raw_text.strip() if _looks_like_markdown_report(raw_text) else "",
+                    "actions": [],
+                }
+            else:
+                payload = _normalize_radar_report_payload(raw_text)
+                if not payload.get("markdown") and _looks_like_markdown_report(raw_text):
+                    payload["markdown"] = raw_text.strip()
             if payload.get("markdown"):
-                return payload
+                attempt_logs.append(
+                    {
+                        "label": attempt["label"],
+                        "ok": True,
+                        "content_types": response.get("content_types", []),
+                        "markdown_len": len(payload.get("markdown", "")),
+                        "raw_preview": _truncate_text(response.get("raw_response")),
+                    }
+                )
+                return payload, attempt_logs
             last_error = RuntimeError("LLM 未返回 markdown")
+            attempt_logs.append(
+                {
+                    "label": attempt["label"],
+                    "ok": False,
+                    "error": str(last_error),
+                    "content_types": response.get("content_types", []),
+                    "raw_preview": _truncate_text(response.get("raw_response")),
+                }
+            )
         except Exception as exc:
             last_error = exc
-    raise last_error or RuntimeError("LLM 返回异常")
+            attempt_logs.append(
+                {
+                    "label": attempt["label"],
+                    "ok": False,
+                    "error": str(exc),
+                }
+            )
+    if isinstance(last_error, Exception):
+        raise RadarReportGenerationError(str(last_error), attempt_logs) from last_error
+    raise RadarReportGenerationError("LLM 返回异常", attempt_logs)
 
 
 def _read_json_file(path: Path, default=None):
@@ -558,6 +671,16 @@ def _default_actions_payload():
     return {
         "actions": [],
     }
+
+
+def _record_radar_runtime(command: str, payload: dict) -> str:
+    log_path = _runtime_log_path(command)
+    entry = {
+        "timestamp": _now_str(),
+        **payload,
+    }
+    _append_jsonl(log_path, entry)
+    return str(log_path)
 
 
 def _ensure_support_file(path: Path, default_payload):
@@ -1100,9 +1223,24 @@ def _cmd_radar_daily(args):
     interests_path = Path(args.interests_file).expanduser() if args.interests_file else XINFO_LOG_DIR / "interests.json"
     actions_path = Path(args.actions_file).expanduser() if args.actions_file else XINFO_LOG_DIR / "actions.json"
     output_path = Path(args.output).expanduser() if args.output else XINFO_DAY_DIR / f"{_today_str()}.md"
+    runtime_context = {
+        "command": "radar-daily",
+        "result_path": str(result_path),
+        "interests_path": str(interests_path),
+        "actions_path": str(actions_path),
+        "output_path": str(output_path),
+    }
 
     if not result_path.exists():
-        _print_json({"ok": False, "error": f"扫描结果不存在: {result_path}"})
+        log_path = _record_radar_runtime(
+            "radar-daily",
+            {
+                **runtime_context,
+                "ok": False,
+                "error": f"扫描结果不存在: {result_path}",
+            },
+        )
+        _print_json({"ok": False, "error": f"扫描结果不存在: {result_path}", "log_path": log_path})
         return 1
 
     created_support = []
@@ -1115,11 +1253,26 @@ def _cmd_radar_daily(args):
     interests_payload = _read_json_file(interests_path, default=_default_interests_payload())
 
     llm_cfg = _resolve_radar_llm_config(args)
+    runtime_context.update(
+        {
+            "llm_model": llm_cfg.get("model"),
+            "api_url": llm_cfg.get("api_url"),
+        }
+    )
     if not llm_cfg.get("api_key"):
+        log_path = _record_radar_runtime(
+            "radar-daily",
+            {
+                **runtime_context,
+                "ok": False,
+                "error": "未找到 Radar LLM API Key。请在项目 .env 或当前 shell 中设置 XPOST_LLM_API_KEY。",
+            },
+        )
         _print_json(
             {
                 "ok": False,
                 "error": "未找到 Radar LLM API Key。请在项目 .env 或当前 shell 中设置 XPOST_LLM_API_KEY。",
+                "log_path": log_path,
             }
         )
         return 1
@@ -1136,17 +1289,36 @@ def _cmd_radar_daily(args):
             ]
         )
         report_json = {"markdown": body, "actions": []}
+        attempt_logs = []
     else:
         try:
             prompt = _build_radar_daily_prompt(result_payload, interests_payload)
-            report_json = _generate_radar_report(prompt, llm_cfg, args.max_tokens)
+            report_json, attempt_logs = _generate_radar_report(prompt, llm_cfg, args.max_tokens)
         except Exception as exc:
-            _print_json({"ok": False, "error": f"Radar 日报生成失败: {exc}"})
+            log_path = _record_radar_runtime(
+                "radar-daily",
+                {
+                    **runtime_context,
+                    "ok": False,
+                    "error": f"Radar 日报生成失败: {exc}",
+                    "attempts": getattr(exc, "attempt_logs", []),
+                },
+            )
+            _print_json({"ok": False, "error": f"Radar 日报生成失败: {exc}", "log_path": log_path})
             return 1
 
     markdown_body = (report_json.get("markdown") or "").strip()
     if not markdown_body:
-        _print_json({"ok": False, "error": "Radar 日报生成失败：LLM 未返回 markdown"})
+        log_path = _record_radar_runtime(
+            "radar-daily",
+            {
+                **runtime_context,
+                "ok": False,
+                "error": "Radar 日报生成失败：LLM 未返回 markdown",
+                "attempts": attempt_logs,
+            },
+        )
+        _print_json({"ok": False, "error": "Radar 日报生成失败：LLM 未返回 markdown", "log_path": log_path})
         return 1
 
     added_actions = _append_actions(actions_path, report_json.get("actions", []))
@@ -1161,6 +1333,15 @@ def _cmd_radar_daily(args):
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(report_text, encoding="utf-8")
+    log_path = _record_radar_runtime(
+        "radar-daily",
+        {
+            **runtime_context,
+            "ok": True,
+            "actions_added": added_actions,
+            "attempts": attempt_logs,
+        },
+    )
 
     _print_json(
         {
@@ -1171,6 +1352,7 @@ def _cmd_radar_daily(args):
             "actions_added": added_actions,
             "llm_model": llm_cfg["model"],
             "created_support_files": created_support,
+            "log_path": log_path,
         }
     )
     return 0
@@ -1180,9 +1362,23 @@ def _cmd_radar_weekly(args):
     analysis_path = Path(args.analysis_file).expanduser() if args.analysis_file else XINFO_DAY_DIR / f"{_today_str()}_analysis.json"
     actions_path = Path(args.actions_file).expanduser() if args.actions_file else XINFO_LOG_DIR / "actions.json"
     output_path = Path(args.output).expanduser() if args.output else XINFO_WEEK_DIR / f"{_today_str()}.md"
+    runtime_context = {
+        "command": "radar-weekly",
+        "analysis_path": str(analysis_path),
+        "actions_path": str(actions_path),
+        "output_path": str(output_path),
+    }
 
     if not analysis_path.exists():
-        _print_json({"ok": False, "error": f"分析结果不存在: {analysis_path}"})
+        log_path = _record_radar_runtime(
+            "radar-weekly",
+            {
+                **runtime_context,
+                "ok": False,
+                "error": f"分析结果不存在: {analysis_path}",
+            },
+        )
+        _print_json({"ok": False, "error": f"分析结果不存在: {analysis_path}", "log_path": log_path})
         return 1
 
     created_support = []
@@ -1193,25 +1389,58 @@ def _cmd_radar_weekly(args):
     actions_payload = _read_json_file(actions_path, default=_default_actions_payload())
 
     llm_cfg = _resolve_radar_llm_config(args)
+    runtime_context.update(
+        {
+            "llm_model": llm_cfg.get("model"),
+            "api_url": llm_cfg.get("api_url"),
+        }
+    )
     if not llm_cfg.get("api_key"):
+        log_path = _record_radar_runtime(
+            "radar-weekly",
+            {
+                **runtime_context,
+                "ok": False,
+                "error": "未找到 Radar LLM API Key。请在项目 .env 或当前 shell 中设置 XPOST_LLM_API_KEY。",
+            },
+        )
         _print_json(
             {
                 "ok": False,
                 "error": "未找到 Radar LLM API Key。请在项目 .env 或当前 shell 中设置 XPOST_LLM_API_KEY。",
+                "log_path": log_path,
             }
         )
         return 1
 
     try:
         prompt = _build_radar_weekly_prompt(analysis_payload, actions_payload)
-        report_json = _generate_radar_report(prompt, llm_cfg, args.max_tokens)
+        report_json, attempt_logs = _generate_radar_report(prompt, llm_cfg, args.max_tokens)
     except Exception as exc:
-        _print_json({"ok": False, "error": f"Radar 周报生成失败: {exc}"})
+        log_path = _record_radar_runtime(
+            "radar-weekly",
+            {
+                **runtime_context,
+                "ok": False,
+                "error": f"Radar 周报生成失败: {exc}",
+                "attempts": getattr(exc, "attempt_logs", []),
+            },
+        )
+        _print_json({"ok": False, "error": f"Radar 周报生成失败: {exc}", "log_path": log_path})
         return 1
 
     markdown_body = (report_json.get("markdown") or "").strip()
     if not markdown_body:
-        _print_json({"ok": False, "error": "Radar 周报生成失败：LLM 未返回 markdown"})
+        log_path = _record_radar_runtime(
+            "radar-weekly",
+            {
+                **runtime_context,
+                "ok": False,
+                "error": "Radar 周报生成失败：LLM 未返回 markdown",
+                "attempts": attempt_logs,
+            },
+        )
+        _print_json({"ok": False, "error": "Radar 周报生成失败：LLM 未返回 markdown", "log_path": log_path})
         return 1
 
     added_actions = _append_actions(actions_path, report_json.get("actions", []))
@@ -1227,6 +1456,15 @@ def _cmd_radar_weekly(args):
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(report_text, encoding="utf-8")
+    log_path = _record_radar_runtime(
+        "radar-weekly",
+        {
+            **runtime_context,
+            "ok": True,
+            "actions_added": added_actions,
+            "attempts": attempt_logs,
+        },
+    )
 
     _print_json(
         {
@@ -1237,6 +1475,7 @@ def _cmd_radar_weekly(args):
             "actions_added": added_actions,
             "llm_model": llm_cfg["model"],
             "created_support_files": created_support,
+            "log_path": log_path,
         }
     )
     return 0

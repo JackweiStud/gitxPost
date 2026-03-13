@@ -93,6 +93,12 @@ python xpost.py radar-daily
 - 追加 `log/actions.json`
 - 默认使用 TokenMax Opus（`claude-opus-4-6`）
 
+补充说明：
+
+- `log/interests.json` 是雷达日报 / 周报筛选标准的核心文件
+- 如果这份文件还是默认空模板，日报虽然能生成，但筛选会不够个性化
+- 建议先同步或维护真实的兴趣画像，再运行日报 / 周报
+
 ### 2.2 生成周报
 
 ```bash
@@ -106,6 +112,12 @@ python xpost.py radar-weekly
 - 生成 `log/week/YYYY-MM-DD.md`
 - 可继续追加 `log/actions.json`
 - 默认使用 TokenMax Opus（`claude-opus-4-6`）
+
+运行日志：
+
+- `radar-daily` 每次运行会追加写入 `log/runtime/YYYY-MM-DD_radar-daily.jsonl`
+- `radar-weekly` 每次运行会追加写入 `log/runtime/YYYY-MM-DD_radar-weekly.jsonl`
+- 日志中包含输入文件、模型、尝试记录、错误信息和原始响应摘要，适合排查 “LLM 未返回 markdown” 这类问题
 
 ### 3. 管理监控账号
 

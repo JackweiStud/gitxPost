@@ -12,6 +12,76 @@
 
 日期：2026-03-13
 
+## 本次补充：修复 Radar 日报 / 周报 LLM 返回兜底并补运行日志
+
+范围：
+- `radar-daily` / `radar-weekly` 稳定性修复
+- 雷达运行日志落盘
+- README / xinfo README 补充说明
+
+### 1. 修复 Radar 报告生成对 LLM 返回格式过于脆弱的问题
+
+涉及文件：
+- `xpost.py`
+
+变更：
+- `radar-daily` / `radar-weekly` 的报告生成改为三层兜底：
+  - 正常 JSON 解析
+  - 强约束 JSON 重试
+  - 直接返回 Markdown 正文的最终兜底
+- 增加“看起来像日报 / 周报正文”的判定，避免把普通 JSON 字符串误当成 Markdown
+- 新增 `RadarReportGenerationError`，失败时保留尝试记录，便于排查
+
+效果：
+- 解决 `python xpost.py radar-daily` 偶发报错 `LLM 未返回 markdown` 的问题
+- 模型即使没有完全按 JSON 契约返回，也更容易被成功接住
+
+### 2. 新增 Radar 运行日志
+
+涉及文件：
+- `xpost.py`
+
+变更：
+- `radar-daily` 每次运行会写入 `xinfo/log/runtime/YYYY-MM-DD_radar-daily.jsonl`
+- `radar-weekly` 每次运行会写入 `xinfo/log/runtime/YYYY-MM-DD_radar-weekly.jsonl`
+- 日志内容包含：
+  - 输入文件路径
+  - 输出文件路径
+  - 模型名
+  - 尝试记录
+  - 错误信息
+  - 原始响应摘要
+
+效果：
+- 后续再出现 LLM 返回结构异常时，不需要靠现场复现
+- 可以直接从 runtime log 判断是模型没回、回空、还是返回结构变形
+
+### 3. 补充文档：`interests.json` 是筛选核心文件
+
+涉及文件：
+- `README.md`
+- `xinfo/README.md`
+
+变更：
+- 明确写入：`xinfo/log/interests.json` 是雷达日报 / 周报筛选标准的核心文件
+- 补充 runtime log 路径说明
+
+效果：
+- 新同事和自动化任务更容易理解为什么要先同步兴趣画像
+- 后续排查 Radar 问题时知道优先看哪里
+
+### 4. 实际验证
+
+执行：
+- `./.venv/bin/python -m py_compile xpost.py`
+- `./.venv/bin/python xpost.py radar-daily`
+
+结果：
+- `radar-daily` 成功生成：
+  - `xinfo/log/day/2026-03-13.md`
+- 并成功记录运行日志：
+  - `xinfo/log/runtime/2026-03-13_radar-daily.jsonl`
+
 ## 本次补充：移除 tokenmax.sh 回退，统一改为 `.env`
 
 范围：

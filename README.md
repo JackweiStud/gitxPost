@@ -225,11 +225,13 @@ xpost parse content/drafts/your_article.md
 
 内置 3 种写作风格：
 
-| 风格 | 文件 | 场景 |
-|------|------|------|
+
+| 风格     | 文件                               | 场景        |
+| ------ | -------------------------------- | --------- |
 | `zara` | `content/prompts/prompt_zara.md` | 经验分享、产品洞察 |
 | `tech` | `content/prompts/prompt_tech.md` | 技术教程、架构分析 |
-| `fun` | `content/prompts/prompt_fun.md` | 轻松科普、幽默表达 |
+| `fun`  | `content/prompts/prompt_fun.md`  | 轻松科普、幽默表达 |
+
 
 Prompt 使用说明见：
 
@@ -271,25 +273,25 @@ xpost generate content/drafts/your_article.md
 
 如果你更想手工写作，也可以改为让 Claude / OpenClaw / Codex 基于顶部 Prompt 生成完整正文，覆盖模板占位内容
 
-2. 在 Antigravity 中执行：
+1. 在 Antigravity 中执行：
 
 ```bash
 /auto-imgByMdCn.md content/drafts/your_article.md
 ```
 
-3. 回到本地校验：
+1. 回到本地校验：
 
 ```bash
 xpost validate content/drafts/your_article.md
 ```
 
-4. 先保存草稿：
+1. 先保存草稿：
 
 ```bash
 xpost publish content/drafts/your_article.md --no-wait
 ```
 
-5. 确认没问题后再正式发布：
+1. 确认没问题后再正式发布：
 
 ```bash
 xpost publish content/drafts/your_article.md --publish --no-wait
@@ -409,6 +411,14 @@ LLM 使用说明：
 - 默认模型优先：`claude-opus-4-6`
 - 如需覆盖，可传 `--model`
 - `radar-scan` / `radar-analyze` 本身不依赖 LLM
+- `xinfo/log/interests.json` 是雷达日报 / 周报筛选标准的核心文件，建议先同步为真实兴趣画像再运行
+
+运行日志说明：
+
+- `radar-daily` / `radar-weekly` 每次运行都会追加写入：
+  - `xinfo/log/runtime/YYYY-MM-DD_radar-daily.jsonl`
+  - `xinfo/log/runtime/YYYY-MM-DD_radar-weekly.jsonl`
+- 日志会记录输入文件、输出文件、模型、尝试次数、错误信息和原始响应摘要，便于排查 LLM 返回格式问题
 
 ## 目录结构
 
