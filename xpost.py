@@ -1410,7 +1410,7 @@ def main():
     p_radar_daily.add_argument("--output", help="Output markdown path (default: xinfo/log/day/YYYY-MM-DD.md)")
     p_radar_daily.add_argument("--model", help="LLM model override (default: claude-opus-4-6)")
     p_radar_daily.add_argument("--api-url", help="LLM messages API URL override")
-    p_radar_daily.add_argument("--max-tokens", type=int, default=3200, help="LLM max tokens for daily report")
+    p_radar_daily.add_argument("--max-tokens", type=int, default=9000, help="LLM max tokens for daily report")
     p_radar_daily.set_defaults(func=_cmd_radar_daily)
 
     p_radar_weekly = sub.add_parser("radar-weekly", help="Generate X radar weekly markdown report")
