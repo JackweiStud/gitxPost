@@ -104,6 +104,16 @@ xpost doctor
 
 ### 1. 创建文章骨架
 
+这里有一个非常重要的预期说明：
+
+- `xpost init` 只会生成 Markdown 骨架
+- 不会自动根据主题写出完整正文
+- `--style` 的作用是把对应 Prompt 写进文件顶部注释，方便后续交给 Claude / OpenClaw / Codex 继续生成成文
+
+也就是说，正确理解应该是：
+
+`topic + style -> 骨架 + Prompt -> 外部 LLM 生成完整正文 -> 自动配图 -> 发布`
+
 ```bash
 xpost init content/drafts/your_article.md --topic "你的主题" --style zara
 ```
@@ -112,15 +122,44 @@ xpost init content/drafts/your_article.md --topic "你的主题" --style zara
 
 - 会自动创建 `content/drafts/images/`
 - 会自动复制示例 `cover.png` 和 `demo1.png`
+- 会在 Markdown 顶部写入 HTML 注释形式的 Prompt 元数据
 
-### 2. 校验与解析 Markdown
+### 2. 用 Claude / OpenClaw / Codex 生成正文
+
+`xpost init` 之后，不要立刻发布。先打开生成的 Markdown，把占位正文替换成正式文章。
+
+推荐操作：
+
+1. 打开 `content/drafts/your_article.md`
+2. 查看顶部 HTML 注释中的 Prompt
+3. 把整份 Markdown 交给 Claude / OpenClaw / Codex
+4. 让它基于该 Prompt 直接输出完整 Markdown 文章，覆盖占位段落
+
+建议给同事或 Agent 的指令模板：
+
+```text
+请基于这份 Markdown 顶部的 Prompt，直接输出完整文章正文。
+要求：
+1. 保留 H1 标题
+2. 保留图片占位位置和图片路径
+3. 保留结尾链接结构
+4. 替换掉所有模板占位句子，不要输出解释
+```
+
+### 3. 校验与解析 Markdown
 
 ```bash
 xpost validate content/drafts/your_article.md
 xpost parse content/drafts/your_article.md
 ```
 
-### 3. 使用多风格 Prompt 写文
+说明：
+
+- `validate` 只校验 Markdown 结构是否符合发布要求
+- `parse` 只把 Markdown 解析成 JSON
+- 这两个命令都不会生成正文
+
+### 4. 使用多风格 Prompt 写文
 
 内置 3 种写作风格：
 
@@ -134,7 +173,7 @@ Prompt 使用说明见：
 
 - `content/prompt-guide.md`
 
-### 4. 用 Antigravity 自动配图
+### 5. 用 Antigravity 自动配图
 
 工作流文件：
 
@@ -152,7 +191,46 @@ Prompt 使用说明见：
 - 依赖 Antigravity 自身的 workflow 运行环境
 - 不属于本仓库内可完全独立自测的脚本能力
 
-### 5. 发布 Article
+### 6. 最小闭环：从主题到发布 Article
+
+如果同事想走“主题/风格 -> 成文 -> 配图 -> 发布”的最小闭环，推荐直接按下面顺序操作：
+
+```bash
+xpost init content/drafts/your_article.md --topic "OpenClaw acp避坑指南" --style zara
+```
+
+然后：
+
+1. 用 Claude / OpenClaw / Codex 基于顶部 Prompt 生成完整正文，覆盖模板占位内容
+2. 在 Antigravity 中执行：
+
+```bash
+/auto-imgByMdCn.md content/drafts/your_article.md
+```
+
+3. 回到本地校验：
+
+```bash
+xpost validate content/drafts/your_article.md
+```
+
+4. 先保存草稿：
+
+```bash
+xpost publish content/drafts/your_article.md --no-wait
+```
+
+5. 确认没问题后再正式发布：
+
+```bash
+xpost publish content/drafts/your_article.md --publish --no-wait
+```
+
+更详细的团队操作说明见：
+
+- `docs/article-minimal-loop-runbook-2026-03-13.md`
+
+### 7. 发布 Article
 
 保存草稿：
 
@@ -166,7 +244,7 @@ xpost publish content/examples/articleNew.md --no-wait
 xpost publish content/examples/articleNew.md --publish --no-wait
 ```
 
-### 6. 发布 Post
+### 8. 发布 Post
 
 纯文本：
 
@@ -180,7 +258,7 @@ xpost post "Hello world" --publish
 xpost post "This is an image post" --images /path/to/image.png --publish
 ```
 
-### 7. 用 Grok 搜集热点
+### 9. 用 Grok 搜集热点
 
 ```bash
 source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
@@ -307,6 +385,7 @@ gitxPost/
 - `docs/open-source-cleanup-checklist-2026-03-12.md`
 - `docs/skill-topology-2026-03-12.md`
 - `docs/usage-and-ignore-guide-2026-03-12.md`
+- `docs/article-minimal-loop-runbook-2026-03-13.md`
 - `docs/progress-summary-2026-03-12.md`
 
 ## Changelog 规则

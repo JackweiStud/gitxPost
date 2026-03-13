@@ -449,3 +449,38 @@
 - 第一步：编辑页右上角 `Publish`
 - 第二步：`Publish Article` 确认层中的 `Publish`
 - 已在 `Published` 列表中回查到标题 `macOS 效率革命：我如何利用 AI 构建专属的语音输入法`
+
+## 本次补充：澄清 Article 生成闭环预期
+
+范围：
+- README 与团队使用文档
+- Article 最小闭环操作说明
+
+### 1. 澄清 `xpost init` 的真实职责
+
+涉及文件：
+- `README.md`
+- `docs/usage-and-ignore-guide-2026-03-12.md`
+
+变更：
+- 明确 `xpost init` 只生成 Markdown 骨架，不会直接写出完整正文
+- 明确 `--style` 的作用是写入 Prompt 元数据，供 Claude / OpenClaw / Codex 后续生成正式文章
+- 明确 `validate` 与 `parse` 只负责结构检查与解析，不负责写正文
+
+效果：
+- 减少同事把“骨架生成”误认为“成文生成”的预期偏差
+- 团队更容易理解最小闭环里外部 LLM 的必要位置
+
+### 2. 新增最小闭环 runbook
+
+涉及文件：
+- `docs/article-minimal-loop-runbook-2026-03-13.md`
+
+变更：
+- 新增一份团队操作说明
+- 用固定顺序说明：主题/风格 -> 骨架 -> 外部 LLM 生成正文 -> Antigravity 配图 -> 校验 -> 草稿 -> 正式发布
+- 补充给 Claude / OpenClaw / Codex 的推荐指令模板
+
+效果：
+- 新同事可以直接按 runbook 走通文章生产最小闭环
+- 项目边界和协作方式更清楚

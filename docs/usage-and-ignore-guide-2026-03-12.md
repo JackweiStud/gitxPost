@@ -73,12 +73,33 @@ python /Users/jackwl/Code/gitcode/gitxPost/grok_hot_posts.py --topics "OpenClaw 
 xpost init content/drafts/your_article.md --topic "你的主题" --style tech
 ```
 
+重要说明：
+
+- `xpost init` 只生成文章骨架，不会直接生成完整正文
+- `--style` 会把对应 Prompt 写进 Markdown 顶部注释
+- 真正的正文需要再交给 Claude / OpenClaw / Codex 等外部 LLM 生成，并覆盖模板占位内容
+
+推荐最小闭环：
+
+1. `xpost init ...`
+2. 打开生成的 Markdown，基于顶部 Prompt 让 LLM 输出完整文章
+3. 用 Antigravity 自动配图
+4. `xpost validate ...`
+5. `xpost publish ... --no-wait`
+6. 确认后再 `xpost publish ... --publish --no-wait`
+
 校验与解析：
 
 ```bash
 xpost validate content/drafts/your_article.md
 xpost parse content/drafts/your_article.md
 ```
+
+补充说明：
+
+- `validate` 只检查结构
+- `parse` 只输出结构化 JSON
+- 这两步不会帮你写正文
 
 Antigravity 自动配图：
 
@@ -89,6 +110,10 @@ Antigravity 自动配图：
 说明：
 - 自动配图依赖 Antigravity 外部运行环境
 - 仓库中保留的是 workflow 入口，不是独立可执行脚本
+
+团队协作时，建议直接参考：
+
+- `docs/article-minimal-loop-runbook-2026-03-13.md`
 
 ## 4. 当前目录职责
 
