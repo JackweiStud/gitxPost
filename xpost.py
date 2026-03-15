@@ -545,6 +545,15 @@ def _normalize_radar_report_payload(raw_text: str):
     }
 
 
+def _extract_markdown_from_text(raw_text: str) -> str:
+    text = (raw_text or "").strip()
+    if not text:
+        return ""
+    normalized = _normalize_radar_report_payload(text)
+    markdown = (normalized.get("markdown") or "").strip()
+    return markdown if _looks_like_markdown_report(markdown) else ""
+
+
 def _looks_like_markdown_report(text: str) -> bool:
     sample = (text or "").strip()
     if not sample:
@@ -724,6 +733,14 @@ def _wrap_report_markdown(body: str, metadata: dict):
 def _build_radar_daily_prompt(result_payload: dict, interests_payload: dict):
     summary = result_payload.get("summary", {})
     preview = summary.get("new_ideas_preview", [])
+    scan_meta = {
+        "scan_time": summary.get("scan_time"),
+        "account_stats": summary.get("account_stats", {}),
+        "new_tweets_count": summary.get("new_tweets_count"),
+        "new_originals_count": summary.get("new_originals_count"),
+        "sampled_preview_count": summary.get("sampled_preview_count", len(preview)),
+        "status": summary.get("status"),
+    }
     return "\n".join(
         [
             "你是一个严格基于真实 X 扫描结果生成中文日报的分析助手。",
@@ -740,22 +757,26 @@ def _build_radar_daily_prompt(result_payload: dict, interests_payload: dict):
             "",
             "日报要求：",
             "1. 顶部使用 `📅 YYYY年M月D日`。",
-            "2. 先输出 `🌐 今日热议话题`，归纳 3-5 个真实话题簇；每个话题只基于输入内容。",
-            "3. 再按需要输出这些中文分类：`🔧 值得试用的新工具/产品`、`🧠 有价值的行业洞察或趋势`、`💰 商业机会或变现思路`、`📌 可这周实践的具体行动`。",
-            "4. 每条内容格式固定为：",
-            "   • **名称/要点**：一句话说明。",
-            "     — @来源账号 · [原文↗](url)",
-            "5. 每类最多 8 条，总数不超过 20 条；没有合适内容就省略该类。",
+            "2. 日期下面必须先输出一行 `🔎 数据范围`，明确写出：扫描账号数、成功账号数、新推文数、原创数、预览采样数。",
+            "3. 先输出 `🌐 今日热议话题`，只保留 3-4 个真实话题簇；每条格式固定为：`• 话题名：一句话焦点。（N 条）`，不要输出“主要来源”或账号列表。",
+            "4. 必须完整阅读 `new_ideas_preview` 全部条目后再聚类，不要只取前几条，不要只围绕单一账号下结论。",
+            "5. 再按需要输出这些中文分类：`🔧 值得试用的新工具/产品`、`🧠 有价值的行业洞察或趋势`、`💰 商业机会或变现思路`、`📌 可这周实践的具体行动`、`✍️ 今日最值得写的选题`；各分类条数上限分别为：工具最多 8 条，洞察最多 5 条，商机最多 4 条，行动最多 3 条，选题最多 2 条；没有合适内容就省略该类。",
             "6. 严格依据兴趣画像 focus / recent_context 筛选；ignore 中相关内容一律跳过。",
             "7. `actions` 数组只保留来自 `📌 可这周实践的具体行动` 的条目。",
+            "8. 除 `🌐 今日热议话题` 外，其余分类中的每条内容格式固定为单行：`• 名称/要点：一句话说明。— @来源账号 · [原文↗](url)`，不要换行，不要加粗，不要在正文中裸露显示具体 URL 文本。",
+            "9. `✍️ 今日最值得写的选题` 需要输出 2-3 个适合转成 Article 或 Post 的具体题目，每条格式同样保持单行，明确写出建议角度。",
+            "10. 语言风格保持简洁、可信、可执行，避免空泛形容词和重复表述。",
             "",
             "兴趣画像 JSON：",
             json.dumps(interests_payload, ensure_ascii=False, indent=2),
             "",
+            "扫描范围元信息 JSON：",
+            json.dumps(scan_meta, ensure_ascii=False, indent=2),
+            "",
             "扫描结果 JSON：",
             json.dumps(
                 {
-                    "summary": summary,
+                    "new_ideas_preview": preview,
                     "successful_accounts": result_payload.get("successful_accounts"),
                     "failed_accounts": result_payload.get("failed_accounts"),
                     "new_items_count": result_payload.get("new_items_count"),
@@ -1308,6 +1329,9 @@ def _cmd_radar_daily(args):
             return 1
 
     markdown_body = (report_json.get("markdown") or "").strip()
+    extracted_markdown = _extract_markdown_from_text(markdown_body)
+    if extracted_markdown:
+        markdown_body = extracted_markdown
     if not markdown_body:
         log_path = _record_radar_runtime(
             "radar-daily",
@@ -1430,6 +1454,9 @@ def _cmd_radar_weekly(args):
         return 1
 
     markdown_body = (report_json.get("markdown") or "").strip()
+    extracted_markdown = _extract_markdown_from_text(markdown_body)
+    if extracted_markdown:
+        markdown_body = extracted_markdown
     if not markdown_body:
         log_path = _record_radar_runtime(
             "radar-weekly",

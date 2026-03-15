@@ -12,6 +12,34 @@
 
 日期：2026-03-13
 
+## 本次补充：补强 Radar 日报/周报落盘前的 Markdown 提纯
+
+范围：
+- `radar-daily` / `radar-weekly` 文件落盘稳定性
+
+### 1. 写文件前再次提取真正的 Markdown 正文
+
+涉及文件：
+- `xpost.py`
+
+变更：
+- 新增 `_extract_markdown_from_text()`
+- 在 `radar-daily` 和 `radar-weekly` 写文件前，对 `report_json["markdown"]` 再做一次提纯
+- 如果内容本身仍然是 `{"markdown":"..."}` 这类外层 JSON 包裹文本，会先抽取出真正的正文，再写入日报/周报文件
+
+效果：
+- 避免上游返回半残 JSON 或多包一层 JSON 时，把整段结构化文本直接写进 `.md` 产物
+- 一旦 LLM 请求成功，落盘结果更接近纯 Markdown 正文，而不是 JSON 壳
+
+### 2. 本次验证
+
+已验证：
+- `./.venv/bin/python -m py_compile xpost.py`
+
+当前边界：
+- 这次修复只增强“成功响应后的落盘提纯”
+- 若上游 LLM 仍处于 `service_busy` / cooldown，`radar-daily` 本身仍可能失败，需要等上游恢复后再看真实新产物
+
 ## 本次补充：修复 Radar 日报正文被 JSON 包裹写入的问题
 
 范围：
