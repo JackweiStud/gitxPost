@@ -512,7 +512,7 @@ def _normalize_radar_report_payload(raw_text: str):
         parsed = _parse_json_response(raw_text)
     except Exception:
         return {
-            "markdown": raw_text.strip(),
+            "markdown": raw_text.strip() if _looks_like_markdown_report(raw_text) else "",
             "actions": [],
         }
 

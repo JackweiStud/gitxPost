@@ -12,6 +12,32 @@
 
 日期：2026-03-13
 
+## 本次补充：修复 Radar 日报正文被 JSON 包裹写入的问题
+
+范围：
+- `radar-daily` / `radar-weekly` 正文提取修复
+
+### 1. 修复畸形 JSON 响应被误当作 Markdown 正文的问题
+
+涉及文件：
+- `xpost.py`
+
+变更：
+- 调整 `_normalize_radar_report_payload()`
+- 当 LLM 返回无法解析为合法 JSON 时，不再直接把整段原始文本当成 markdown
+- 只有当原始文本本身看起来像日报 / 周报正文时，才作为 markdown 接受
+
+效果：
+- 避免将 `{"markdown": "...", "actions": [...]}` 这类原始 JSON 文本直接写入 `xinfo/log/day/YYYY-MM-DD.md`
+- Radar 日报 / 周报输出更稳定，产物更符合“纯 Markdown 正文”预期
+
+### 2. 实际处理结论
+
+说明：
+- 这次在真实执行 `xpost.py radar-daily` 时，没有稳定复现此前的 `tokenmax.vip` SSL 错误
+- 但排查过程中确认了一处更隐蔽的问题：模型返回内容可用时，仍可能因解析边界导致日报文件被写成 JSON 包裹文本
+- 本次修复针对的正是这类“命令看似成功，但产物格式不对”的问题
+
 ## 本次补充：修复 Radar 日报 / 周报 LLM 返回兜底并补运行日志
 
 范围：
