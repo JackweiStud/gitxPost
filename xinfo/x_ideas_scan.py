@@ -32,7 +32,7 @@ TARGET_ACCOUNTS = [
     "op7418",            # 原有账号
     "dtnewsai",          # 原有账号
     #"joanrod_ai",# 原有账号  ← 移除 2026-03-11
-    "samruddhi_mokal",   # 原有账号
+    #"samruddhi_mokal",# 原有账号  ← 移除 2026-03-19
     #"stuffyokodraws",# 原有账号  ← 移除 2026-03-11
     # ── AI 领袖 / 研究员 ──────────────────────────────────────
     "AndrewYNg",         # Andrew Ng，Coursera 联合创始人，斯坦福教授，前百度/谷歌大脑负责人
@@ -45,17 +45,17 @@ TARGET_ACCOUNTS = [
     "jackclarkSF",       # Jack Clark，Anthropic 联合创始人，OECD AI 专家
     "ilyasut",           # Ilya Sutskever，SSI 创始人，前 OpenAI 首席科学家
     "miramurati",        # Mira Murati，前 OpenAI CTO
-    #"ylecun",           # Yann LeCun，暂时移除（nitter 持续无法抓取）
+    "ylecun",           # Yann LeCun，暂时移除（nitter 持续无法抓取）
     "karpathy",          # Andrej Karpathy，前 OpenAI/Tesla AI 负责人
     "gdb",               # Greg Brockman，OpenAI 总裁
-    #"demishassabis",# Demis Hassabis，Google DeepMind CEO  ← 移除 2026-03-11
+    "demishassabis",# Demis Hassabis，Google DeepMind CEO
     # ── 科技名人 / 投资人 ─────────────────────────────────────
     "lexfridman",        # Lex Fridman，知名播客主持人，MIT AI 研究员
     "pmarca",            # Marc Andreessen，a16z 联合创始人，著名风险投资人
     "paulg",             # Paul Graham，Y Combinator 联合创始人
     "naval",             # Naval，AngelList 创始人，关注 AI 与硅谷哲学
     "VitalikButerin",    # Vitalik Buterin，以太坊创始人，常发表 AI 安全/对齐深刻见解
-    #"jack",# Jack Dorsey，前 Twitter CEO，现专注于去中心化 AI 协议  ← 移除 2026-03-11
+    "jack",# Jack Dorsey，前 Twitter CEO，现专注于去中心化 AI 协议
     "BillGates",         # Bill Gates，比尔·盖茨，长期撰写 AI 产业转型观察
     "tim_cook",          # Tim Cook，Apple 首席执行官
     "NateSilver538",     # Nate Silver，数据分析大神，关注预测模型与 AI
@@ -105,6 +105,12 @@ TARGET_ACCOUNTS = [
     "OpenAI",  # @ilyasut、@sama 联合推荐的官方账号
     "AnthropicAI",  # @jackclarkSF 推荐的 AI 研究前沿
     "arcprize",  # @demishassabis、@xiao_ted 推荐的 AI 竞赛平台
+    "Saboo_Shubham_",  # AI Core & Research
+    "LiorOnAI",  # AI Core & Research
+    "gan_chuang",  # AI Core & Research
+    "mntruell",  # AI Core & Research
+    "claudeai",  # AI Core & Research
+    "_arohan_",  # AI Core & Research
 ]
 
 # nitter 实例列表（多实例 fallback）
@@ -132,7 +138,7 @@ MAX_RETRIES = 2          # 每个实例的重试次数
 SEEN_URLS_LIMIT = 5000   # seen.json 最大记录数（FIFO）
 KEEP_DAYS = 5            # ideas.md 保留天数
 INSTANCE_COOLDOWN = 90   # 实例失败后的冷却时间（秒），冷却后自动恢复
-MAX_PER_ACCOUNT = 3      # 每个账号最多保留的推文数
+MAX_PER_ACCOUNT = 5      # 每个账号最多保留的推文数
 
 # 并发配置
 CONCURRENT_PER_INSTANCE = 2   # 每个 Nitter 实例的最大并发请求数
