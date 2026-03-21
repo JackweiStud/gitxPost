@@ -15,6 +15,8 @@ xpost CLI：面向本地 Agent/自动化的 gitxPost 统一入口。
 - radar-daily: 基于扫描结果生成 Radar 日报
 - radar-weekly: 基于分析结果生成 Radar 周报
 - radar-accounts: 管理 X 雷达监控账号
+- reply: 回复指定推文（提取正文 / 逐字输入 / 发送）
+- reply-extract: 仅提取推文正文（不回复）
 - doctor: 环境与依赖检查
 
 所有子命令均输出 JSON，便于 Agent/LLM 解析。
@@ -1157,6 +1159,82 @@ def _cmd_post_login(args):
         return 1
 
 
+def _cmd_reply(args):
+    """回复指定推文"""
+    if args.profile_dir:
+        os.environ["XPOST_PROFILE_DIR"] = str(Path(args.profile_dir).expanduser().resolve())
+    if args.no_wait:
+        os.environ["XPOST_NO_WAIT"] = "1"
+    if args.remote_debugging_port:
+        os.environ["XPOST_REMOTE_DEBUGGING_PORT"] = str(args.remote_debugging_port)
+    if args.observe_ms is not None:
+        os.environ["XPOST_STEP_PAUSE_MS"] = str(args.observe_ms)
+
+    sys.path.insert(0, str(BASE_DIR))
+    try:
+        from auto_reply_post import auto_reply_post
+    except Exception as exc:
+        _print_json({"ok": False, "error": f"Reply 模块加载失败: {exc}"})
+        return 1
+
+    start_ts = time.time()
+    try:
+        success = auto_reply_post(
+            url=args.url,
+            text=args.text,
+            publish=args.publish,
+            step_pause_ms=args.observe_ms,
+        )
+        total_ms = int((time.time() - start_ts) * 1000)
+        _print_json(
+            {
+                "ok": success,
+                "mode": "publish" if args.publish else "draft",
+                "url": args.url,
+                "text_length": len(args.text),
+                "timings": {"total_ms": total_ms},
+            }
+        )
+        return 0 if success else 1
+    except Exception as exc:
+        _print_json({"ok": False, "error": f"回复失败: {exc}"})
+        return 1
+
+
+def _cmd_reply_extract(args):
+    """仅提取推文正文"""
+    if args.profile_dir:
+        os.environ["XPOST_PROFILE_DIR"] = str(Path(args.profile_dir).expanduser().resolve())
+    if args.remote_debugging_port:
+        os.environ["XPOST_REMOTE_DEBUGGING_PORT"] = str(args.remote_debugging_port)
+
+    sys.path.insert(0, str(BASE_DIR))
+    try:
+        from auto_reply_post import auto_extract_tweet
+    except Exception as exc:
+        _print_json({"ok": False, "error": f"Reply 模块加载失败: {exc}"})
+        return 1
+
+    start_ts = time.time()
+    try:
+        data = auto_extract_tweet(url=args.url)
+        total_ms = int((time.time() - start_ts) * 1000)
+        _print_json(
+            {
+                "ok": True,
+                "url": args.url,
+                "handle": data.get("handle", ""),
+                "text": data.get("text", ""),
+                "lang": data.get("lang", "unknown"),
+                "timings": {"total_ms": total_ms},
+            }
+        )
+        return 0
+    except Exception as exc:
+        _print_json({"ok": False, "error": f"提取失败: {exc}"})
+        return 1
+
+
 def _cmd_radar_scan(_args):
     script_path = XINFO_DIR / "x_ideas_scan.py"
     result_path = XINFO_DIR / "RESULT.json"
@@ -1660,6 +1738,22 @@ def main():
     p_post_login.add_argument("--login-timeout", type=int, default=600, help="Manual login timeout in seconds")
     p_post_login.add_argument("--remote-debugging-port", type=int, help="Chrome CDP port override")
     p_post_login.set_defaults(func=_cmd_post_login)
+
+    p_reply = sub.add_parser("reply", help="Reply to a tweet")
+    p_reply.add_argument("url", help="Tweet URL to reply to")
+    p_reply.add_argument("text", help="Reply text content (max 280 characters)")
+    p_reply.add_argument("--publish", action="store_true", help="Send reply (default: draft / fill only)")
+    p_reply.add_argument("--profile-dir", help="Chrome profile directory")
+    p_reply.add_argument("--no-wait", action="store_true", help="Do not wait after completion")
+    p_reply.add_argument("--remote-debugging-port", type=int, help="Chrome CDP port override")
+    p_reply.add_argument("--observe-ms", type=int, default=900, help="Pause after key steps so the UI is visible")
+    p_reply.set_defaults(func=_cmd_reply)
+
+    p_reply_extract = sub.add_parser("reply-extract", help="Extract tweet text without replying")
+    p_reply_extract.add_argument("url", help="Tweet URL to extract")
+    p_reply_extract.add_argument("--profile-dir", help="Chrome profile directory")
+    p_reply_extract.add_argument("--remote-debugging-port", type=int, help="Chrome CDP port override")
+    p_reply_extract.set_defaults(func=_cmd_reply_extract)
 
     p_radar_scan = sub.add_parser("radar-scan", help="Run X radar scan")
     p_radar_scan.set_defaults(func=_cmd_radar_scan)
