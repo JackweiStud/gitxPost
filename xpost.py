@@ -1379,6 +1379,15 @@ def _cmd_radar_daily(args):
     summary = result_payload.get("summary", {})
     status = summary.get("status")
     preview = summary.get("new_ideas_preview", [])
+    # 限制 preview 条数，避免 prompt 超出 LLM 输出 token 上限
+    max_preview = getattr(args, 'max_preview', 300)
+    if len(preview) > max_preview:
+        import random
+        preview_sampled = random.sample(preview, max_preview)
+        result_payload = dict(result_payload)
+        result_payload["summary"] = dict(summary)
+        result_payload["summary"]["new_ideas_preview"] = preview_sampled
+        result_payload["summary"]["sampled_preview_count"] = max_preview
     if status == "no_new" or not preview:
         body = "\n".join(
             [
@@ -1771,6 +1780,7 @@ def main():
     p_radar_daily.add_argument("--model", help="LLM model override (default: claude-opus-4-6)")
     p_radar_daily.add_argument("--api-url", help="LLM messages API URL override")
     p_radar_daily.add_argument("--max-tokens", type=int, default=9000, help="LLM max tokens for daily report")
+    p_radar_daily.add_argument("--max-preview", type=int, default=100, help="Max preview tweets to include in prompt (default: 100)")
     p_radar_daily.set_defaults(func=_cmd_radar_daily)
 
     p_radar_weekly = sub.add_parser("radar-weekly", help="Generate X radar weekly markdown report")
