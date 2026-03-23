@@ -142,17 +142,27 @@ def extract_tweet(page: Page, url: str, step_pause_ms: int = STEP_PAUSE_MS) -> d
     """打开推文页面并提取主帖正文"""
     clean_url = _clean_tweet_url(url)
     print(f"📄 打开推文: {clean_url}")
-    page.goto(clean_url, wait_until="domcontentloaded", timeout=30000)
-    page.wait_for_timeout(3000)
+    page.goto(clean_url, wait_until="domcontentloaded", timeout=60000)
+
+    # 等待页面核心内容加载（网络慢时 domcontentloaded 触发后 JS 渲染仍需时间）
+    print("   ⏳ 等待页面渲染...")
+    try:
+        page.wait_for_selector('article[data-testid="tweet"]', timeout=20000)
+        print("   ✅ 检测到推文元素")
+    except Exception:
+        print("   ⚠️  未检测到推文元素，继续尝试提取...")
+    page.wait_for_timeout(2000)
     _activate_chrome_window()
 
-    for attempt in range(2):
+    max_attempts = 4
+    for attempt in range(max_attempts):
         raw = page.evaluate(_EXTRACT_JS)
         data = json.loads(raw) if isinstance(raw, str) else raw
         if data.get("error") == "NO_ARTICLE":
-            if attempt == 0:
-                print("   ⏳ 页面未完全加载，等待 2 秒重试...")
-                page.wait_for_timeout(2000)
+            if attempt < max_attempts - 1:
+                wait_sec = 3 + attempt * 2
+                print(f"   ⏳ 页面未完全加载，等待 {wait_sec} 秒重试 ({attempt + 1}/{max_attempts})...")
+                page.wait_for_timeout(wait_sec * 1000)
                 continue
             _save_debug_artifacts(page)
             raise RuntimeError("无法提取推文正文：页面未找到 article 元素")
