@@ -1,10 +1,37 @@
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 
 export const useAppStore = defineStore('app', () => {
   const sidebarCollapsed = ref(false)
   const currentTask = ref(null)
   const notifications = ref([])
+  
+  // 批量回复队列
+  const replyQueue = ref([])  // [{url, title, author}, ...]
+  const replyQueueIndex = ref(0)  // 当前处理的索引
+  
+  const currentQueueItem = computed(() => replyQueue.value[replyQueueIndex.value] || null)
+  const queueTotal = computed(() => replyQueue.value.length)
+  const queueProgress = computed(() => replyQueueIndex.value + 1)
+  const hasMoreInQueue = computed(() => replyQueueIndex.value < replyQueue.value.length - 1)
+  
+  function setReplyQueue(items) {
+    replyQueue.value = items
+    replyQueueIndex.value = 0
+  }
+  
+  function nextInQueue() {
+    if (hasMoreInQueue.value) {
+      replyQueueIndex.value++
+      return currentQueueItem.value
+    }
+    return null
+  }
+  
+  function clearReplyQueue() {
+    replyQueue.value = []
+    replyQueueIndex.value = 0
+  }
   
   // 深色模式：默认跟随系统，或从 localStorage 读取
   const savedDarkMode = localStorage.getItem('darkMode')
@@ -61,5 +88,10 @@ export const useAppStore = defineStore('app', () => {
     currentTask.value = null
   }
 
-  return { sidebarCollapsed, currentTask, notifications, darkMode, toggleSidebar, toggleDarkMode, notify, dismissNotification, setTask, clearTask }
+  return { 
+    sidebarCollapsed, currentTask, notifications, darkMode, 
+    replyQueue, replyQueueIndex, currentQueueItem, queueTotal, queueProgress, hasMoreInQueue,
+    toggleSidebar, toggleDarkMode, notify, dismissNotification, setTask, clearTask,
+    setReplyQueue, nextInQueue, clearReplyQueue
+  }
 })

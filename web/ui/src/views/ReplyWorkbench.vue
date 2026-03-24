@@ -5,7 +5,24 @@
         <h1 class="page-title">回帖工作台</h1>
         <p class="page-subtitle">提取推文 → AI 生成回复 → 确认发送</p>
       </div>
+      <div class="batch-exit" v-if="isBatchMode">
+        <button class="btn btn-ghost btn-sm" @click="exitBatchMode">退出批量模式</button>
+      </div>
     </header>
+
+    <!-- 批量回复进度条 -->
+    <div class="batch-progress-bar" v-if="isBatchMode">
+      <div class="batch-info">
+        <span class="batch-label">批量回复</span>
+        <span class="batch-count">{{ appStore.queueProgress }} / {{ appStore.queueTotal }}</span>
+      </div>
+      <div class="batch-track">
+        <div class="batch-fill" :style="{ width: (appStore.queueProgress / appStore.queueTotal * 100) + '%' }"></div>
+      </div>
+      <div class="batch-current" v-if="appStore.currentQueueItem">
+        当前：@{{ appStore.currentQueueItem.author }} - {{ truncateText(appStore.currentQueueItem.title, 40) }}
+      </div>
+    </div>
 
     <!-- Step indicator -->
     <div class="steps-bar">
@@ -180,20 +197,45 @@
         </div>
         <div class="result-text">{{ sendResult.ok ? '回复发送成功' : '发送失败' }}</div>
         <div class="result-detail" v-if="!sendResult.ok">{{ sendResult.error || sendResult.stderr }}</div>
-        <button class="btn btn-ghost" @click="reset" style="margin-top: 12px;">处理下一条</button>
+        
+        <!-- 批量模式：显示进度和下一条按钮 -->
+        <div class="batch-next-section" v-if="isBatchMode && sendResult.ok">
+          <div class="batch-done-info">
+            已完成 {{ appStore.queueProgress }} / {{ appStore.queueTotal }}
+          </div>
+          <div v-if="batchWaiting" class="batch-waiting">
+            <div class="waiting-spinner"></div>
+            <span>安全延迟中，{{ batchDelay }}秒后处理下一条...</span>
+          </div>
+          <button v-else-if="appStore.hasMoreInQueue" class="btn btn-primary" @click="processNextInQueue" style="margin-top: 12px;">
+            处理下一条 ({{ appStore.queueProgress + 1 }}/{{ appStore.queueTotal }})
+          </button>
+          <div v-else class="batch-complete">
+            <div class="complete-icon">🎉</div>
+            <div class="complete-text">全部 {{ appStore.queueTotal }} 条回复已完成！</div>
+            <button class="btn btn-ghost" @click="exitBatchMode" style="margin-top: 12px;">返回日报</button>
+          </div>
+        </div>
+        
+        <!-- 非批量模式：普通重新开始 -->
+        <button v-if="!isBatchMode" class="btn btn-ghost" @click="reset" style="margin-top: 12px;">处理下一条</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import * as api from '../api/xpost.js'
 
 const route = useRoute()
+const router = useRouter()
 const appStore = useAppStore()
+
+// 批量模式
+const isBatchMode = computed(() => route.query.batch === 'true' && appStore.queueTotal > 0)
 
 const steps = [
   { id: 'url', label: '输入链接' },
@@ -342,12 +384,72 @@ function reset() {
   tweetUrl.value = ''
 }
 
+// 批量模式：随机延迟（1-3秒），避免反爬
+const batchDelay = ref(0)
+const batchWaiting = ref(false)
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+// 批量模式：处理下一条（带随机延迟）
+async function processNextInQueue() {
+  const next = appStore.nextInQueue()
+  if (next) {
+    // 随机延迟 1-3 秒
+    const delay = Math.floor(Math.random() * 2000) + 1000
+    batchDelay.value = Math.ceil(delay / 1000)
+    batchWaiting.value = true
+    
+    // 倒计时显示
+    const countdown = setInterval(() => {
+      batchDelay.value = Math.max(0, batchDelay.value - 1)
+    }, 1000)
+    
+    await sleep(delay)
+    clearInterval(countdown)
+    batchWaiting.value = false
+    
+    reset()
+    tweetUrl.value = next.url
+    extractTweet()
+  }
+}
+
+// 退出批量模式
+function exitBatchMode() {
+  appStore.clearReplyQueue()
+  router.push('/radar')
+}
+
+// 加载队列中的当前项
+function loadCurrentQueueItem() {
+  const item = appStore.currentQueueItem
+  if (item) {
+    reset()
+    tweetUrl.value = item.url
+    extractTweet()
+  }
+}
+
 onMounted(() => {
+  // 批量模式：从队列加载
+  if (route.query.batch === 'true' && appStore.queueTotal > 0) {
+    loadCurrentQueueItem()
+    return
+  }
+  
+  // 单条模式：从 URL 参数加载
   const urlParam = route.query.url
   if (urlParam) {
     tweetUrl.value = urlParam
     extractTweet()
   }
+})
+
+onUnmounted(() => {
+  // 如果离开页面且批量队列未完成，保留队列状态供用户返回
+  // 不自动清除
 })
 </script>
 
@@ -358,6 +460,9 @@ onMounted(() => {
 }
 .page-header {
   margin-bottom: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
 }
 .page-title {
   font-size: 24px;
@@ -368,6 +473,100 @@ onMounted(() => {
   color: var(--text-tertiary);
   font-size: 13px;
   margin-top: 4px;
+}
+
+/* 批量进度条 */
+.batch-progress-bar {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  margin-bottom: 20px;
+}
+.batch-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.batch-label {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+.batch-count {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--accent-blue);
+}
+.batch-track {
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.batch-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-blue), var(--accent-mint));
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.batch-current {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 批量完成状态 */
+.batch-next-section {
+  margin-top: 16px;
+  text-align: center;
+}
+.batch-done-info {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+.batch-complete {
+  padding: 20px;
+  text-align: center;
+}
+.complete-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+.complete-text {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent-green);
+}
+
+/* 批量等待状态 */
+.batch-waiting {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px;
+  margin-top: 12px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.waiting-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-default);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* Steps bar */

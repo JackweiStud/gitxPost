@@ -12,6 +12,36 @@
 
 日期：2026-03-24
 
+## 本次补充：批量回复功能完善（队列 + 进度显示）
+
+范围：
+- `web/ui/src/stores/app.js` — 批量队列状态管理
+- `web/ui/src/views/RadarDaily.vue` — 批量选择逻辑
+- `web/ui/src/views/ReplyWorkbench.vue` — 批量模式 UI
+
+### 问题修复
+
+原问题：选中多条推文后，只跳转到第一条，无法自动处理后续，用户也无法知道进度。
+
+### 实现方案
+
+1. **Store 队列管理**（`app.js`）：
+   - 新增 `replyQueue` 数组存储待处理推文 `[{url, title, author}, ...]`
+   - 新增 `replyQueueIndex` 追踪当前处理索引
+   - 提供 `setReplyQueue`、`nextInQueue`、`clearReplyQueue` 方法
+   - 提供 `queueProgress`（当前第几条）、`queueTotal`（总数）、`hasMoreInQueue` 计算属性
+
+2. **日报页**（`RadarDaily.vue`）：
+   - `sendSelectedToReply` 将所有选中推文存入队列，跳转到 `/reply?batch=true`
+
+3. **回帖工作台**（`ReplyWorkbench.vue`）：
+   - 顶部显示批量进度条：`1 / 10`，当前处理推文的作者和标题
+   - 完成一条后显示"处理下一条 (2/10)"按钮
+   - 最后一条完成后显示"🎉 全部 10 条回复已完成！"
+   - 提供"退出批量模式"按钮返回日报页
+
+---
+
 ## 本次补充：日报推文 URL 去重（源头 + 解析双重保障）
 
 范围：

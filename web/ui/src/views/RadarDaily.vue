@@ -274,15 +274,24 @@ function goReply(url) {
 
 function sendSelectedToReply() {
   if (!selectedTweets.value.length || !reportData.value?.tweets) return
-  // 根据索引获取第一条选中推文的 URL
-  const firstIdx = selectedTweets.value[0]
-  const firstTweet = reportData.value.tweets[firstIdx]
-  if (!firstTweet) return
-  // 如果选中多条，跳转到第一条并提示
-  if (selectedTweets.value.length > 1) {
-    appStore.notify(`已选中 ${selectedTweets.value.length} 条推文，将跳转到第一条。完成后可返回继续处理其他推文。`, 'info', 6000)
-  }
-  router.push({ path: '/reply', query: { url: firstTweet.url } })
+  
+  // 根据索引获取所有选中推文的信息
+  const queueItems = selectedTweets.value
+    .map(idx => reportData.value.tweets[idx])
+    .filter(Boolean)
+    .map(tweet => ({
+      url: tweet.url,
+      title: tweet.title,
+      author: tweet.author
+    }))
+  
+  if (!queueItems.length) return
+  
+  // 存入批量回复队列
+  appStore.setReplyQueue(queueItems)
+  
+  // 跳转到回帖工作台
+  router.push({ path: '/reply', query: { batch: 'true' } })
 }
 
 async function loadReports() {
