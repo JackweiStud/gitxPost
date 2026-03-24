@@ -19,6 +19,7 @@ export const getReport = (date) => api.get(`/radar/report/${date}`)
 export const getScanResult = (limit = 50, offset = 0) =>
   api.get('/radar/result', { params: { limit, offset } })
 export const getInterests = () => api.get('/radar/interests')
+export const updateInterests = (data) => api.put('/radar/interests', data)
 
 /** @param {import('axios').AxiosRequestConfig} [config] 可传 { signal } 用于中止请求 */
 export const runScan = (config = {}) => api.post('/radar/scan', null, config)

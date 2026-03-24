@@ -429,6 +429,45 @@ async def get_interests():
     return {"ok": True, **data}
 
 
+class UpdateInterestsRequest(BaseModel):
+    focus: list[str] = []
+    recent_context: list[str] = []
+    ignore: list[str] = []
+    preferred_formats: list[str] = []
+
+
+@app.put("/api/radar/interests")
+async def update_interests(req: UpdateInterestsRequest):
+    """更新兴趣画像"""
+    # 读取现有数据保留 _comment 等元字段
+    existing = _read_json(INTERESTS_JSON, {})
+    
+    # 更新四个核心字段
+    existing["focus"] = [s.strip() for s in req.focus if s.strip()]
+    existing["recent_context"] = [s.strip() for s in req.recent_context if s.strip()]
+    existing["ignore"] = [s.strip() for s in req.ignore if s.strip()]
+    existing["preferred_formats"] = [s.strip() for s in req.preferred_formats if s.strip()]
+    existing["_updated"] = datetime.now().strftime("%Y-%m-%d")
+    
+    # 写回文件
+    INTERESTS_JSON.parent.mkdir(parents=True, exist_ok=True)
+    INTERESTS_JSON.write_text(
+        json.dumps(existing, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
+    
+    return {
+        "ok": True,
+        "updated_at": existing["_updated"],
+        "counts": {
+            "focus": len(existing["focus"]),
+            "recent_context": len(existing["recent_context"]),
+            "ignore": len(existing["ignore"]),
+            "preferred_formats": len(existing["preferred_formats"]),
+        }
+    }
+
+
 # ---------------------------------------------------------------------------
 # Routes: Reply
 # ---------------------------------------------------------------------------
