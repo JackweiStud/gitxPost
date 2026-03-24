@@ -6,6 +6,18 @@
         <p class="page-subtitle">gitxPost 工作台</p>
       </div>
       <div class="header-actions">
+        <p v-if="pipelineRunning" class="pipeline-hint">
+          全流程约 5–20 分钟（视网络与账号量）。重复点击不会并行执行；可随时点「停止」。
+        </p>
+        <button
+          v-if="pipelineRunning"
+          type="button"
+          class="btn btn-danger btn-lg"
+          @click="stopPipeline"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+          停止
+        </button>
         <button class="btn btn-primary btn-lg" @click="runFullPipeline" :disabled="pipelineRunning">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           {{ pipelineRunning ? '执行中...' : '一键跑日报' }}
@@ -57,8 +69,31 @@
     <div class="card pipeline-card" v-if="pipelineRunning || pipelineResult">
       <div class="card-header">
         <h3>流水线执行</h3>
-        <span class="badge" :class="pipelineRunning ? 'badge-amber' : (pipelineResult?.ok ? 'badge-green' : 'badge-red')">
-          {{ pipelineRunning ? '执行中' : (pipelineResult?.ok ? '完成' : '失败') }}
+        <span
+          class="badge"
+          :class="
+            pipelineRunning
+              ? userStoppedPipeline
+                ? 'badge-purple'
+                : 'badge-amber'
+              : pipelineResult?.cancelled
+                ? 'badge-purple'
+                : pipelineResult?.ok
+                  ? 'badge-green'
+                  : 'badge-red'
+          "
+        >
+          {{
+            pipelineRunning
+              ? userStoppedPipeline
+                ? '正在停止'
+                : '执行中'
+              : pipelineResult?.cancelled
+                ? '已停止'
+                : pipelineResult?.ok
+                  ? '完成'
+                  : '失败'
+          }}
         </span>
       </div>
       <div class="pipeline-steps">
@@ -160,6 +195,8 @@ const status = ref(null)
 const reports = ref([])
 const pipelineRunning = ref(false)
 const pipelineResult = ref(null)
+const pipelineAbort = ref(null)
+const userStoppedPipeline = ref(false)
 
 const pipelineSteps = ref([
   { id: 'scan', label: '雷达扫描', desc: '抓取 230+ 账号最新推文', status: 'pending' },
@@ -177,38 +214,82 @@ async function loadData() {
   }
 }
 
+function isAbortError(e) {
+  const c = e?.code
+  const n = e?.name
+  const m = (e?.message || '').toLowerCase()
+  return c === 'ERR_CANCELED' || n === 'CanceledError' || m.includes('canceled') || m.includes('cancelled')
+}
+
+async function stopPipeline() {
+  userStoppedPipeline.value = true
+  try {
+    await api.cancelRadar()
+  } catch (e) {
+    appStore.notify('停止接口调用失败: ' + e.message, 'error')
+  }
+  pipelineAbort.value?.abort()
+  appStore.notify('已请求终止后台任务（子进程被杀死后当前步骤会结束）', 'info', 6000)
+}
+
 async function runFullPipeline() {
+  if (pipelineRunning.value) return
+  userStoppedPipeline.value = false
   pipelineRunning.value = true
   pipelineResult.value = null
+  pipelineAbort.value = new AbortController()
+  const sig = { signal: pipelineAbort.value.signal }
   pipelineSteps.value.forEach((s) => (s.status = 'pending'))
 
-  const stepKeys = ['scan', 'analyze', 'daily']
-  const stepFns = [api.runScan, () => api.runAnalyze(7), api.runDaily]
+  const stepFns = [() => api.runScan(sig), () => api.runAnalyze(7, sig), () => api.runDaily(sig)]
 
-  for (let i = 0; i < stepKeys.length; i++) {
-    pipelineSteps.value[i].status = 'running'
-    try {
-      const result = await stepFns[i]()
-      pipelineSteps.value[i].status = result.ok !== false ? 'done' : 'error'
-      if (result.ok === false) {
-        pipelineResult.value = { ok: false }
-        appStore.notify(`步骤「${pipelineSteps.value[i].label}」失败`, 'error')
+  try {
+    for (let i = 0; i < stepFns.length; i++) {
+      if (userStoppedPipeline.value) {
+        pipelineSteps.value[i].status = 'pending'
         break
       }
-    } catch (e) {
-      pipelineSteps.value[i].status = 'error'
-      pipelineResult.value = { ok: false }
-      appStore.notify(`步骤「${pipelineSteps.value[i].label}」出错: ${e.message}`, 'error')
-      break
+      pipelineSteps.value[i].status = 'running'
+      try {
+        const result = await stepFns[i]()
+        if (userStoppedPipeline.value) {
+          pipelineSteps.value[i].status = 'error'
+          pipelineResult.value = { ok: false, cancelled: true }
+          appStore.notify('流水线已中止', 'info')
+          break
+        }
+        pipelineSteps.value[i].status = result.ok !== false ? 'done' : 'error'
+        if (result.ok === false) {
+          pipelineResult.value = { ok: false }
+          appStore.notify(`步骤「${pipelineSteps.value[i].label}」失败`, 'error')
+          break
+        }
+      } catch (e) {
+        if (isAbortError(e) || userStoppedPipeline.value) {
+          pipelineSteps.value[i].status = 'error'
+          pipelineResult.value = { ok: false, cancelled: true }
+          appStore.notify('流水线已中止', 'info')
+          break
+        }
+        pipelineSteps.value[i].status = 'error'
+        pipelineResult.value = { ok: false }
+        appStore.notify(`步骤「${pipelineSteps.value[i].label}」出错: ${e.message}`, 'error')
+        break
+      }
     }
-  }
 
-  if (!pipelineResult.value) {
-    pipelineResult.value = { ok: true }
-    appStore.notify('日报流水线执行完成', 'success')
+    if (!pipelineResult.value && !userStoppedPipeline.value) {
+      pipelineResult.value = { ok: true }
+      appStore.notify('日报流水线执行完成', 'success')
+    }
+    if (!pipelineResult.value && userStoppedPipeline.value) {
+      pipelineResult.value = { ok: false, cancelled: true }
+    }
+  } finally {
+    pipelineRunning.value = false
+    pipelineAbort.value = null
+    loadData()
   }
-  pipelineRunning.value = false
-  loadData()
 }
 
 async function runScanOnly() {
@@ -236,6 +317,24 @@ onMounted(loadData)
   align-items: flex-start;
   justify-content: space-between;
   margin-bottom: 28px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-end;
+  max-width: min(100%, 420px);
+}
+.pipeline-hint {
+  flex: 1 1 100%;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin: 0;
+  text-align: right;
 }
 .page-title {
   font-size: 24px;

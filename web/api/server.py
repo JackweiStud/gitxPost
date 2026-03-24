@@ -42,6 +42,11 @@ app.add_middleware(
 
 _running_tasks: dict[str, dict] = {}
 
+# 同一时间只跑一个 xpost 子进程（本地工具：避免多任务抢 Chrome / 状态混乱）
+_xpost_run_lock = asyncio.Lock()
+_active_xpost_proc: Optional[asyncio.subprocess.Process] = None
+_xpost_proc_lock = asyncio.Lock()
+
 
 def _python_bin() -> str:
     if VENV_PYTHON.exists():
@@ -70,34 +75,64 @@ def _extract_last_json(text: str):
 
 
 async def _run_xpost(*args: str, timeout: int = 600) -> dict:
-    cmd = [_python_bin(), str(XPOST_PY), *args]
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-        cwd=str(BASE_DIR),
-    )
+    global _active_xpost_proc
+    async with _xpost_run_lock:
+        cmd = [_python_bin(), str(XPOST_PY), *args]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(BASE_DIR),
+        )
+        async with _xpost_proc_lock:
+            _active_xpost_proc = proc
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except asyncio.TimeoutError:
+            proc.kill()
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=15)
+            except asyncio.TimeoutError:
+                pass
+            raise HTTPException(504, detail="命令执行超时")
+        finally:
+            async with _xpost_proc_lock:
+                if _active_xpost_proc is proc:
+                    _active_xpost_proc = None
+
+        out = stdout.decode("utf-8", errors="replace").strip()
+        err = stderr.decode("utf-8", errors="replace").strip()
+
+        # xpost CLI 的 stdout 可能混合进度日志和 JSON 输出，
+        # 尝试直接解析，失败则从末尾向前查找最后一个 JSON 对象
+        try:
+            return json.loads(out)
+        except Exception:
+            pass
+
+        last_json = _extract_last_json(out)
+        if last_json is not None:
+            return last_json
+
+        return {"ok": False, "stdout": out, "stderr": err, "returncode": proc.returncode}
+
+
+async def _kill_active_xpost() -> dict:
+    """终止当前由 _run_xpost 启动的子进程（用于用户中断「一键日报」等长任务）。"""
+    async with _xpost_proc_lock:
+        proc = _active_xpost_proc
+    if proc is None:
+        return {"ok": True, "cancelled": False, "message": "当前没有正在执行的 xpost 任务"}
+    if proc.returncode is not None:
+        return {"ok": True, "cancelled": False, "message": "任务已结束"}
     try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
         proc.kill()
-        raise HTTPException(504, detail="命令执行超时")
-
-    out = stdout.decode("utf-8", errors="replace").strip()
-    err = stderr.decode("utf-8", errors="replace").strip()
-
-    # xpost CLI 的 stdout 可能混合进度日志和 JSON 输出，
-    # 尝试直接解析，失败则从末尾向前查找最后一个 JSON 对象
-    try:
-        return json.loads(out)
-    except Exception:
+        await asyncio.wait_for(proc.wait(), timeout=15)
+    except (ProcessLookupError, OSError):
         pass
-
-    last_json = _extract_last_json(out)
-    if last_json is not None:
-        return last_json
-
-    return {"ok": False, "stdout": out, "stderr": err, "returncode": proc.returncode}
+    except asyncio.TimeoutError:
+        pass
+    return {"ok": True, "cancelled": True, "message": "已发送终止信号"}
 
 
 def _read_json(path: Path, default=None):
@@ -248,6 +283,12 @@ async def get_status():
 # ---------------------------------------------------------------------------
 # Routes: Radar
 # ---------------------------------------------------------------------------
+
+@app.post("/api/radar/cancel")
+async def radar_cancel():
+    """中断当前正在执行的 xpost 子进程（一键日报 / 扫描 / 分析 / 日报生成 / 回帖等）。"""
+    return await _kill_active_xpost()
+
 
 @app.post("/api/radar/scan")
 async def radar_scan():

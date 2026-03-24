@@ -20,9 +20,12 @@ export const getScanResult = (limit = 50, offset = 0) =>
   api.get('/radar/result', { params: { limit, offset } })
 export const getInterests = () => api.get('/radar/interests')
 
-export const runScan = () => api.post('/radar/scan')
-export const runAnalyze = (days = 7) => api.post('/radar/analyze', null, { params: { days } })
-export const runDaily = () => api.post('/radar/daily')
+/** @param {import('axios').AxiosRequestConfig} [config] 可传 { signal } 用于中止请求 */
+export const runScan = (config = {}) => api.post('/radar/scan', null, config)
+export const runAnalyze = (days = 7, config = {}) =>
+  api.post('/radar/analyze', null, { params: { days }, ...config })
+export const runDaily = (config = {}) => api.post('/radar/daily', null, config)
+export const cancelRadar = () => api.post('/radar/cancel')
 
 export const extractTweet = (url) => api.post('/reply/extract', { url })
 export const generateReplies = (tweet_text, handle) =>

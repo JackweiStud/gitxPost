@@ -105,7 +105,9 @@
                 {{ reportData.frontmatter.llm_model || '' }} · {{ reportData.frontmatter.generated_at || '' }}
               </span>
             </div>
-            <div class="markdown-body" v-html="renderedMarkdown"></div>
+            <div class="report-prose">
+              <div class="markdown-body" v-html="renderedMarkdown"></div>
+            </div>
           </div>
         </template>
       </div>
@@ -117,6 +119,8 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { marked } from 'marked'
+
+marked.use({ gfm: true, breaks: true })
 import { useAppStore } from '../stores/app.js'
 import * as api from '../api/xpost.js'
 
@@ -131,9 +135,55 @@ const loading = ref(false)
 const generating = ref(false)
 const selectedTweets = ref([])
 
+/**
+ * 日报 Markdown 预处理：
+ *  1. 把「• / ·」开头的行转为「- 」列表项 → marked 生成 <li>，获得悬挂缩进
+ *  2. 把 emoji 开头（非 bullet）的分区标题行转为「## 」二级标题
+ *  3. 把紧跟在列表项后的「续行」（如独占一行的 [原文↗](url)）
+ *     直接拼接到上一条列表项末尾，避免 breaks:true 产生 <br> 断行
+ */
+function preprocessMarkdown(raw) {
+  if (!raw) return ''
+  const EMOJI_TITLE_RE = /^(\p{Emoji_Presentation}|\p{Extended_Pictographic})\s+\S/u
+  const BULLET_RE = /^[•·]\s*/
+  // 判断某行是否是"列表项的续行"：非空、非 bullet、非 emoji 标题、非空行
+  const isContinuation = (t) =>
+    t !== '' && !BULLET_RE.test(t) && !EMOJI_TITLE_RE.test(t) && !t.startsWith('#')
+
+  const lines = raw.split('\n')
+  const out = []
+  let prevWasBullet = false
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+
+    if (BULLET_RE.test(trimmed)) {
+      if (!prevWasBullet && out.length && out[out.length - 1].trim() !== '') out.push('')
+      out.push('- ' + trimmed.replace(BULLET_RE, ''))
+      prevWasBullet = true
+    } else if (EMOJI_TITLE_RE.test(trimmed)) {
+      if (prevWasBullet) out.push('')
+      if (out.length && out[out.length - 1].trim() !== '') out.push('')
+      out.push('## ' + trimmed)
+      out.push('')
+      prevWasBullet = false
+    } else if (prevWasBullet && isContinuation(trimmed)) {
+      // 续行：追加到上一条 list item 末尾（保持在同一行内），不换行
+      const last = out[out.length - 1]
+      out[out.length - 1] = last + ' ' + trimmed
+      // prevWasBullet 保持 true，下一续行继续合并
+    } else {
+      if (prevWasBullet && trimmed !== '') out.push('')
+      out.push(line)
+      prevWasBullet = false
+    }
+  }
+  return out.join('\n')
+}
+
 const renderedMarkdown = computed(() => {
   if (!reportData.value?.markdown) return ''
-  return marked.parse(reportData.value.markdown)
+  return marked.parse(preprocessMarkdown(reportData.value.markdown))
 })
 
 function formatDate(dateStr) {
@@ -474,10 +524,114 @@ onMounted(async () => {
 
 .report-content {
   margin-bottom: 40px;
+  padding: 24px 28px;
 }
+.report-prose {
+  margin-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 20px;
+}
+
+/* 报告正文容器：限制阅读宽度 + 居中 */
+.report-prose .markdown-body {
+  max-width: 680px;
+  margin-inline: auto;
+  font-size: 14.5px;
+  line-height: 1.8;
+  color: var(--text-primary);
+}
+
+/* ———— 正文 p（含日期 / 统计行） ———— */
+.report-prose .markdown-body :deep(p) {
+  margin: 0.55em 0;
+  color: var(--text-secondary);
+  font-size: 13.5px;
+}
+
+/* ———— 分区二级标题（## emoji 文字） ———— */
+.report-prose .markdown-body :deep(h2) {
+  margin-top: 2em;
+  margin-bottom: 0.6em;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.015em;
+  padding-bottom: 8px;
+  border-bottom: 2px solid var(--accent-blue);
+  display: inline-block;
+}
+.report-prose .markdown-body :deep(h1),
+.report-prose .markdown-body :deep(h3) {
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* ———— 列表：悬挂缩进（padding+text-indent，不用 grid，避免 <a> 被当成独立 grid item） ———— */
+.report-prose .markdown-body :deep(ul) {
+  list-style: none;
+  padding: 0;
+  margin: 0.4em 0 1.2em;
+}
+.report-prose .markdown-body :deep(li) {
+  padding: 8px 0 8px 1.2em;
+  text-indent: -1.2em;
+  border-bottom: 1px dashed var(--border-subtle);
+  line-height: 1.7;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.report-prose .markdown-body :deep(li:last-child) {
+  border-bottom: none;
+}
+.report-prose .markdown-body :deep(li)::before {
+  content: '·';
+  color: var(--accent-blue);
+  font-size: 20px;
+  font-weight: 700;
+  margin-right: 0.35em;
+  vertical-align: middle;
+}
+.report-prose .markdown-body :deep(li > *) {
+  text-indent: 0;
+}
+.report-prose .markdown-body :deep(li > p) {
+  display: inline;
+  margin: 0;
+}
+
+/* ———— 链接：原文↗ 内联跟随文字 ———— */
+.report-prose .markdown-body :deep(a) {
+  display: inline;
+  color: var(--accent-blue);
+  font-weight: 500;
+  font-size: 0.88em;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(26, 115, 232, 0.35);
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+.report-prose .markdown-body :deep(a:hover) {
+  border-bottom-color: var(--accent-blue);
+  text-decoration: none;
+}
+
+/* ———— hr 分隔线 ———— */
+.report-prose .markdown-body :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  margin: 1.5em 0;
+}
+
 .report-meta {
   font-size: 11px;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

@@ -3,8 +3,11 @@
     <aside class="sidebar" :class="{ collapsed: appStore.sidebarCollapsed }">
       <div class="sidebar-header">
         <div class="logo" v-if="!appStore.sidebarCollapsed">
-          <span class="logo-icon">X</span>
+          <span class="logo-icon">g</span>
           <span class="logo-text">gitxPost</span>
+        </div>
+        <div class="logo-collapsed" v-else aria-hidden="true">
+          <span class="logo-icon logo-icon-sm">g</span>
         </div>
         <button class="sidebar-toggle" @click="appStore.toggleSidebar">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -113,6 +116,12 @@ const navItems = [
   justify-content: space-between;
   padding: 0 12px 0 16px;
   border-bottom: 1px solid var(--border-subtle);
+  gap: 8px;
+}
+.logo-collapsed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .logo {
@@ -121,16 +130,23 @@ const navItems = [
   gap: 10px;
 }
 .logo-icon {
-  width: 28px;
-  height: 28px;
-  background: var(--text-primary);
-  color: var(--bg-primary);
-  border-radius: var(--radius-sm);
+  width: 30px;
+  height: 30px;
+  background: linear-gradient(135deg, var(--accent-coral) 0%, var(--accent-blue) 55%, var(--accent-mint) 100%);
+  color: #fff;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
+  font-weight: 800;
   font-size: 15px;
+  box-shadow: var(--shadow-sm);
+}
+.logo-icon-sm {
+  width: 28px;
+  height: 28px;
+  font-size: 14px;
+  border-radius: 9px;
 }
 .logo-text {
   font-weight: 600;
@@ -181,8 +197,9 @@ const navItems = [
   text-decoration: none;
 }
 .nav-item.active {
-  background: var(--bg-tertiary);
+  background: linear-gradient(90deg, rgba(26, 115, 232, 0.1), rgba(0, 201, 167, 0.08));
   color: var(--text-primary);
+  border: 1px solid rgba(26, 115, 232, 0.2);
 }
 
 .nav-icon {
@@ -217,6 +234,9 @@ const navItems = [
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  background: radial-gradient(1200px 600px at 10% -10%, rgba(26, 115, 232, 0.06), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(255, 107, 74, 0.05), transparent 50%),
+    var(--bg-primary);
 }
 
 .toast-container {
@@ -237,18 +257,18 @@ const navItems = [
   max-width: 360px;
 }
 .toast-info {
-  background: var(--bg-elevated);
+  background: #fff;
   color: var(--text-primary);
   border: 1px solid var(--border-default);
 }
 .toast-success {
-  background: #052e16;
-  color: var(--accent-green);
-  border: 1px solid rgba(34, 197, 94, 0.2);
+  background: #e6f4ea;
+  color: #137333;
+  border: 1px solid rgba(30, 142, 62, 0.25);
 }
 .toast-error {
-  background: #2d0a0a;
-  color: var(--accent-red);
-  border: 1px solid rgba(239, 68, 68, 0.2);
+  background: #fce8e6;
+  color: #c5221f;
+  border: 1px solid rgba(217, 48, 37, 0.25);
 }
 </style>

@@ -10,6 +10,49 @@
   - 仍未解决的边界或风险
 - 如果改动影响验收方式或测试结论，需要同步更新 `CI/` 目录下的文档。
 
+日期：2026-03-24
+
+## 本次补充：Web UI 亮色主题、日报排版、流水线可中止
+
+范围：
+- `web/ui`（`style.css`、`App.vue`、`Dashboard.vue`、`RadarDaily.vue`、`api/xpost.js`、`index.html`）
+- `web/api/server.py`
+
+### 1. 一键日报可停止 / 减少重复并行
+
+变更：
+- 后端为 `_run_xpost` 增加全局互斥锁，同一时间仅允许一个 xpost 子进程，避免多标签重复点「一键」时抢同一浏览器实例。
+- 跟踪当前子进程，新增 `POST /api/radar/cancel`，对活动进程 `kill` 以中断扫描/分析/日报/回帖等经 `_run_xpost` 启动的任务。
+- 概览页流水线支持 `AbortController` 中止当前 HTTP 请求，并展示「停止」按钮与耗时说明；停止过程中展示「正在停止」状态。
+
+效果：
+- 用户可在长时间任务中途主动终止，避免只能干等或重复启动。
+
+边界：
+- 所有走 `_run_xpost` 的接口会串行排队；独立子进程（如 `reply/generate` 脚本）不受 `cancel` 影响。
+
+### 2. 界面主题：明亮、偏产品感（参考 Google Stitch / M3）
+
+变更：
+- 全局 token 改为浅底、白卡片、圆角胶囊按钮与柔和阴影；主色采用近 Google Blue；侧栏 Logo 使用渐变块；主内容区轻量径向渐变衬底。
+- Toast 改为浅色成功/错误底，避免「昏暗 AI 控制台」观感。
+
+### 3. 「完整日报」Markdown 可读性
+
+变更：
+- `marked` 启用 `gfm` + `breaks`；全局 `.markdown-body` 限制行长（约 `42rem`）、优化列表/引用/链接样式；日报卡片内增加 `.report-prose` 容器。
+- 修复日报页加载动画：补充 `@keyframes spin`。
+
+### 4. 验证
+
+已验证：
+- `./.venv/bin/python -m py_compile web/api/server.py`
+
+未验证（需本地起服务人工点选）：
+- 浏览器内停止流水线与 cancel 联调全流程
+
+---
+
 日期：2026-03-13
 
 ## 本次补充：补强 Radar 日报/周报落盘前的 Markdown 提纯
