@@ -13,7 +13,12 @@
         v-for="(s, idx) in steps"
         :key="s.id"
         class="step-item"
-        :class="{ active: currentStep === idx, done: idx < currentStep }"
+        :class="{ 
+          active: currentStep === idx, 
+          done: idx < currentStep,
+          clickable: idx < currentStep
+        }"
+        @click="idx < currentStep && goToStep(idx)"
       >
         <div class="step-badge">{{ idx < currentStep ? '✓' : idx + 1 }}</div>
         <span class="step-label">{{ s.label }}</span>
@@ -212,6 +217,13 @@ function replyTypeLabel(key) {
   return labels[key] || ''
 }
 
+function goToStep(step) {
+  // 只允许回退到已完成的步骤
+  if (step < currentStep.value) {
+    currentStep.value = step
+  }
+}
+
 function truncateUrl(url) {
   const match = url.match(/status\/(\d+)/)
   if (match) return '...' + match[1].slice(-8)
@@ -362,6 +374,13 @@ onMounted(() => {
   font-size: 13px;
   color: var(--text-tertiary);
   transition: all var(--transition-fast);
+}
+.step-item.clickable {
+  cursor: pointer;
+}
+.step-item.clickable:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 .step-item.active {
   background: var(--bg-tertiary);

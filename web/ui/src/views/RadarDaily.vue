@@ -26,28 +26,68 @@
               :class="{ active: selectedDate === r.date }"
               @click="selectDate(r.date)"
             >
-              <span class="entry-date">{{ formatDate(r.date) }}</span>
+              <span class="entry-date">
+                {{ formatDate(r.date) }}
+                <span v-if="isToday(r.date)" class="today-badge">今日</span>
+              </span>
               <span class="entry-size">{{ (r.size / 1024).toFixed(1) }}K</span>
             </button>
           </div>
           <div class="empty-sidebar" v-if="!reports.length">
-            暂无日报
+            <svg class="empty-icon-sm" width="40" height="40" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="40" cy="40" r="30" stroke="currentColor" stroke-width="2" stroke-dasharray="3 3" opacity="0.2"/>
+              <path d="M30 40h20M40 30v20" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+            </svg>
+            <p style="margin: 8px 0 0 0; font-size: 12px;">暂无日报</p>
           </div>
         </div>
       </aside>
 
       <!-- Right: Report content -->
       <div class="report-main">
-        <div v-if="loading" class="loading-state">
-          <div class="loader"></div>
-          <span>加载中...</span>
+        <div v-if="loading" class="skeleton-state">
+          <!-- Skeleton for section header -->
+          <div class="skeleton-section">
+            <div class="skeleton-bar">
+              <div class="skeleton-title"></div>
+              <div class="skeleton-button"></div>
+            </div>
+            <!-- Skeleton tweet cards -->
+            <div class="skeleton-grid">
+              <div v-for="i in 4" :key="i" class="skeleton-card">
+                <div class="skeleton-header">
+                  <div class="skeleton-avatar"></div>
+                  <div class="skeleton-handle"></div>
+                </div>
+                <div class="skeleton-line skeleton-line-lg"></div>
+                <div class="skeleton-line"></div>
+                <div class="skeleton-line skeleton-line-sm"></div>
+              </div>
+            </div>
+          </div>
+          <!-- Skeleton for markdown content -->
+          <div class="skeleton-section">
+            <div class="skeleton-bar">
+              <div class="skeleton-title"></div>
+            </div>
+            <div class="skeleton-markdown">
+              <div class="skeleton-line skeleton-line-lg"></div>
+              <div class="skeleton-line"></div>
+              <div class="skeleton-line"></div>
+              <div class="skeleton-line skeleton-line-sm"></div>
+            </div>
+          </div>
         </div>
 
         <div v-else-if="!reportData" class="empty-main">
-          <div class="empty-icon">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
-          </div>
-          <p>选择一份日报查看</p>
+          <svg class="empty-icon" width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="20" y="15" width="40" height="50" rx="4" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+            <line x1="28" y1="25" x2="52" y2="25" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.2"/>
+            <line x1="28" y1="33" x2="48" y2="33" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.2"/>
+            <line x1="28" y1="41" x2="52" y2="41" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.2"/>
+            <line x1="28" y1="49" x2="44" y2="49" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.2"/>
+          </svg>
+          <p class="empty-title">选择一份日报查看</p>
           <p class="empty-hint">或点击「重新生成」创建今日日报</p>
         </div>
 
@@ -74,7 +114,7 @@
               >
                 <div class="tweet-header">
                   <div class="tweet-author">
-                    <div class="author-avatar">{{ tweet.author[0]?.toUpperCase() }}</div>
+                    <div class="author-avatar" :style="{ background: getAvatarColor(tweet.author) }">{{ tweet.author[0]?.toUpperCase() }}</div>
                     <span class="author-handle">@{{ tweet.author }}</span>
                   </div>
                   <div class="tweet-check">
@@ -190,6 +230,32 @@ function formatDate(dateStr) {
   const parts = dateStr.split('-')
   if (parts.length === 3) return `${parts[1]}/${parts[2]}`
   return dateStr
+}
+
+function isToday(dateStr) {
+  const today = new Date()
+  const yyyy = today.getFullYear()
+  const mm = String(today.getMonth() + 1).padStart(2, '0')
+  const dd = String(today.getDate()).padStart(2, '0')
+  return dateStr === `${yyyy}-${mm}-${dd}`
+}
+
+// 根据作者名生成头像颜色（6 种预设颜色）
+function getAvatarColor(author) {
+  const colors = [
+    'linear-gradient(135deg, #3B82F6, #2563EB)', // 蓝
+    'linear-gradient(135deg, #10B981, #059669)', // 绿
+    'linear-gradient(135deg, #F59E0B, #D97706)', // 琥珀
+    'linear-gradient(135deg, #8B5CF6, #7C3AED)', // 紫
+    'linear-gradient(135deg, #FF6B4A, #EF4444)', // 珊瑚
+    'linear-gradient(135deg, #00C9A7, #14B8A6)', // 薄荷
+  ]
+  // 简单哈希：字符码求和
+  let hash = 0
+  for (let i = 0; i < author.length; i++) {
+    hash += author.charCodeAt(i)
+  }
+  return colors[hash % colors.length]
 }
 
 function toggleTweet(url) {
@@ -319,7 +385,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 10px;
+  padding: 8px 10px 8px 14px;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
@@ -327,6 +393,19 @@ onMounted(async () => {
   width: 100%;
   text-align: left;
   transition: all var(--transition-fast);
+  position: relative;
+}
+.report-entry::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 0;
+  background: var(--accent-blue);
+  border-radius: 0 2px 2px 0;
+  transition: height var(--transition-fast);
 }
 .report-entry:hover {
   background: var(--bg-hover);
@@ -336,12 +415,39 @@ onMounted(async () => {
   background: var(--bg-tertiary);
   color: var(--text-primary);
 }
-.entry-date { font-weight: 500; font-variant-numeric: tabular-nums; }
-.entry-size { font-size: 10px; color: var(--text-tertiary); font-family: var(--font-mono); }
+.report-entry.active::before {
+  height: 20px;
+}
+.entry-date {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.today-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.1);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.entry-size {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+}
 
 .empty-sidebar {
-  padding: 16px 8px;
-  font-size: 12px;
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-tertiary);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.empty-icon-sm {
   color: var(--text-tertiary);
 }
 
@@ -349,6 +455,106 @@ onMounted(async () => {
   flex: 1;
   overflow-y: auto;
   min-width: 0;
+}
+
+.skeleton-state {
+  padding: 20px;
+}
+.skeleton-section {
+  margin-bottom: 32px;
+}
+.skeleton-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.skeleton-title {
+  width: 120px;
+  height: 20px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+.skeleton-button {
+  width: 100px;
+  height: 32px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+}
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+.skeleton-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+}
+.skeleton-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.skeleton-avatar {
+  width: 32px;
+  height: 32px;
+  background: var(--bg-tertiary);
+  border-radius: 50%;
+}
+.skeleton-handle {
+  width: 80px;
+  height: 14px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+.skeleton-line {
+  height: 12px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+}
+.skeleton-line-lg {
+  height: 16px;
+  width: 90%;
+}
+.skeleton-line-sm {
+  width: 60%;
+}
+.skeleton-markdown {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+}
+
+/* Shimmer animation */
+.skeleton-title,
+.skeleton-button,
+.skeleton-avatar,
+.skeleton-handle,
+.skeleton-line {
+  position: relative;
+  overflow: hidden;
+}
+.skeleton-title::after,
+.skeleton-button::after,
+.skeleton-avatar::after,
+.skeleton-handle::after,
+.skeleton-line::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  animation: shimmer 1.5s infinite;
+}
+@keyframes shimmer {
+  to { left: 100%; }
 }
 
 .loading-state {
@@ -378,13 +584,19 @@ onMounted(async () => {
   text-align: center;
 }
 .empty-icon {
-  margin-bottom: 16px;
-  opacity: 0.3;
+  color: var(--text-tertiary);
+  margin-bottom: 20px;
+}
+.empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 4px 0;
 }
 .empty-hint {
   font-size: 12px;
-  margin-top: 4px;
-  opacity: 0.7;
+  margin: 0;
+  opacity: 0.8;
 }
 
 .tweets-section {
@@ -446,13 +658,13 @@ onMounted(async () => {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: var(--bg-elevated);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 11px;
   font-weight: 700;
-  color: var(--text-secondary);
+  color: #fff;
+  flex-shrink: 0;
 }
 .author-handle {
   font-size: 12px;

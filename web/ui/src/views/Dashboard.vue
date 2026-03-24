@@ -125,8 +125,16 @@
             <div class="step-line" v-if="idx < pipelineSteps.length - 1"></div>
           </div>
           <div class="step-content">
-            <div class="step-name">{{ step.label }}</div>
-            <div class="step-desc">{{ step.desc }}</div>
+            <div class="step-name">
+              {{ step.label }}
+              <span v-if="step.status === 'running' && step.startTime" class="step-time">
+                · 已用 {{ getElapsedTime(step.startTime) }}
+              </span>
+              <span v-else-if="step.status === 'done' && step.duration" class="step-time">
+                · 用时 {{ step.duration }}
+              </span>
+            </div>
+            <div class="step-desc">{{ step.desc }} <span class="step-estimate">· 预计 {{ step.estimate }}</span></div>
           </div>
         </div>
       </div>
@@ -189,8 +197,18 @@
           </router-link>
         </div>
         <div class="empty-state" v-else>
-          <p>暂无日报数据</p>
-          <p class="empty-hint">运行「一键跑日报」生成第一份</p>
+          <svg class="empty-icon" width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="40" cy="40" r="38" stroke="currentColor" stroke-width="2" stroke-dasharray="4 4" opacity="0.2"/>
+            <path d="M25 40h30M40 25v30" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.3"/>
+            <circle cx="40" cy="40" r="12" stroke="currentColor" stroke-width="2" opacity="0.4"/>
+            <path d="M40 34v6l3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
+          </svg>
+          <p class="empty-title">还没有日报</p>
+          <p class="empty-hint">点击下方按钮开始生成第一份日报</p>
+          <button class="btn btn-primary btn-sm" @click="runFullPipeline" style="margin-top: 12px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            一键跑日报
+          </button>
         </div>
       </div>
     </div>
@@ -215,10 +233,29 @@ const now = ref(Date.now())
 let timer = null
 
 const pipelineSteps = ref([
-  { id: 'scan', label: '雷达扫描', desc: '抓取 230+ 账号最新推文', status: 'pending' },
-  { id: 'analyze', label: '数据分析', desc: '聚类分析近 7 天数据', status: 'pending' },
-  { id: 'daily', label: '生成日报', desc: 'AI 筛选并生成 Markdown 日报', status: 'pending' },
+  { id: 'scan', label: '雷达扫描', desc: '抓取 230+ 账号最新推文', estimate: '3-8 分钟', status: 'pending', startTime: null, duration: null },
+  { id: 'analyze', label: '数据分析', desc: '聚类分析近 7 天数据', estimate: '1-3 分钟', status: 'pending', startTime: null, duration: null },
+  { id: 'daily', label: '生成日报', desc: 'AI 筛选并生成 Markdown 日报', estimate: '2-5 分钟', status: 'pending', startTime: null, duration: null },
 ])
+
+// 计算已用时间
+function getElapsedTime(startTime) {
+  if (!startTime) return ''
+  const seconds = Math.floor((now.value - startTime) / 1000)
+  if (seconds < 60) return `${seconds}秒`
+  const minutes = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${minutes}分${secs}秒`
+}
+
+// 格式化持续时间
+function formatDuration(ms) {
+  const seconds = Math.floor(ms / 1000)
+  if (seconds < 60) return `${seconds}秒`
+  const minutes = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${minutes}分${secs}秒`
+}
 
 // 计算上次更新时间的相对显示
 const lastUpdateText = computed(() => {
@@ -277,7 +314,11 @@ async function runFullPipeline() {
   pipelineResult.value = null
   pipelineAbort.value = new AbortController()
   const sig = { signal: pipelineAbort.value.signal }
-  pipelineSteps.value.forEach((s) => (s.status = 'pending'))
+  pipelineSteps.value.forEach((s) => {
+    s.status = 'pending'
+    s.startTime = null
+    s.duration = null
+  })
 
   const stepFns = [() => api.runScan(sig), () => api.runAnalyze(7, sig), () => api.runDaily(sig)]
 
@@ -288,8 +329,11 @@ async function runFullPipeline() {
         break
       }
       pipelineSteps.value[i].status = 'running'
+      pipelineSteps.value[i].startTime = Date.now()
       try {
         const result = await stepFns[i]()
+        const elapsed = Date.now() - pipelineSteps.value[i].startTime
+        pipelineSteps.value[i].duration = formatDuration(elapsed)
         if (userStoppedPipeline.value) {
           pipelineSteps.value[i].status = 'error'
           pipelineResult.value = { ok: false, cancelled: true }
@@ -601,10 +645,20 @@ onUnmounted(stopTimer)
   font-size: 13px;
   font-weight: 600;
 }
+.step-time {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent-blue);
+  font-variant-numeric: tabular-nums;
+}
 .step-desc {
   font-size: 12px;
   color: var(--text-tertiary);
   margin-top: 2px;
+}
+.step-estimate {
+  font-size: 11px;
+  opacity: 0.7;
 }
 .step-number {
   font-size: 11px;
@@ -695,14 +749,26 @@ onUnmounted(stopTimer)
 
 .empty-state {
   text-align: center;
-  padding: 28px 16px;
+  padding: 40px 16px;
   color: var(--text-tertiary);
-  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.empty-icon {
+  color: var(--text-tertiary);
+  margin-bottom: 16px;
+}
+.empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 4px 0;
 }
 .empty-hint {
   font-size: 12px;
-  margin-top: 4px;
-  opacity: 0.7;
+  margin: 0;
+  opacity: 0.8;
 }
 
 @media (max-width: 900px) {
