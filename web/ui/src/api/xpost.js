@@ -27,6 +27,11 @@ export const runAnalyze = (days = 7, config = {}) =>
 export const runDaily = (config = {}) => api.post('/radar/daily', null, config)
 export const cancelRadar = () => api.post('/radar/cancel')
 
+// Weekly report APIs
+export const getWeeklyReports = () => api.get('/radar/weekly-reports')
+export const getWeeklyReport = (date) => api.get(`/radar/weekly-report/${date}`)
+export const runWeekly = (config = {}) => api.post('/radar/weekly', null, config)
+
 export const extractTweet = (url) => api.post('/reply/extract', { url })
 export const generateReplies = (tweet_text, handle) =>
   api.post('/reply/generate', { tweet_text, handle })

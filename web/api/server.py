@@ -164,6 +164,20 @@ def _list_daily_reports() -> list[dict]:
     return reports
 
 
+def _list_weekly_reports() -> list[dict]:
+    """列出所有周报文件"""
+    if not XINFO_WEEK.exists():
+        return []
+    reports = []
+    for f in sorted(XINFO_WEEK.glob("*.md"), reverse=True):
+        reports.append({
+            "date": f.stem,
+            "path": str(f),
+            "size": f.stat().st_size,
+        })
+    return reports
+
+
 def _extract_markdown_from_report_body(body_text: str) -> str:
     """从日报 body 中提取 markdown 内容。
 
@@ -258,6 +272,31 @@ def _parse_daily_report(md_text: str) -> dict:
     }
 
 
+def _parse_weekly_report(md_text: str) -> dict:
+    """解析周报：frontmatter + markdown body
+    
+    周报文件格式为 frontmatter + JSON body（与日报类似），需要提取 JSON 中的 markdown 字段
+    """
+    frontmatter = {}
+    body_text = md_text
+    
+    # 提取 frontmatter
+    if md_text.startswith("---"):
+        end = md_text.find("\n---", 3)
+        if end != -1:
+            fm_block = md_text[3:end].strip()
+            for line in fm_block.splitlines():
+                if ":" in line:
+                    k, v = line.split(":", 1)
+                    frontmatter[k.strip()] = v.strip().strip('"')
+            body_text = md_text[end + 4:].strip()
+    
+    # 提取 markdown 内容（周报也使用 JSON 包裹格式）
+    markdown_content = _extract_markdown_from_report_body(body_text)
+    
+    return {"frontmatter": frontmatter, "markdown": markdown_content}
+
+
 # ---------------------------------------------------------------------------
 # Routes: Status
 # ---------------------------------------------------------------------------
@@ -334,6 +373,29 @@ async def get_report(date: str):
         raise HTTPException(404, detail=f"日报不存在: {date}")
     parsed = _parse_daily_report(raw)
     return {"ok": True, "date": date, **parsed}
+
+
+@app.get("/api/radar/weekly-reports")
+async def list_weekly_reports():
+    """列出所有周报文件"""
+    return {"ok": True, "reports": _list_weekly_reports()}
+
+
+@app.get("/api/radar/weekly-report/{date}")
+async def get_weekly_report(date: str):
+    """获取指定日期的周报详情"""
+    md_path = XINFO_WEEK / f"{date}.md"
+    raw = _read_text(md_path)
+    if raw is None:
+        raise HTTPException(404, detail=f"周报不存在: {date}")
+    parsed = _parse_weekly_report(raw)
+    return {"ok": True, "date": date, **parsed}
+
+
+@app.post("/api/radar/weekly")
+async def radar_weekly():
+    """触发周报生成"""
+    return await _run_xpost("radar-weekly", timeout=300)
 
 
 @app.get("/api/radar/result")
@@ -454,6 +516,8 @@ async def run_pipeline(req: PipelineRunRequest):
             r = await _run_xpost("radar-analyze", "--days", "7")
         elif step == "daily":
             r = await _run_xpost("radar-daily", timeout=300)
+        elif step == "weekly":
+            r = await _run_xpost("radar-weekly", timeout=300)
         else:
             r = {"ok": False, "error": f"未知步骤: {step}"}
 

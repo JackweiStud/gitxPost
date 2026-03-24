@@ -2,46 +2,66 @@
   <div class="page">
     <header class="page-header">
       <div>
-        <h1 class="page-title">日报</h1>
-        <p class="page-subtitle">AI 筛选的每日推文精选</p>
+        <h1 class="page-title">雷达</h1>
+        <p class="page-subtitle">AI 筛选的推文精选</p>
       </div>
       <div class="header-actions">
-        <button class="btn btn-ghost" @click="refreshDaily" :disabled="generating">
+        <button class="btn btn-ghost" @click="refreshReport" :disabled="generating">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          {{ generating ? '生成中...' : '重新生成' }}
+          {{ generating ? '生成中...' : (activeTab === 'daily' ? '重新生成日报' : '生成周报') }}
         </button>
       </div>
     </header>
 
+    <!-- Tab Switcher -->
+    <div class="tab-switcher">
+      <button 
+        class="tab-btn" 
+        :class="{ active: activeTab === 'daily' }"
+        @click="switchTab('daily')"
+      >
+        日报
+      </button>
+      <button 
+        class="tab-btn" 
+        :class="{ active: activeTab === 'weekly' }"
+        @click="switchTab('weekly')"
+      >
+        周报
+      </button>
+    </div>
+
     <div class="radar-layout">
-      <!-- Left: Date picker + Report list -->
-      <aside class="report-sidebar">
-        <div class="sidebar-section">
-          <div class="section-title">历史日报</div>
-          <div class="report-list">
-            <button
-              v-for="r in reports"
-              :key="r.date"
-              class="report-entry"
-              :class="{ active: selectedDate === r.date }"
-              @click="selectDate(r.date)"
-            >
-              <span class="entry-date">
-                {{ formatDate(r.date) }}
-                <span v-if="isToday(r.date)" class="today-badge">今日</span>
-              </span>
-              <span class="entry-size">{{ (r.size / 1024).toFixed(1) }}K</span>
-            </button>
+      <!-- Daily Tab Content -->
+      <template v-if="activeTab === 'daily'">
+        <!-- Left: Date picker + Report list -->
+        <aside class="report-sidebar">
+          <div class="sidebar-section">
+            <div class="section-title">历史日报</div>
+            <div class="report-list">
+              <button
+                v-for="r in reports"
+                :key="r.date"
+                class="report-entry"
+                :class="{ active: selectedDate === r.date }"
+                @click="selectDate(r.date)"
+              >
+                <span class="entry-date">
+                  {{ formatDate(r.date) }}
+                  <span v-if="isToday(r.date)" class="today-badge">今日</span>
+                </span>
+                <span class="entry-size">{{ (r.size / 1024).toFixed(1) }}K</span>
+              </button>
+            </div>
+            <div class="empty-sidebar" v-if="!reports.length">
+              <svg class="empty-icon-sm" width="40" height="40" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="40" cy="40" r="30" stroke="currentColor" stroke-width="2" stroke-dasharray="3 3" opacity="0.2"/>
+                <path d="M30 40h20M40 30v20" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+              </svg>
+              <p style="margin: 8px 0 0 0; font-size: 12px;">暂无日报</p>
+            </div>
           </div>
-          <div class="empty-sidebar" v-if="!reports.length">
-            <svg class="empty-icon-sm" width="40" height="40" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="40" cy="40" r="30" stroke="currentColor" stroke-width="2" stroke-dasharray="3 3" opacity="0.2"/>
-              <path d="M30 40h20M40 30v20" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
-            </svg>
-            <p style="margin: 8px 0 0 0; font-size: 12px;">暂无日报</p>
-          </div>
-        </div>
-      </aside>
+        </aside>
 
       <!-- Right: Report content -->
       <div class="report-main">
@@ -152,6 +172,81 @@
           </div>
         </template>
       </div>
+      </template>
+
+      <!-- Weekly Tab Content -->
+      <template v-else-if="activeTab === 'weekly'">
+        <!-- Left: Weekly report list -->
+        <aside class="report-sidebar">
+          <div class="sidebar-section">
+            <div class="section-title">历史周报</div>
+            <div class="report-list">
+              <button
+                v-for="r in weeklyReports"
+                :key="r.date"
+                class="report-entry"
+                :class="{ active: selectedWeeklyDate === r.date }"
+                @click="selectWeeklyDate(r.date)"
+              >
+                <span class="entry-date">
+                  {{ formatDate(r.date) }}
+                </span>
+                <span class="entry-size">{{ (r.size / 1024).toFixed(1) }}K</span>
+              </button>
+            </div>
+            <div class="empty-sidebar" v-if="!weeklyReports.length">
+              <svg class="empty-icon-sm" width="40" height="40" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="40" cy="40" r="30" stroke="currentColor" stroke-width="2" stroke-dasharray="3 3" opacity="0.2"/>
+                <path d="M30 40h20M40 30v20" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.3"/>
+              </svg>
+              <p style="margin: 8px 0 0 0; font-size: 12px;">暂无周报</p>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Right: Weekly report content -->
+        <div class="report-main">
+          <div v-if="weeklyLoading" class="skeleton-state">
+            <div class="skeleton-section">
+              <div class="skeleton-bar">
+                <div class="skeleton-title"></div>
+              </div>
+              <div class="skeleton-markdown">
+                <div class="skeleton-line skeleton-line-lg"></div>
+                <div class="skeleton-line"></div>
+                <div class="skeleton-line"></div>
+                <div class="skeleton-line skeleton-line-sm"></div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else-if="!weeklyReport" class="empty-main">
+            <svg class="empty-icon" width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="20" y="15" width="40" height="50" rx="4" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+              <line x1="28" y1="25" x2="52" y2="25" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.2"/>
+              <line x1="28" y1="33" x2="48" y2="33" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.2"/>
+              <line x1="28" y1="41" x2="52" y2="41" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.2"/>
+              <line x1="28" y1="49" x2="44" y2="49" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.2"/>
+            </svg>
+            <p class="empty-title">选择一份周报查看</p>
+            <p class="empty-hint">或点击「生成周报」创建新周报</p>
+          </div>
+
+          <template v-else>
+            <div class="report-content card">
+              <div class="section-bar">
+                <h3>周报详情</h3>
+                <span class="report-meta" v-if="weeklyReport.frontmatter">
+                  {{ weeklyReport.frontmatter.llm_model || '' }} · {{ weeklyReport.frontmatter.generated_at || '' }}
+                </span>
+              </div>
+              <div class="report-prose">
+                <div class="markdown-body" v-html="renderedWeeklyMarkdown"></div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -169,12 +264,21 @@ const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 
+// Daily report state
 const reports = ref([])
 const selectedDate = ref(null)
 const reportData = ref(null)
 const loading = ref(false)
 const generating = ref(false)
 const selectedTweets = ref([])
+
+// Weekly report state
+const activeTab = ref('daily')
+const weeklyReports = ref([])
+const selectedWeeklyDate = ref(null)
+const weeklyReport = ref(null)
+const weeklyLoading = ref(false)
+const weeklyGenerating = ref(false)
 
 /**
  * 日报 Markdown 预处理：
@@ -225,6 +329,14 @@ function preprocessMarkdown(raw) {
 const renderedMarkdown = computed(() => {
   if (!reportData.value?.markdown) return ''
   let html = marked.parse(preprocessMarkdown(reportData.value.markdown))
+  // 高亮 @username
+  html = html.replace(/@(\w+)/g, '<span class="mention">@$1</span>')
+  return html
+})
+
+const renderedWeeklyMarkdown = computed(() => {
+  if (!weeklyReport.value?.markdown) return ''
+  let html = marked.parse(preprocessMarkdown(weeklyReport.value.markdown))
   // 高亮 @username
   html = html.replace(/@(\w+)/g, '<span class="mention">@$1</span>')
   return html
@@ -326,6 +438,26 @@ function selectDate(date) {
   selectedTweets.value = []
 }
 
+function selectWeeklyDate(date) {
+  selectedWeeklyDate.value = date
+}
+
+function switchTab(tab) {
+  activeTab.value = tab
+  selectedTweets.value = []
+  if (tab === 'weekly' && !weeklyReports.value.length) {
+    loadWeeklyReports()
+  }
+}
+
+async function refreshReport() {
+  if (activeTab.value === 'daily') {
+    await refreshDaily()
+  } else {
+    await refreshWeekly()
+  }
+}
+
 async function refreshDaily() {
   generating.value = true
   appStore.notify('正在生成日报，请稍候...', 'info', 15000)
@@ -343,10 +475,85 @@ async function refreshDaily() {
   }
 }
 
+async function refreshWeekly() {
+  weeklyGenerating.value = true
+  generating.value = true
+  appStore.notify('正在生成周报，请稍候...', 'info', 15000)
+  try {
+    const result = await api.runWeekly()
+    if (result.ok) {
+      appStore.notify('周报生成完成', 'success')
+      await loadWeeklyReports()
+      if (weeklyReports.value.length) {
+        selectedWeeklyDate.value = weeklyReports.value[0].date
+      }
+    } else {
+      const errMsg = result.error || '未知错误'
+      if (errMsg.includes('分析结果不存在') || errMsg.includes('analysis')) {
+        appStore.notify('请先执行雷达分析后再生成周报', 'error')
+      } else if (errMsg.includes('API Key') || errMsg.includes('api_key')) {
+        appStore.notify('LLM API Key 未配置', 'error')
+      } else {
+        appStore.notify('周报生成失败: ' + errMsg, 'error')
+      }
+    }
+  } catch (e) {
+    const errMsg = e.message || '未知错误'
+    if (e.response?.status === 504) {
+      appStore.notify('周报生成超时，请重试', 'error')
+    } else if (errMsg.includes('分析结果不存在') || errMsg.includes('analysis')) {
+      appStore.notify('请先执行雷达分析后再生成周报', 'error')
+    } else if (errMsg.includes('API Key') || errMsg.includes('api_key')) {
+      appStore.notify('LLM API Key 未配置', 'error')
+    } else {
+      appStore.notify('周报生成失败: ' + errMsg, 'error')
+    }
+  } finally {
+    weeklyGenerating.value = false
+    generating.value = false
+  }
+}
+
+async function loadWeeklyReports() {
+  try {
+    const data = await api.getWeeklyReports()
+    weeklyReports.value = data.reports || []
+    if (!selectedWeeklyDate.value && weeklyReports.value.length) {
+      selectedWeeklyDate.value = weeklyReports.value[0].date
+    }
+  } catch (e) {
+    appStore.notify('加载周报列表失败', 'error')
+  }
+}
+
+async function loadWeeklyReport(date) {
+  if (!date) return
+  weeklyLoading.value = true
+  weeklyReport.value = null
+  try {
+    const data = await api.getWeeklyReport(date)
+    weeklyReport.value = data
+  } catch (e) {
+    if (e.response?.status === 404) {
+      appStore.notify('该日期周报不存在', 'error')
+    } else {
+      appStore.notify('加载周报失败: ' + e.message, 'error')
+    }
+  } finally {
+    weeklyLoading.value = false
+  }
+}
+
 watch(selectedDate, (d) => d && loadReport(d))
+watch(selectedWeeklyDate, (d) => d && loadWeeklyReport(d))
 
 onMounted(async () => {
   await loadReports()
+  // Check if we should start on weekly tab
+  if (route.query.tab === 'weekly') {
+    activeTab.value = 'weekly'
+    await loadWeeklyReports()
+  }
 })
 </script>
 
@@ -374,6 +581,34 @@ onMounted(async () => {
   color: var(--text-tertiary);
   font-size: 13px;
   margin-top: 4px;
+}
+
+.tab-switcher {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  padding: 4px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  width: fit-content;
+}
+.tab-btn {
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+.tab-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.tab-btn.active {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .radar-layout {
@@ -779,10 +1014,39 @@ onMounted(async () => {
   color: var(--text-primary);
 }
 
+/* 周报需要更宽的容器以容纳表格 */
+.report-prose .markdown-body {
+  max-width: 880px;
+}
+
 /* @username 高亮 */
 .report-prose .markdown-body :deep(.mention) {
   color: var(--accent-blue);
   font-weight: 500;
+}
+
+/* ———— H1 标题（周报主标题）———— */
+.report-prose .markdown-body :deep(h1) {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 0.8em 0;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--accent-blue);
+}
+
+/* ———— 引用块（周报元数据）———— */
+.report-prose .markdown-body :deep(blockquote) {
+  margin: 1em 0;
+  padding: 12px 16px;
+  background: var(--bg-tertiary);
+  border-left: 3px solid var(--accent-blue);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.report-prose .markdown-body :deep(blockquote p) {
+  margin: 0;
 }
 
 /* ———— 正文 p（含日期 / 统计行） ———— */
@@ -804,12 +1068,44 @@ onMounted(async () => {
   border-bottom: 2px solid var(--accent-blue);
   display: inline-block;
 }
-.report-prose .markdown-body :deep(h1),
 .report-prose .markdown-body :deep(h3) {
   margin-top: 1.5em;
   margin-bottom: 0.5em;
+  font-size: 14px;
   font-weight: 700;
   color: var(--text-primary);
+}
+
+/* ———— 表格样式 ———— */
+.report-prose .markdown-body :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.2em 0;
+  font-size: 13px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.report-prose .markdown-body :deep(thead) {
+  background: var(--bg-tertiary);
+}
+.report-prose .markdown-body :deep(th) {
+  padding: 10px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 2px solid var(--border-default);
+}
+.report-prose .markdown-body :deep(td) {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+}
+.report-prose .markdown-body :deep(tbody tr:last-child td) {
+  border-bottom: none;
+}
+.report-prose .markdown-body :deep(tbody tr:hover) {
+  background: var(--bg-hover);
 }
 
 /* ———— 列表：悬挂缩进（padding+text-indent，不用 grid，避免 <a> 被当成独立 grid item） ———— */
@@ -865,6 +1161,72 @@ onMounted(async () => {
   border: none;
   border-top: 1px solid var(--border-subtle);
   margin: 1.5em 0;
+}
+
+/* ———— 代码块 ———— */
+.report-prose .markdown-body :deep(code) {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  padding: 2px 6px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  color: var(--accent-blue);
+}
+.report-prose .markdown-body :deep(pre) {
+  background: var(--bg-tertiary);
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  margin: 1em 0;
+}
+.report-prose .markdown-body :deep(pre code) {
+  background: none;
+  padding: 0;
+  color: var(--text-primary);
+}
+
+/* ———— 强调文本 ———— */
+.report-prose .markdown-body :deep(strong) {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.report-prose .markdown-body :deep(em) {
+  font-style: italic;
+  color: var(--text-secondary);
+}
+
+/* ———— 账号列表（反引号包裹的账号名）———— */
+.report-prose .markdown-body :deep(code) {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  padding: 4px 8px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  border-radius: var(--radius-sm);
+  color: var(--accent-blue);
+  white-space: nowrap;
+  display: inline-block;
+  margin: 3px 6px 3px 0;
+  line-height: 1.5;
+  vertical-align: middle;
+}
+
+/* ———— 账号列表段落（包含多个账号的段落）———— */
+.report-prose .markdown-body :deep(p:has(code)) {
+  line-height: 2.4;
+  margin: 1em 0;
+}
+
+/* ———— 普通段落 ———— */
+.report-prose .markdown-body :deep(p:not(:has(code))) {
+  line-height: 1.8;
+}
+
+/* ———— 表格中的 code 不需要特殊间距 ———— */
+.report-prose .markdown-body :deep(td code) {
+  margin: 0 2px;
+  padding: 2px 5px;
+  font-size: 0.9em;
 }
 
 .report-meta {
