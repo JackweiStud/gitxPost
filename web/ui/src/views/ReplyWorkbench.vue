@@ -35,12 +35,22 @@
             v-model="tweetUrl"
             type="text"
             class="url-input"
+            :class="{ 
+              'input-valid': tweetUrl.trim() && isValidTweetUrl(tweetUrl),
+              'input-invalid': tweetUrl.trim() && !isValidTweetUrl(tweetUrl)
+            }"
             placeholder="https://x.com/username/status/123456789"
             @keydown.enter="extractTweet"
           />
-          <button class="btn btn-primary" @click="extractTweet" :disabled="!tweetUrl.trim() || extracting">
+          <button class="btn btn-primary" @click="extractTweet" :disabled="!isValidTweetUrl(tweetUrl) || extracting">
             {{ extracting ? '浏览器加载中，请稍候...' : '提取正文' }}
           </button>
+        </div>
+        <div v-if="tweetUrl.trim() && !isValidTweetUrl(tweetUrl)" class="url-error">
+          ⚠️ 请输入有效的推文 URL（格式：x.com/*/status/* 或 twitter.com/*/status/*）
+        </div>
+        <div v-else-if="tweetUrl.trim() && isValidTweetUrl(tweetUrl)" class="url-success">
+          ✓ URL 格式正确
         </div>
         <div class="url-examples" v-if="recentUrls.length">
           <span class="examples-label">最近使用:</span>
@@ -203,6 +213,13 @@ const customReply = ref('')
 const sending = ref(false)
 const sendResult = ref(null)
 const recentUrls = ref([])
+
+// 校验推文 URL 格式
+function isValidTweetUrl(url) {
+  if (!url || !url.trim()) return false
+  const pattern = /^https?:\/\/(x\.com|twitter\.com)\/\w+\/status\/\d+/
+  return pattern.test(url.trim())
+}
 
 const finalReplyText = computed(() => {
   if (selectedReply.value === 'custom') return customReply.value.trim()
@@ -444,8 +461,24 @@ onMounted(() => {
 .url-input:focus {
   border-color: var(--accent-blue);
 }
+.url-input.input-valid {
+  border-color: var(--accent-green);
+}
+.url-input.input-invalid {
+  border-color: var(--accent-red);
+}
 .url-input::placeholder {
   color: var(--text-tertiary);
+}
+.url-error {
+  font-size: 12px;
+  color: var(--accent-red);
+  margin-top: 8px;
+}
+.url-success {
+  font-size: 12px;
+  color: var(--accent-green);
+  margin-top: 8px;
 }
 .url-examples {
   display: flex;

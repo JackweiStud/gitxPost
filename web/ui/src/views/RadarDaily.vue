@@ -102,6 +102,7 @@
                 :disabled="!selectedTweets.length"
               >
                 回复选中 ({{ selectedTweets.length }})
+                <span v-if="selectedTweets.length > 1" class="batch-hint">· 将依次处理</span>
               </button>
             </div>
             <div class="tweet-grid">
@@ -109,8 +110,8 @@
                 v-for="(tweet, idx) in reportData.tweets"
                 :key="idx"
                 class="tweet-card"
-                :class="{ selected: selectedTweets.includes(tweet.url) }"
-                @click="toggleTweet(tweet.url)"
+                :class="{ selected: selectedTweets.includes(idx) }"
+                @click="toggleTweet(idx)"
               >
                 <div class="tweet-header">
                   <div class="tweet-author">
@@ -118,7 +119,7 @@
                     <span class="author-handle">@{{ tweet.author }}</span>
                   </div>
                   <div class="tweet-check">
-                    <svg v-if="selectedTweets.includes(tweet.url)" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+                    <svg v-if="selectedTweets.includes(idx)" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
                   </div>
                 </div>
                 <div class="tweet-title">{{ tweet.title }}</div>
@@ -223,7 +224,10 @@ function preprocessMarkdown(raw) {
 
 const renderedMarkdown = computed(() => {
   if (!reportData.value?.markdown) return ''
-  return marked.parse(preprocessMarkdown(reportData.value.markdown))
+  let html = marked.parse(preprocessMarkdown(reportData.value.markdown))
+  // 高亮 @username
+  html = html.replace(/@(\w+)/g, '<span class="mention">@$1</span>')
+  return html
 })
 
 function formatDate(dateStr) {
@@ -258,10 +262,10 @@ function getAvatarColor(author) {
   return colors[hash % colors.length]
 }
 
-function toggleTweet(url) {
-  const idx = selectedTweets.value.indexOf(url)
-  if (idx >= 0) selectedTweets.value.splice(idx, 1)
-  else selectedTweets.value.push(url)
+function toggleTweet(tweetIdx) {
+  const pos = selectedTweets.value.indexOf(tweetIdx)
+  if (pos >= 0) selectedTweets.value.splice(pos, 1)
+  else selectedTweets.value.push(tweetIdx)
 }
 
 function goReply(url) {
@@ -269,8 +273,16 @@ function goReply(url) {
 }
 
 function sendSelectedToReply() {
-  if (!selectedTweets.value.length) return
-  router.push({ path: '/reply', query: { url: selectedTweets.value[0] } })
+  if (!selectedTweets.value.length || !reportData.value?.tweets) return
+  // 根据索引获取第一条选中推文的 URL
+  const firstIdx = selectedTweets.value[0]
+  const firstTweet = reportData.value.tweets[firstIdx]
+  if (!firstTweet) return
+  // 如果选中多条，跳转到第一条并提示
+  if (selectedTweets.value.length > 1) {
+    appStore.notify(`已选中 ${selectedTweets.value.length} 条推文，将跳转到第一条。完成后可返回继续处理其他推文。`, 'info', 6000)
+  }
+  router.push({ path: '/reply', query: { url: firstTweet.url } })
 }
 
 async function loadReports() {
@@ -618,6 +630,11 @@ onMounted(async () => {
   font-weight: 400;
   margin-left: 6px;
 }
+.batch-hint {
+  font-size: 11px;
+  opacity: 0.8;
+  font-weight: 400;
+}
 
 .tweet-grid {
   display: grid;
@@ -751,6 +768,12 @@ onMounted(async () => {
   font-size: 14.5px;
   line-height: 1.8;
   color: var(--text-primary);
+}
+
+/* @username 高亮 */
+.report-prose .markdown-body :deep(.mention) {
+  color: var(--accent-blue);
+  font-weight: 500;
 }
 
 /* ———— 正文 p（含日期 / 统计行） ———— */

@@ -12,6 +12,60 @@
 
 日期：2026-03-24
 
+## 本次补充：日报推文 URL 去重（源头 + 解析双重保障）
+
+范围：
+- `xpost.py` — 日报生成 prompt
+- `web/api/server.py` — 日报解析
+
+### 1. 源头 prompt 约束（xpost.py）
+
+变更：
+- 在 `_build_radar_daily_prompt` 的第 8 条规则中追加：**同一 URL 只能在最相关的一个分类中出现一次，禁止跨分类重复引用同一推文**
+- AI 在生成日报时会遵循此约束，从源头减少重复
+
+### 2. 解析层兜底（server.py）
+
+变更：
+- `_parse_daily_report` 在解析 `•` 开头的推文行时，新增 `seen_urls` 集合用于跟踪已处理的 URL
+- 即使 AI 输出仍有重复，解析层会过滤，只保留第一次出现的版本
+
+效果：
+- 双重保障，确保用户在"推文精选"卡片区不会看到重复内容
+
+---
+
+## 本次补充：P2.2 推文卡片唯一 ID + P2.6 深色模式切换
+
+范围：
+- `web/ui/src/stores/app.js`
+- `web/ui/src/App.vue`
+- `web/ui/src/style.css`
+- `web/ui/src/views/RadarDaily.vue`
+
+### 1. P2.2 修复：推文卡片选中改为索引
+
+变更：
+- `RadarDaily.vue` 中 `toggleTweet` 现在接收卡片索引（`idx`）而非 `tweet.url`
+- `selectedTweets` 数组存储的是选中卡片的索引列表
+- `sendSelectedToReply` 根据索引从 `reportData.tweets` 中获取实际 URL
+
+效果：
+- 即使多张卡片引用相同 URL，点击一张只选中该张，不会联动选中同 URL 的其他卡片
+
+### 2. P2.6 实现：深色模式切换
+
+变更：
+- `app.js` store 新增 `darkMode` 响应式状态、`toggleDarkMode` 方法
+- 初始化时从 `localStorage` 读取或跟随系统偏好，并通过 `watch` 自动应用
+- `style.css` 新增 `:root.dark` 变量覆盖（深色背景、浅色文字、调整阴影与高亮色）
+- `App.vue` 侧边栏底部新增主题切换按钮（太阳/月亮图标），折叠时仅显示图标
+
+效果：
+- 用户可点击按钮在亮色/深色间切换，设置持久化到 `localStorage`
+
+---
+
 ## 本次补充：Web UI 亮色主题、日报排版、流水线可中止
 
 范围：

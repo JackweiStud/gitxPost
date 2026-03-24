@@ -1,13 +1,32 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 export const useAppStore = defineStore('app', () => {
   const sidebarCollapsed = ref(false)
   const currentTask = ref(null)
   const notifications = ref([])
+  
+  // 深色模式：默认跟随系统，或从 localStorage 读取
+  const savedDarkMode = localStorage.getItem('darkMode')
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+  const darkMode = ref(savedDarkMode !== null ? savedDarkMode === 'true' : prefersDark)
+  
+  // 初始化时应用主题
+  function applyTheme(isDark) {
+    document.documentElement.classList.toggle('dark', isDark)
+    localStorage.setItem('darkMode', isDark)
+  }
+  applyTheme(darkMode.value)
+  
+  // 监听变化自动应用
+  watch(darkMode, (isDark) => applyTheme(isDark))
 
   function toggleSidebar() {
     sidebarCollapsed.value = !sidebarCollapsed.value
+  }
+
+  function toggleDarkMode() {
+    darkMode.value = !darkMode.value
   }
 
   function notify(message, type = 'info', duration = 4000) {
@@ -42,5 +61,5 @@ export const useAppStore = defineStore('app', () => {
     currentTask.value = null
   }
 
-  return { sidebarCollapsed, currentTask, notifications, toggleSidebar, notify, dismissNotification, setTask, clearTask }
+  return { sidebarCollapsed, currentTask, notifications, darkMode, toggleSidebar, toggleDarkMode, notify, dismissNotification, setTask, clearTask }
 })

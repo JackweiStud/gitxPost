@@ -229,6 +229,7 @@ def _parse_daily_report(md_text: str) -> dict:
         tweet_links.append(url)
 
     tweets = []
+    seen_urls = set()
     for line in markdown_content.split("\n"):
         line = line.strip()
         if not line.startswith("•"):
@@ -238,11 +239,15 @@ def _parse_daily_report(md_text: str) -> dict:
             line,
         )
         if m:
+            url = m.group(4).split("#")[0]
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
             tweets.append({
                 "title": m.group(1).strip(),
                 "summary": m.group(2).strip(),
                 "author": m.group(3).strip(),
-                "url": m.group(4).split("#")[0],
+                "url": url,
             })
 
     return {
