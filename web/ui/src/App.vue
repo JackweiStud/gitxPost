@@ -41,7 +41,9 @@
     <main class="main-content">
       <router-view v-slot="{ Component }">
         <transition name="fade" mode="out-in">
-          <component :is="Component" />
+          <keep-alive>
+            <component :is="Component" />
+          </keep-alive>
         </transition>
       </router-view>
     </main>
@@ -54,7 +56,12 @@
           class="toast"
           :class="'toast-' + n.type"
         >
-          {{ n.message }}
+          <span class="toast-message">{{ n.message }}</span>
+          <button class="toast-close" @click="appStore.dismissNotification(n.id)" aria-label="关闭">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+              <path d="M18 6L6 18M6 6l12 12"/>
+            </svg>
+          </button>
         </div>
       </transition-group>
     </div>
@@ -255,6 +262,31 @@ const navItems = [
   font-weight: 500;
   box-shadow: var(--shadow-md);
   max-width: 360px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.toast-message {
+  flex: 1;
+}
+.toast-close {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  opacity: 0.6;
+  transition: all var(--transition-fast);
+  padding: 0;
+  margin: 0;
+}
+.toast-close:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.05);
 }
 .toast-info {
   background: #fff;

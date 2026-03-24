@@ -402,9 +402,14 @@ async def generate_replies(req: GenerateRepliesRequest):
         raise HTTPException(504, detail="回复生成超时")
 
     out = stdout.decode("utf-8", errors="replace").strip()
+    
+    # 先尝试直接解析，失败则使用 _extract_last_json 兜底
     try:
         return json.loads(out)
     except Exception:
+        result = _extract_last_json(out)
+        if result:
+            return result
         raise HTTPException(500, detail=f"回复生成失败: {out}")
 
 

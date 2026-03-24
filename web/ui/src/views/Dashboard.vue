@@ -25,6 +25,18 @@
       </div>
     </header>
 
+    <!-- Stats Grid with Refresh -->
+    <div class="stats-header">
+      <div class="stats-meta">
+        <span v-if="lastUpdateText" class="update-time">{{ lastUpdateText }}</span>
+      </div>
+      <button class="btn-icon" @click="manualRefresh" :disabled="isRefreshing" title="刷新数据">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" :class="{ spinning: isRefreshing }">
+          <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+        </svg>
+      </button>
+    </div>
+
     <!-- Stats Grid -->
     <div class="stats-grid">
       <div class="stat-card">
@@ -186,7 +198,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onActivated, computed } from 'vue'
 import { useAppStore } from '../stores/app.js'
 import * as api from '../api/xpost.js'
 
@@ -197,6 +209,10 @@ const pipelineRunning = ref(false)
 const pipelineResult = ref(null)
 const pipelineAbort = ref(null)
 const userStoppedPipeline = ref(false)
+const lastUpdateTime = ref(null)
+const isRefreshing = ref(false)
+const now = ref(Date.now())
+let timer = null
 
 const pipelineSteps = ref([
   { id: 'scan', label: '雷达扫描', desc: '抓取 230+ 账号最新推文', status: 'pending' },
@@ -204,14 +220,36 @@ const pipelineSteps = ref([
   { id: 'daily', label: '生成日报', desc: 'AI 筛选并生成 Markdown 日报', status: 'pending' },
 ])
 
+// 计算上次更新时间的相对显示
+const lastUpdateText = computed(() => {
+  if (!lastUpdateTime.value) return ''
+  const seconds = Math.floor((now.value - lastUpdateTime.value) / 1000)
+  if (seconds < 10) return '刚刚更新'
+  if (seconds < 60) return `${seconds} 秒前`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes} 分钟前`
+  const hours = Math.floor(minutes / 60)
+  return `${hours} 小时前`
+})
+
 async function loadData() {
+  if (isRefreshing.value) return
+  isRefreshing.value = true
   try {
     const [s, r] = await Promise.all([api.getStatus(), api.getReports()])
     status.value = s
     reports.value = r.reports || []
+    lastUpdateTime.value = Date.now()
   } catch (e) {
     appStore.notify('加载数据失败: ' + e.message, 'error')
+  } finally {
+    isRefreshing.value = false
   }
+}
+
+async function manualRefresh() {
+  appStore.notify('正在刷新数据...', 'info', 2000)
+  await loadData()
 }
 
 function isAbortError(e) {
@@ -303,7 +341,32 @@ async function runScanOnly() {
   }
 }
 
-onMounted(loadData)
+import { onUnmounted, onDeactivated } from 'vue'
+
+function startTimer() {
+  if (timer) return
+  timer = setInterval(() => {
+    now.value = Date.now()
+  }, 1000)
+}
+
+function stopTimer() {
+  if (timer) {
+    clearInterval(timer)
+    timer = null
+  }
+}
+
+onMounted(() => {
+  loadData()
+  startTimer()
+})
+onActivated(() => {
+  loadData()
+  startTimer()
+})
+onDeactivated(stopTimer)
+onUnmounted(stopTimer)
 </script>
 
 <style scoped>
@@ -345,6 +408,47 @@ onMounted(loadData)
   color: var(--text-tertiary);
   font-size: 13px;
   margin-top: 4px;
+}
+
+.stats-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  min-height: 24px;
+}
+.stats-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.update-time {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+.btn-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text-tertiary);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  padding: 0;
+}
+.btn-icon:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.btn-icon:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-icon svg.spinning {
+  animation: spin 1s linear infinite;
 }
 
 .stats-grid {
