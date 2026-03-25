@@ -244,6 +244,72 @@
                 <div class="markdown-body" v-html="renderedWeeklyMarkdown"></div>
               </div>
             </div>
+
+            <!-- 快捷账号操作面板 -->
+            <div
+              class="account-actions-panel card"
+              v-if="weeklyAccountActions.recommended_adds.length || weeklyAccountActions.suggested_removes.length"
+            >
+              <div class="section-bar">
+                <h3>📡 快捷账号操作</h3>
+              </div>
+
+              <!-- 推荐关注 -->
+              <div class="action-group" v-if="weeklyAccountActions.recommended_adds.length">
+                <div class="action-group-title">
+                  <span class="action-icon add">+</span> 推荐关注
+                  <span class="count">{{ weeklyAccountActions.recommended_adds.length }}</span>
+                </div>
+                <div class="action-tags">
+                  <div
+                    v-for="item in weeklyAccountActions.recommended_adds"
+                    :key="item.handle"
+                    class="action-tag"
+                    :class="{ done: accountActionStatus[item.handle] === 'added' }"
+                  >
+                    <span class="tag-handle">@{{ item.handle }}</span>
+                    <span class="tag-context" v-if="item.context">{{ item.context }}</span>
+                    <button
+                      class="tag-btn add"
+                      @click="quickAddAccount(item)"
+                      :disabled="accountActionStatus[item.handle] === 'adding' || accountActionStatus[item.handle] === 'added'"
+                    >
+                      <template v-if="accountActionStatus[item.handle] === 'adding'">添加中...</template>
+                      <template v-else-if="accountActionStatus[item.handle] === 'added'">✓ 已添加</template>
+                      <template v-else>+ 添加</template>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 建议移除 -->
+              <div class="action-group" v-if="weeklyAccountActions.suggested_removes.length">
+                <div class="action-group-title">
+                  <span class="action-icon remove">×</span> 建议移除
+                  <span class="count">{{ weeklyAccountActions.suggested_removes.length }}</span>
+                </div>
+                <div class="action-tags">
+                  <div
+                    v-for="item in weeklyAccountActions.suggested_removes"
+                    :key="item.handle"
+                    class="action-tag danger"
+                    :class="{ done: accountActionStatus[item.handle] === 'removed' }"
+                  >
+                    <span class="tag-handle">@{{ item.handle }}</span>
+                    <span class="tag-context" v-if="item.context">{{ item.context }}</span>
+                    <button
+                      class="tag-btn remove"
+                      @click="quickRemoveAccount(item)"
+                      :disabled="accountActionStatus[item.handle] === 'removing' || accountActionStatus[item.handle] === 'removed'"
+                    >
+                      <template v-if="accountActionStatus[item.handle] === 'removing'">移除中...</template>
+                      <template v-else-if="accountActionStatus[item.handle] === 'removed'">✓ 已移除</template>
+                      <template v-else>× 移除</template>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </template>
         </div>
       </template>
@@ -279,6 +345,20 @@ const selectedWeeklyDate = ref(null)
 const weeklyReport = ref(null)
 const weeklyLoading = ref(false)
 const weeklyGenerating = ref(false)
+
+// Account actions state
+const accountActionStatus = ref({})
+
+// 从 weeklyReport 中提取账号操作数据（computed）
+const weeklyAccountActions = computed(() => {
+  if (!weeklyReport.value) {
+    return { recommended_adds: [], suggested_removes: [] }
+  }
+  return {
+    recommended_adds: weeklyReport.value.recommended_adds || [],
+    suggested_removes: weeklyReport.value.suggested_removes || [],
+  }
+})
 
 /**
  * 日报 Markdown 预处理：
@@ -440,6 +520,7 @@ function selectDate(date) {
 
 function selectWeeklyDate(date) {
   selectedWeeklyDate.value = date
+  accountActionStatus.value = {}   // 重置操作状态
 }
 
 function switchTab(tab) {
@@ -533,6 +614,9 @@ async function loadWeeklyReport(date) {
   try {
     const data = await api.getWeeklyReport(date)
     weeklyReport.value = data
+    
+    // 加载周报后，检查账号状态
+    await syncAccountActionStatus()
   } catch (e) {
     if (e.response?.status === 404) {
       appStore.notify('该日期周报不存在', 'error')
@@ -541,6 +625,86 @@ async function loadWeeklyReport(date) {
     }
   } finally {
     weeklyLoading.value = false
+  }
+}
+
+async function syncAccountActionStatus() {
+  if (!weeklyReport.value) return
+  
+  try {
+    // 获取当前监控账号列表
+    const accountsData = await api.getRadarAccounts()
+    const accounts = accountsData.accounts || []
+    
+    // 提取活跃账号和已移除账号的 handle
+    const activeHandles = new Set(
+      accounts.filter(a => a.status === 'active').map(a => a.handle)
+    )
+    const removedHandles = new Set(
+      accounts.filter(a => a.status === 'removed').map(a => a.handle)
+    )
+    
+    // 检查推荐添加的账号
+    const recommendedAdds = weeklyReport.value.recommended_adds || []
+    for (const item of recommendedAdds) {
+      if (activeHandles.has(item.handle)) {
+        accountActionStatus.value[item.handle] = 'added'
+      }
+    }
+    
+    // 检查建议移除的账号
+    const suggestedRemoves = weeklyReport.value.suggested_removes || []
+    for (const item of suggestedRemoves) {
+      if (removedHandles.has(item.handle) || !activeHandles.has(item.handle)) {
+        accountActionStatus.value[item.handle] = 'removed'
+      }
+    }
+  } catch (e) {
+    // 静默失败，不影响周报显示
+    console.error('同步账号状态失败:', e)
+  }
+}
+
+async function quickAddAccount(item) {
+  accountActionStatus.value[item.handle] = 'adding'
+  try {
+    // note 使用 context 或 description，或默认 "周报推荐"
+    const note = item.description || item.context || '周报推荐关注'
+    await api.addRadarAccount(item.handle, note)
+    accountActionStatus.value[item.handle] = 'added'
+    appStore.notify(`已添加 @${item.handle}`, 'success')
+  } catch (e) {
+    accountActionStatus.value[item.handle] = 'error'
+    // 检查是否已存在
+    const msg = e.message || ''
+    if (msg.includes('已在') || msg.includes('already')) {
+      accountActionStatus.value[item.handle] = 'added'
+      appStore.notify(`@${item.handle} 已在监控列表中`, 'info')
+    } else {
+      appStore.notify(`添加 @${item.handle} 失败: ${msg}`, 'error')
+      // 失败时重新同步状态
+      await syncAccountActionStatus()
+    }
+  }
+}
+
+async function quickRemoveAccount(item) {
+  accountActionStatus.value[item.handle] = 'removing'
+  try {
+    await api.removeRadarAccount(item.handle)
+    accountActionStatus.value[item.handle] = 'removed'
+    appStore.notify(`已移除 @${item.handle}`, 'success')
+  } catch (e) {
+    accountActionStatus.value[item.handle] = 'error'
+    const msg = e.message || ''
+    if (msg.includes('不在') || msg.includes('not found')) {
+      accountActionStatus.value[item.handle] = 'removed'
+      appStore.notify(`@${item.handle} 已不在监控列表中`, 'info')
+    } else {
+      appStore.notify(`移除 @${item.handle} 失败: ${msg}`, 'error')
+      // 失败时重新同步状态
+      await syncAccountActionStatus()
+    }
   }
 }
 
@@ -1239,5 +1403,119 @@ onMounted(async () => {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* ── 快捷账号操作面板 ───────────────────── */
+.account-actions-panel {
+  margin-top: 16px;
+  padding: 20px;
+}
+.action-group {
+  margin-bottom: 16px;
+}
+.action-group:last-child {
+  margin-bottom: 0;
+}
+.action-group-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.action-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+}
+.action-icon.add {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10B981;
+}
+.action-icon.remove {
+  background: rgba(239, 68, 68, 0.1);
+  color: #EF4444;
+}
+.action-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.action-tag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  font-size: 12px;
+  transition: all var(--transition-fast);
+}
+.action-tag:hover {
+  border-color: var(--accent-blue);
+}
+.action-tag.danger {
+  background: rgba(239, 68, 68, 0.05);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+.action-tag.danger:hover {
+  border-color: #EF4444;
+  background: rgba(239, 68, 68, 0.08);
+}
+.action-tag.done {
+  opacity: 0.5;
+  background: var(--bg-tertiary);
+}
+.tag-handle {
+  font-weight: 600;
+  color: var(--accent-blue);
+}
+.action-tag.danger .tag-handle {
+  color: #DC2626;
+}
+.tag-context {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.action-tag.danger .tag-context {
+  color: #991B1B;
+}
+.tag-btn {
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+.tag-btn.add {
+  color: #10B981;
+  background: rgba(16, 185, 129, 0.08);
+}
+.tag-btn.add:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.18);
+}
+.tag-btn.remove {
+  color: #ffffff;
+  background: #EF4444;
+}
+.tag-btn.remove:hover:not(:disabled) {
+  background: #DC2626;
+}
+.tag-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 </style>

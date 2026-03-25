@@ -40,5 +40,12 @@ export const sendReply = (url, text, publish = false) =>
   api.post('/reply/send', { url, text, publish })
 
 export const getAccounts = () => api.get('/accounts')
+export const getRadarAccounts = () => api.get('/radar/accounts')
+export const addRadarAccount = (handle, note) =>
+  api.post('/radar/accounts', { handle, note })
+export const removeRadarAccount = (handle) =>
+  api.delete(`/radar/accounts/${handle}`)
+export const restoreRadarAccount = (handle) =>
+  api.put(`/radar/accounts/${handle}/restore`)
 
 export const runPipeline = (steps) => api.post('/pipeline/run', { steps })

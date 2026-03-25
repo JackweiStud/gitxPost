@@ -127,7 +127,7 @@ TARGET_ACCOUNTS = [
     "ElevenLabs",        # ElevenLabs，AI research and products that transform how we interact w...
     "pirroh",            # Michele Catasta，President & Head of AI
     "OpenAINewsroom",    # OpenAI Newsroom，Tweets are on the record. If you like this account, you’l...
-    "huggingface",       # Hugging Face，The AI community building the future.
+    #"huggingface",# Hugging Face，The AI community building the future.  ← 移除 2026-03-25
     "BradSchoenfeld",    # Brad Schoenfeld, PhD，Researcher/educator on muscle building and fat loss. Auth...
     "grok",              # Grok
     "johnschulman2",     # John Schulman，Interested in reinforcement learning, alignment, birds, j...
@@ -156,7 +156,7 @@ TARGET_ACCOUNTS = [
     "ProductHunt",       # Product Hunt，Get new products in your inbox:
     "godofprompt",       # God of Prompt，Sharing AI Prompts, Tips & Tricks. The Biggest Collection...
     "JermicX",           # Jermic 𝕏 ，正在做：AIART - AI 提示词灵感库、PicSeed - 灵感收集助手
-    "raindesign007",     # Rain，Vibe Coding，UX/UI，ProductDesign，AI
+    #"raindesign007",# Rain，Vibe Coding，UX/UI，ProductDesign，AI  ← 移除 2026-03-25
     "woshi_ai",          # WOSHI，Discover AI prompts .
     "ReflctWillie",      # willie，Node Banana, easypeasyease Lnkdn:
     "CodeByPoonam",      # Poonam Soni，Post about everything latest in AI ｜ Founder: AI Toast｜ D...
@@ -281,6 +281,16 @@ TARGET_ACCOUNTS = [
     "heyrobinai",        # Robin Delta，I help you make money & get more work done with AI tools
     "AlphaSchoolATX",    # Alpha，Our students love school, learn 2X fast, and learn life s...
     "ecomEddie",         # EDDIE CHENG，(growth agency for DTC)
+    "thsottiaux",  # 优先关注，AI 研究方向
+    "thdxr",  # 开发工具方向
+    "sundarpichai",  # Google 战略动向
+    "satyanadella",  # Microsoft 官方背书，Azure AI 动态
+    "OfficialLoganK",  # 顶级 AI 研究者背书
+    "petergyang",  # 产品/创业视角
+    "garrytan",  # YC/创业生态核心节点
+    "mustafasuleyman",  # Microsoft AI 负责人
+    "aakashgupta",  # 多圈层共振，信号强
+    "doganuraldesign",  # xAI 生态设计方向
 ]
 
 # nitter 实例列表（多实例 fallback）

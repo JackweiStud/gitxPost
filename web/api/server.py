@@ -272,6 +272,154 @@ def _parse_daily_report(md_text: str) -> dict:
     }
 
 
+def _extract_weekly_account_actions(markdown: str) -> dict:
+    """从周报 Markdown 中提取推荐关注和建议移除的账号列表"""
+    recommended_adds = []
+    suggested_removes = []
+
+    lines = markdown.split("\n")
+    current_section = None      # "recommend" | "remove" | "keep" | None
+    in_table = False            # 是否在表格内
+    
+    for line in lines:
+        stripped = line.strip()
+        
+        # 检测章节标题
+        if "二度人脉推荐" in stripped:
+            current_section = "recommend"
+            in_table = False
+            continue
+        if "账号调整建议" in stripped:
+            current_section = "adjust"
+            in_table = False
+            continue
+        # 检测子章节（在 adjust 内）
+        if current_section == "adjust" or current_section in ("keep", "remove"):
+            if "建议移除" in stripped or ("❌" in stripped and "建议" in stripped):
+                current_section = "remove"
+                in_table = False
+                continue
+            if "建议保留" in stripped or ("✅" in stripped and "建议" in stripped):
+                current_section = "keep"
+                in_table = False
+                continue
+        # 遇到下一个 H2 标题，重置
+        if stripped.startswith("## ") or stripped.startswith("# "):
+            if current_section not in ("adjust", "keep", "remove"):
+                current_section = None
+            if stripped.startswith("## ") and "二度" not in stripped and "账号" not in stripped:
+                current_section = None
+            in_table = False
+            continue
+        
+        # 检测表格（Markdown 表格以 | 开头）
+        if stripped.startswith("|"):
+            # 推荐关注区域的表格
+            if current_section == "recommend":
+                # 跳过表头和分隔行
+                if "账号" in stripped or "---" in stripped:
+                    in_table = True
+                    continue
+                # 解析表格行
+                if in_table:
+                    parts = [p.strip() for p in stripped.split("|")]
+                    if len(parts) >= 4:  # | 账号 | 被推荐次数 | 推荐来源 | ...
+                        account_cell = parts[1] if len(parts) > 1 else ""
+                        source_cell = parts[3] if len(parts) > 3 else ""
+                        suggestion_cell = parts[-2] if len(parts) > 4 else ""  # 倒数第二列通常是"建议"
+                        
+                        # 提取账号
+                        match = re.search(r'@(\w+)', account_cell)
+                        if match:
+                            handle = match.group(1)
+                            # context 使用推荐来源
+                            context = source_cell.strip()
+                            # description 使用建议列
+                            description = suggestion_cell.strip()
+                            recommended_adds.append({
+                                "handle": handle,
+                                "context": context,
+                                "description": description,
+                            })
+                continue
+            
+            # 建议移除区域的表格
+            elif current_section == "remove":
+                # 跳过表头和分隔行
+                if "账号" in stripped or "---" in stripped or "推荐" in stripped:
+                    in_table = True
+                    continue
+                # 解析表格行
+                if in_table:
+                    parts = [p.strip() for p in stripped.split("|")]
+                    if len(parts) >= 3:  # | 账号 | 原创率 | 推文数 | 理由
+                        account_cell = parts[1] if len(parts) > 1 else ""
+                        rate_cell = parts[2] if len(parts) > 2 else ""
+                        reason_cell = parts[-2] if len(parts) > 3 else ""  # 理由列
+                        
+                        # 提取账号
+                        match = re.search(r'@(\w+)', account_cell)
+                        if match:
+                            handle = match.group(1)
+                            # context 使用原创率 + 理由
+                            context = f"{rate_cell} 原创率，{reason_cell}".strip("，")
+                            suggested_removes.append({
+                                "handle": handle,
+                                "context": context,
+                            })
+                continue
+        
+        # 提取 @username（列表格式，兼容旧格式）
+        if current_section == "recommend" and not in_table:
+            # 格式: - @username（context）- description
+            # 或:   - @username（context）
+            matches = re.findall(r'@(\w+)', stripped)
+            if matches and stripped.startswith("-"):
+                handle = matches[0]  # 第一个是主账号
+                # 提取括号内 context
+                ctx = re.search(r'[（(](.+?)[）)]', stripped)
+                context = ctx.group(1) if ctx else ""
+                # 提取 - 后的描述
+                desc = re.search(r'[）)]\s*[-—–]\s*(.+)', stripped)
+                description = desc.group(1).strip() if desc else ""
+                recommended_adds.append({
+                    "handle": handle,
+                    "context": context,
+                    "description": description,
+                })
+        
+        elif current_section == "remove" and not in_table:
+            # 格式 A (列表): - @username（context）
+            if stripped.startswith("-"):
+                matches = re.findall(r'@(\w+)', stripped)
+                for handle in matches:
+                    ctx = re.search(
+                        rf'@{handle}\s*[（(](.+?)[）)]', stripped
+                    )
+                    context = ctx.group(1) if ctx else ""
+                    suggested_removes.append({
+                        "handle": handle,
+                        "context": context,
+                    })
+            # 格式 B (逗号分隔): - @a、@b、@c（原创率 xx%）
+            elif "、" in stripped and "@" in stripped:
+                # 提取所有 @username
+                handles = re.findall(r'@(\w+)', stripped)
+                # 整行括号说明作为共享 context
+                ctx = re.search(r'[（(](.+?)[）)]', stripped)
+                context = ctx.group(1) if ctx else ""
+                for handle in handles:
+                    suggested_removes.append({
+                        "handle": handle,
+                        "context": context,
+                    })
+
+    return {
+        "recommended_adds": recommended_adds,
+        "suggested_removes": suggested_removes,
+    }
+
+
 def _parse_weekly_report(md_text: str) -> dict:
     """解析周报：frontmatter + markdown body
     
@@ -294,7 +442,14 @@ def _parse_weekly_report(md_text: str) -> dict:
     # 提取 markdown 内容（周报也使用 JSON 包裹格式）
     markdown_content = _extract_markdown_from_report_body(body_text)
     
-    return {"frontmatter": frontmatter, "markdown": markdown_content}
+    # 提取账号操作建议
+    account_actions = _extract_weekly_account_actions(markdown_content)
+    
+    return {
+        "frontmatter": frontmatter,
+        "markdown": markdown_content,
+        **account_actions,  # recommended_adds, suggested_removes
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -532,9 +687,85 @@ async def send_reply(req: SendReplyRequest):
 # Routes: Accounts
 # ---------------------------------------------------------------------------
 
+def _parse_accounts_stdout(stdout: str) -> dict:
+    """解析 manage_accounts.py list 的文本输出为结构化数据"""
+    active = []
+    removed = []
+    current_section = None
+    
+    for line in stdout.splitlines():
+        line = line.strip()
+        if "活跃账号" in line:
+            current_section = "active"
+            continue
+        if "已注释" in line or "已移除" in line:
+            current_section = "removed"
+            continue
+        
+        # 匹配 "  1. @username" 或 "      @username"
+        m = re.match(r'^\s*(?:\d+\.\s*)?@(\w+)', line)
+        if m:
+            handle = m.group(1)
+            if current_section == "active":
+                active.append({"handle": handle, "status": "active"})
+            elif current_section == "removed":
+                removed.append({"handle": handle, "status": "removed"})
+    
+    return {"active": active, "removed": removed}
+
+
 @app.get("/api/accounts")
 async def list_accounts():
+    """旧端点，保持兼容"""
     return await _run_xpost("radar-accounts", "list")
+
+
+@app.get("/api/radar/accounts")
+async def list_radar_accounts():
+    """列出所有监控账号（结构化）"""
+    result = await _run_xpost("radar-accounts", "list")
+    stdout = result.get("stdout", "")
+    parsed = _parse_accounts_stdout(stdout)
+    return {
+        "ok": result.get("ok", False),
+        "accounts": parsed["active"] + parsed["removed"],
+        "active_count": len(parsed["active"]),
+        "removed_count": len(parsed["removed"]),
+    }
+
+
+class AddAccountRequest(BaseModel):
+    handle: str
+    note: str = ""
+
+
+@app.post("/api/radar/accounts")
+async def add_radar_account(req: AddAccountRequest):
+    """添加监控账号"""
+    handle = req.handle.lstrip("@").strip()
+    if not handle:
+        raise HTTPException(400, detail="handle 不能为空")
+    if not req.note.strip():
+        raise HTTPException(400, detail="note 不能为空")
+    return await _run_xpost("radar-accounts", "add", handle, req.note)
+
+
+@app.delete("/api/radar/accounts/{handle}")
+async def remove_radar_account(handle: str):
+    """移除监控账号（软删除）"""
+    handle = handle.lstrip("@").strip()
+    if not handle:
+        raise HTTPException(400, detail="handle 不能为空")
+    return await _run_xpost("radar-accounts", "remove", handle)
+
+
+@app.put("/api/radar/accounts/{handle}/restore")
+async def restore_radar_account(handle: str):
+    """恢复已移除账号"""
+    handle = handle.lstrip("@").strip()
+    if not handle:
+        raise HTTPException(400, detail="handle 不能为空")
+    return await _run_xpost("radar-accounts", "restore", handle)
 
 
 # ---------------------------------------------------------------------------

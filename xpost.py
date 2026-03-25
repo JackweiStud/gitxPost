@@ -1713,7 +1713,7 @@ def main():
     p_generate.add_argument("--topic", help="Topic override for LLM prompt")
     p_generate.add_argument("--model", help="LLM model override")
     p_generate.add_argument("--api-url", help="LLM messages API URL override")
-    p_generate.add_argument("--max-tokens", type=int, default=4000, help="LLM max tokens for generation")
+    p_generate.add_argument("--max-tokens", type=int, default=9000, help="LLM max tokens for generation")
     p_generate.set_defaults(func=_cmd_generate)
 
     p_validate = sub.add_parser("validate", help="Validate markdown format")
@@ -1779,8 +1779,8 @@ def main():
     p_radar_daily.add_argument("--output", help="Output markdown path (default: xinfo/log/day/YYYY-MM-DD.md)")
     p_radar_daily.add_argument("--model", help="LLM model override (default: claude-opus-4-6)")
     p_radar_daily.add_argument("--api-url", help="LLM messages API URL override")
-    p_radar_daily.add_argument("--max-tokens", type=int, default=9000, help="LLM max tokens for daily report")
-    p_radar_daily.add_argument("--max-preview", type=int, default=100, help="Max preview tweets to include in prompt (default: 100)")
+    p_radar_daily.add_argument("--max-tokens", type=int, default=100000, help="LLM max tokens for daily report")
+    p_radar_daily.add_argument("--max-preview", type=int, default=200, help="Max preview tweets to include in prompt (default: 100)")
     p_radar_daily.set_defaults(func=_cmd_radar_daily)
 
     p_radar_weekly = sub.add_parser("radar-weekly", help="Generate X radar weekly markdown report")
