@@ -7,7 +7,7 @@
       </div>
       <div class="header-actions">
         <p v-if="pipelineRunning" class="pipeline-hint">
-          全流程约 5–20 分钟（视网络与账号量）。重复点击不会并行执行；可随时点「停止」。
+          全流程约 5–15 分钟（视网络与账号量）。重复点击不会并行执行；可随时点「停止」。
         </p>
         <button
           v-if="pipelineRunning"
@@ -234,7 +234,6 @@ let timer = null
 
 const pipelineSteps = ref([
   { id: 'scan', label: '雷达扫描', desc: '抓取 230+ 账号最新推文', estimate: '3-8 分钟', status: 'pending', startTime: null, duration: null },
-  { id: 'analyze', label: '数据分析', desc: '聚类分析近 7 天数据', estimate: '1-3 分钟', status: 'pending', startTime: null, duration: null },
   { id: 'daily', label: '生成日报', desc: 'AI 筛选并生成 Markdown 日报', estimate: '2-5 分钟', status: 'pending', startTime: null, duration: null },
 ])
 
@@ -320,7 +319,7 @@ async function runFullPipeline() {
     s.duration = null
   })
 
-  const stepFns = [() => api.runScan(sig), () => api.runAnalyze(7, sig), () => api.runDaily(sig)]
+  const stepFns = [() => api.runScan(sig), () => api.runDaily(sig)]
 
   try {
     for (let i = 0; i < stepFns.length; i++) {

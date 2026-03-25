@@ -23,6 +23,7 @@ XINFO_WEEK = XINFO_LOG / "week"
 RESULT_JSON = BASE_DIR / "xinfo" / "RESULT.json"
 INTERESTS_JSON = XINFO_LOG / "interests.json"
 ACTIONS_JSON = XINFO_LOG / "actions.json"
+X_IDEAS_SCAN_PY = BASE_DIR / "xinfo" / "x_ideas_scan.py"
 VENV_PYTHON = BASE_DIR / ".venv" / "bin" / "python"
 XPOST_PY = BASE_DIR / "xpost.py"
 GENERATE_REPLIES_PY = BASE_DIR / "skills" / "x-reply-assistV2" / "scripts" / "generate_replies.py"
@@ -714,6 +715,61 @@ def _parse_accounts_stdout(stdout: str) -> dict:
     return {"active": active, "removed": removed}
 
 
+def _read_accounts_from_file() -> dict:
+    """直接从 x_ideas_scan.py 文件读取账号列表（不依赖 xpost 子进程）"""
+    active = []
+    removed = []
+    
+    if not X_IDEAS_SCAN_PY.exists():
+        return {"active": active, "removed": removed}
+    
+    try:
+        content = X_IDEAS_SCAN_PY.read_text("utf-8")
+        
+        # 提取 TARGET_ACCOUNTS 列表内容
+        # 匹配从 TARGET_ACCOUNTS = [ 到对应的 ]
+        match = re.search(
+            r'TARGET_ACCOUNTS\s*=\s*\[(.*?)\n\]',
+            content,
+            re.DOTALL
+        )
+        
+        if not match:
+            return {"active": active, "removed": removed}
+        
+        accounts_block = match.group(1)
+        
+        # 解析每一行
+        for line in accounts_block.split('\n'):
+            line = line.strip()
+            
+            # 跳过空行
+            if not line:
+                continue
+            
+            # 跳过纯注释行（不包含账号的注释）
+            if line.startswith('#') and '"' not in line:
+                continue
+            
+            # 匹配账号：可能是 "username", 或 #"username",# 注释
+            # 活跃账号：以 " 开头
+            if line.startswith('"'):
+                match = re.match(r'"(\w+)"', line)
+                if match:
+                    active.append({"handle": match.group(1), "status": "active"})
+            # 已移除账号：以 # 开头，后面跟 "username"
+            elif line.startswith('#') and '"' in line:
+                match = re.search(r'#\s*"(\w+)"', line)
+                if match:
+                    removed.append({"handle": match.group(1), "status": "removed"})
+        
+        return {"active": active, "removed": removed}
+    
+    except Exception as e:
+        print(f"读取账号文件失败: {e}")
+        return {"active": active, "removed": removed}
+
+
 @app.get("/api/accounts")
 async def list_accounts():
     """旧端点，保持兼容"""
@@ -722,12 +778,10 @@ async def list_accounts():
 
 @app.get("/api/radar/accounts")
 async def list_radar_accounts():
-    """列出所有监控账号（结构化）"""
-    result = await _run_xpost("radar-accounts", "list")
-    stdout = result.get("stdout", "")
-    parsed = _parse_accounts_stdout(stdout)
+    """列出所有监控账号（结构化）- 直接读取文件，不阻塞"""
+    parsed = _read_accounts_from_file()
     return {
-        "ok": result.get("ok", False),
+        "ok": True,
         "accounts": parsed["active"] + parsed["removed"],
         "active_count": len(parsed["active"]),
         "removed_count": len(parsed["removed"]),

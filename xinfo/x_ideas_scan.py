@@ -162,7 +162,7 @@ TARGET_ACCOUNTS = [
     "CodeByPoonam",      # Poonam Soni，Post about everything latest in AI ｜ Founder: AI Toast｜ D...
     "googleaidevs",      # Google AI Developers，AI for every developer. So what will you build?
     "folo_is",           # Folo，Follow everything in one place. Join our community:
-    "cline",             # Cline，We turn your inference into production code.
+    #"cline",# Cline，We turn your inference into production code.  ← 移除 2026-03-25
     "cursor_ai",         # Cursor，The best way to code with AI.
     "MindBranches",      # MindBranches，AI enhanced diagrams to help you understand complex conce...
     "Tesla",             # Tesla，Electric vehicles, giant batteries & solar, AI & robotics
