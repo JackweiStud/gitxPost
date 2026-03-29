@@ -25,27 +25,31 @@ BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 SEEN_FILE  = os.path.join(BASE_DIR, 'log', '.ideas_seen.json')
 IDEAS_FILE = os.path.join(BASE_DIR, 'log', 'ideas.md')
 SCAN_FILE  = os.path.join(BASE_DIR, 'x_ideas_scan.py')
+ACCOUNTS_FILE = os.path.join(BASE_DIR, 'accounts.json')
 DAY_LOG    = os.path.join(BASE_DIR, 'log', 'day')
 
 # ── 工具 ──────────────────────────────────────────────────────────────────────
 
 def load_target_accounts() -> set:
-    """从 x_ideas_scan.py 动态读取 TARGET_ACCOUNTS"""
+    """从 accounts.json 读取活跃账号列表"""
     targets = set()
-    if not os.path.exists(SCAN_FILE):
+    if not os.path.exists(ACCOUNTS_FILE):
         return targets
-    in_block = False
-    with open(SCAN_FILE, encoding='utf-8') as f:
-        for line in f:
-            s = line.strip()
-            if 'TARGET_ACCOUNTS' in s and '=' in s:
-                in_block = True
-            if in_block:
-                for m in re.finditer(r'["\']([A-Za-z0-9_]+)["\']', s):
-                    targets.add(m.group(1))
-                if ']' in s:
-                    break
-    return targets
+
+    try:
+        with open(ACCOUNTS_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        accounts = data.get("accounts", [])
+        for acc in accounts:
+            if acc.get("status") == "active":
+                targets.add(acc.get("handle"))
+
+        return targets
+    except Exception as e:
+        print(f"读取账号配置失败: {e}")
+        return targets
+
 
 
 def load_records(days=None) -> list:

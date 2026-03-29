@@ -17,22 +17,22 @@ manage_accounts.py — X 雷达账号管理工具
 
 import sys
 import os
-import re
+import json
 import shutil
 from datetime import datetime
 
-SCAN_FILE = os.path.join(os.path.dirname(__file__), 'x_ideas_scan.py')
+ACCOUNTS_FILE = os.path.join(os.path.dirname(__file__), 'accounts.json')
 BACKUP_DIR = os.path.join(os.path.dirname(__file__), 'log', 'account_backups')
 
 
 # ── 工具函数 ─────────────────────────────────────────────────────────────────
 
 def make_backup():
-    """修改前备份 x_ideas_scan.py，保留最近 10 份。"""
+    """修改前备份 accounts.json，保留最近 10 份。"""
     os.makedirs(BACKUP_DIR, exist_ok=True)
     ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-    dst = os.path.join(BACKUP_DIR, f'x_ideas_scan_{ts}.py')
-    shutil.copy2(SCAN_FILE, dst)
+    dst = os.path.join(BACKUP_DIR, f'accounts_{ts}.json')
+    shutil.copy2(ACCOUNTS_FILE, dst)
     # 清理多余备份（只保留最新 10 份）
     backups = sorted(os.listdir(BACKUP_DIR))
     for old in backups[:-10]:
@@ -40,190 +40,135 @@ def make_backup():
     return dst
 
 
-def read_file():
-    with open(SCAN_FILE, encoding='utf-8') as f:
-        return f.read()
+def read_accounts():
+    """读取账号配置文件"""
+    with open(ACCOUNTS_FILE, 'r', encoding='utf-8') as f:
+        return json.load(f)
 
 
-def write_file(content: str):
-    with open(SCAN_FILE, 'w', encoding='utf-8') as f:
-        f.write(content)
+def write_accounts(data):
+    """写入账号配置文件"""
+    with open(ACCOUNTS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def find_target_block(content: str):
-    """返回 TARGET_ACCOUNTS = [ ... ] 的起止行号（0-indexed），及列表行。"""
-    lines = content.splitlines(keepends=True)
-    start, end = None, None
-    for i, line in enumerate(lines):
-        if 'TARGET_ACCOUNTS = [' in line:
-            start = i
-        if start is not None and line.strip() == ']' and i > start:
-            end = i
-            break
-    if start is None or end is None:
-        raise ValueError('找不到 TARGET_ACCOUNTS 列表块')
-    return start, end, lines
+def get_active_accounts(data):
+    """提取活跃账号"""
+    return [acc for acc in data['accounts'] if acc['status'] == 'active']
 
 
-def get_active_accounts(lines, start, end):
-    """提取活跃（未注释）账号名。"""
-    active = []
-    for line in lines[start+1:end]:
-        stripped = line.strip()
-        if stripped.startswith('"') and not stripped.startswith('#'):
-            m = re.match(r'"(\w+)"', stripped)
-            if m:
-                active.append(m.group(1))
-    return active
-
-
-def get_commented_accounts(lines, start, end):
-    """提取已注释账号名。"""
-    commented = []
-    for line in lines[start+1:end]:
-        stripped = line.strip()
-        if stripped.startswith('#"') or stripped.startswith('#"'):
-            m = re.match(r'#"(\w+)"', stripped)
-            if m:
-                commented.append(m.group(1))
-        elif re.match(r'#\s*"(\w+)"', stripped):
-            m = re.match(r'#\s*"(\w+)"', stripped)
-            if m:
-                commented.append(m.group(1))
-    return commented
+def get_removed_accounts(data):
+    """提取已移除账号"""
+    return [acc for acc in data['accounts'] if acc['status'] == 'removed']
 
 
 # ── 子命令 ─────────────────────────────────────────────────────────────────
 
 def cmd_list():
-    content = read_file()
-    lines = content.splitlines(keepends=True)
-    start, end, lines = find_target_block(content)
-    active = get_active_accounts(lines, start, end)
-    commented = get_commented_accounts(lines, start, end)
+    data = read_accounts()
+    active = get_active_accounts(data)
+    removed = get_removed_accounts(data)
 
     print(f'\n✅ 活跃账号 ({len(active)} 个):')
     for i, acc in enumerate(active, 1):
-        print(f'  {i:2d}. @{acc}')
+        note = acc.get('note', '')
+        print(f'  {i:2d}. @{acc["handle"]:<20} {note}')
 
-    if commented:
-        print(f'\n💤 已注释/移除账号 ({len(commented)} 个):')
-        for acc in commented:
-            print(f'      @{acc}')
+    if removed:
+        print(f'\n💤 已注释/移除账号 ({len(removed)} 个):')
+        for acc in removed:
+            note = acc.get('note', '')
+            removed_at = acc.get('removed_at', '')
+            print(f'      @{acc["handle"]:<20} {note} (移除于 {removed_at})')
     print()
 
 
 def cmd_add(username: str, note: str = ''):
     username = username.lstrip('@')
-    content = read_file()
-    start, end, lines = find_target_block(content)
-    active = get_active_accounts(lines, start, end)
-
-    if username.lower() in [a.lower() for a in active]:
-        print(f'⚠️  @{username} 已在活跃列表中，无需添加。')
-        return
-
-    # 恢复已注释的账号
-    commented = get_commented_accounts(lines, start, end)
-    if username.lower() in [c.lower() for c in commented]:
-        print(f'ℹ️  @{username} 已在注释中，请用 restore 命令恢复。')
-        return
-
+    data = read_accounts()
+    
+    # 检查是否已存在
+    for acc in data['accounts']:
+        if acc['handle'].lower() == username.lower():
+            if acc['status'] == 'active':
+                print(f'⚠️  @{username} 已在活跃列表中，无需添加。')
+                return
+            elif acc['status'] == 'removed':
+                print(f'ℹ️  @{username} 已在注释中，请用 restore 命令恢复。')
+                return
+    
     backup = make_backup()
-
-    # 在 ] 前面插入新账号（插入到"其他技术"区域末尾，或紧贴 ] 之前）
-    note_str = f'  # {note}' if note else ''
-    new_line = f'    "{username}",{note_str}\n'
-
-    lines.insert(end, new_line)
-    write_file(''.join(lines))
+    
+    # 添加新账号
+    new_account = {
+        "handle": username,
+        "note": note,
+        "status": "active",
+        "added_at": datetime.now().strftime('%Y-%m-%d')
+    }
+    data['accounts'].append(new_account)
+    data['updated_at'] = datetime.now().isoformat()
+    
+    write_accounts(data)
     print(f'✅ 已添加 @{username}{" — " + note if note else ""}')
     print(f'   备份: {backup}')
 
 
 def cmd_remove(username: str):
     username = username.lstrip('@')
-    content = read_file()
-    start, end, lines = find_target_block(content)
-    active = get_active_accounts(lines, start, end)
-
-    if username.lower() not in [a.lower() for a in active]:
+    data = read_accounts()
+    
+    found = False
+    for acc in data['accounts']:
+        if acc['handle'].lower() == username.lower():
+            if acc['status'] == 'removed':
+                print(f'⚠️  @{username} 已经处于注释状态。')
+                return
+            elif acc['status'] == 'active':
+                backup = make_backup()
+                
+                # 标记为已移除
+                acc['status'] = 'removed'
+                acc['removed_at'] = datetime.now().strftime('%Y-%m-%d')
+                data['updated_at'] = datetime.now().isoformat()
+                
+                write_accounts(data)
+                print(f'✅ 已注释 @{username}（历史记录保留）')
+                print(f'   备份: {backup}')
+                found = True
+                break
+    
+    if not found:
         print(f'⚠️  @{username} 不在活跃列表中。')
-        # 提示是否已注释
-        commented = get_commented_accounts(lines, start, end)
-        if username.lower() in [c.lower() for c in commented]:
-            print(f'   该账号已经处于注释状态。')
-        return
-
-    backup = make_backup()
-
-    new_lines = []
-    removed = False
-    for i, line in enumerate(lines):
-        if i >= start + 1 and i < end:
-            stripped = line.strip()
-            if stripped.startswith('"') and not stripped.startswith('#'):
-                m = re.match(r'"(\w+)"', stripped)
-                if m and m.group(1).lower() == username.lower():
-                    # 注释掉这行，加上移除原因和日期
-                    indent = len(line) - len(line.lstrip())
-                    rest = line.strip()
-                    # 保留已有注释，追加移除日期
-                    if '#' in rest:
-                        rest = rest[:rest.index('#')].strip() + rest[rest.index('#'):]
-                        new_line = ' ' * indent + '#' + rest + f'  ← 移除 {datetime.now().strftime("%Y-%m-%d")}\n'
-                    else:
-                        new_line = ' ' * indent + '#' + rest + f'  # 移除 {datetime.now().strftime("%Y-%m-%d")}\n'
-                    new_lines.append(new_line)
-                    removed = True
-                    continue
-        new_lines.append(line)
-
-    if removed:
-        write_file(''.join(new_lines))
-        print(f'✅ 已注释 @{username}（历史记录保留）')
-        print(f'   备份: {backup}')
-    else:
-        print(f'❌ 未找到 @{username} 的精确匹配行')
 
 
 def cmd_restore(username: str):
     username = username.lstrip('@')
-    content = read_file()
-    start, end, lines = find_target_block(content)
-    commented = get_commented_accounts(lines, start, end)
-
-    if username.lower() not in [c.lower() for c in commented]:
+    data = read_accounts()
+    
+    found = False
+    for acc in data['accounts']:
+        if acc['handle'].lower() == username.lower():
+            if acc['status'] == 'active':
+                print(f'⚠️  @{username} 已经是活跃状态。')
+                return
+            elif acc['status'] == 'removed':
+                backup = make_backup()
+                
+                # 恢复为活跃
+                acc['status'] = 'active'
+                if 'removed_at' in acc:
+                    del acc['removed_at']
+                data['updated_at'] = datetime.now().isoformat()
+                
+                write_accounts(data)
+                print(f'✅ 已恢复 @{username}')
+                print(f'   备份: {backup}')
+                found = True
+                break
+    
+    if not found:
         print(f'⚠️  @{username} 不在已注释列表中，无法恢复。')
-        return
-
-    backup = make_backup()
-
-    new_lines = []
-    restored = False
-    for i, line in enumerate(lines):
-        if i >= start + 1 and i < end:
-            stripped = line.strip()
-            m = re.match(r'#\s*"(\w+)"', stripped)
-            if m and m.group(1).lower() == username.lower():
-                # 去掉注释符，清除"移除"注记
-                indent = len(line) - len(line.lstrip())
-                restored_line = ' ' * indent + stripped[1:].strip()
-                # 移除 ← 移除 xxxx-xx-xx 标记
-                restored_line = re.sub(r'\s*←\s*移除\s*\d{4}-\d{2}-\d{2}', '', restored_line)
-                # 移除 # 移除 xxxx-xx-xx 标记
-                restored_line = re.sub(r'\s*#\s*移除\s*\d{4}-\d{2}-\d{2}', '', restored_line)
-                new_lines.append(restored_line.rstrip() + '\n')
-                restored = True
-                continue
-        new_lines.append(line)
-
-    if restored:
-        write_file(''.join(new_lines))
-        print(f'✅ 已恢复 @{username}')
-        print(f'   备份: {backup}')
-    else:
-        print(f'❌ 恢复失败，请手动检查 x_ideas_scan.py')
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
