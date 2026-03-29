@@ -1,0 +1,1591 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-03-26T09:39:33.187126",
+  "accounts": [
+    {
+      "handle": "dashen_wang",
+      "note": "AI最严厉的父亲，技术架构师，研究 AI 自动化与人类行为",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "xingpt",
+      "note": "XinGPT，AI 干货与个人成长分享",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "skyfree14242454",
+      "note": "sky_AI，2026年从头学习 AI 的创业者",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "linxiaobei888",
+      "note": "xiaobeiLin(小北)，软件工程，关注 AI Coding",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "zarazhangrui",
+      "note": "原有账号",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "op7418",
+      "note": "原有账号",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "dtnewsai",
+      "note": "原有账号",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "joanrod_ai",
+      "note": "原有账号",
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-03-11"
+    },
+    {
+      "handle": "samruddhi_mokal",
+      "note": "原有账号",
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-03-19"
+    },
+    {
+      "handle": "stuffyokodraws",
+      "note": "原有账号",
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-03-11"
+    },
+    {
+      "handle": "AndrewYNg",
+      "note": "Andrew Ng，Coursera 联合创始人，斯坦福教授，前百度/谷歌大脑负责人",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "xiao_ted",
+      "note": "Ted Xiao，Google DeepMind 创始成员，关注物理 AGI",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "sama",
+      "note": "Sam Altman，OpenAI 首席执行官",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "janleike",
+      "note": "Jan Leike，Anthropic AI 对齐负责人，前 OpenAI 核心成员",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "JeffDean",
+      "note": "Jeff Dean，Google DeepMind 首席科学家",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "cstanley",
+      "note": "Christopher Stanley，SpaceX/X/xAI 安全工程专家",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "KarelDoostrlnck",
+      "note": "Karel，OpenAI 研究员，专注后训练阶段",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "jackclarkSF",
+      "note": "Jack Clark，Anthropic 联合创始人，OECD AI 专家",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "ilyasut",
+      "note": "Ilya Sutskever，SSI 创始人，前 OpenAI 首席科学家",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "miramurati",
+      "note": "Mira Murati，前 OpenAI CTO",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "ylecun",
+      "note": "Yann LeCun，暂时移除（nitter 持续无法抓取）",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "karpathy",
+      "note": "Andrej Karpathy，前 OpenAI/Tesla AI 负责人",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "gdb",
+      "note": "Greg Brockman，OpenAI 总裁",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "demishassabis",
+      "note": "Demis Hassabis，Google DeepMind CEO",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "lexfridman",
+      "note": "Lex Fridman，知名播客主持人，MIT AI 研究员",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "pmarca",
+      "note": "Marc Andreessen，a16z 联合创始人，著名风险投资人",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "paulg",
+      "note": "Paul Graham，Y Combinator 联合创始人",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "naval",
+      "note": "Naval，AngelList 创始人，关注 AI 与硅谷哲学",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "VitalikButerin",
+      "note": "Vitalik Buterin，以太坊创始人，常发表 AI 安全/对齐深刻见解",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "jack",
+      "note": "Jack Dorsey，前 Twitter CEO，现专注于去中心化 AI 协议",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "BillGates",
+      "note": "Bill Gates，比尔·盖茨，长期撰写 AI 产业转型观察",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "tim_cook",
+      "note": "Tim Cook，Apple 首席执行官",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "NateSilver538",
+      "note": "Nate Silver，数据分析大神，关注预测模型与 AI",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "bramk",
+      "note": "Bram，独立开发者，AI 提示词专家",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "haoshanhong",
+      "note": "Haoshan Hong，Fluentide CEO，清华苏世民学者",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "lqiao",
+      "note": "Lin Qiao，Fireworks AI 创始人兼 CEO",
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-03-11"
+    },
+    {
+      "handle": "byCanen",
+      "note": "Canen，AI 工具开发者，aitoolfinder.org 负责人",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "SamuelBeek",
+      "note": "sam，VEED (AI 视频编辑) CPO",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "UncleJAI",
+      "note": "Uncle J，移除（原创率低，发推稀少）",
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-03-01"
+    },
+    {
+      "handle": "nateliason",
+      "note": "Nat Eliason，打造 Felix Craft AI \"零人公司\"",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "GoSailGlobal",
+      "note": "Jason Zhu，独立开发，AI SaaS 出海及内容分享",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "alex_mikhalev",
+      "note": "Dr Alexander Mikhalev，移除（原创率 15%，内容稀少）",
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-03-01"
+    },
+    {
+      "handle": "levinomad",
+      "note": "Levi Yuan，出海 AI 应用开发者，数字游民",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "Jacobsklug",
+      "note": "Jacob Klug，creme.digital 联合创始人，用 AI 构建软件",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "alexcooldev",
+      "note": "Alex Nguyen，独立黑客，开发多款 AI 原生应用",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "TheGeorgePu",
+      "note": "George Pu，独立创业者，构建 AI 无法替代的产品",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "0xTab",
+      "note": "Tabish，OpenSpec (YC W26) 创始人",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "mickeyumythy",
+      "note": "Umythy，关注产品开发与 AI 创业",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "onenewbite",
+      "note": "一口新饭，MoneyXYZ 创始人，关注科技与投资",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "elvissun",
+      "note": "Elvis，移除（仅 2 条原创，数据太少）",
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-03-01"
+    },
+    {
+      "handle": "categoryx",
+      "note": "Simon Rowe，移除（零原创，全为转推）",
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-03-01"
+    },
+    {
+      "handle": "kuaidaoqingyi",
+      "note": "快刀青衣，得到联合创始人，AI 爱好者与观察者",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "AYi_AInotes",
+      "note": "阿绎 AYi，AIGC 实践者，擅长 AI 信息提纯",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "onehopeA9",
+      "note": "OneHopeA9，链上玩家，致力于让 AI 为其工作",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "xiangxiang103",
+      "note": "雨哥向前冲，AI 投资者，实研关隘模型创始人",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "yinmin1987",
+      "note": "尹珉，Linux 基金会布道师，《LangGraph实战》编著",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "AISuperDomain",
+      "note": "AI超元域，AI 深度观察与资讯分享",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "fabioivsantos",
+      "note": "Fabio Pauli，移除（最新推文 2025-06，停更 9 个月）",
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-03-01"
+    },
+    {
+      "handle": "xqliu",
+      "note": "Larry & Leo & Lucky，资深开发者，关注交易与 AI 应用",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "ToanTruong_",
+      "note": "Toan Truong，移除（零数据，nitter 抓取失败）",
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-03-01"
+    },
+    {
+      "handle": "lansification",
+      "note": "LAN，研究游戏化体验与 AI 社区",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "Mehedi_Crypto1",
+      "note": "Mehedi，Web3 分析师，关注 AI 数据价值",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "madsf88",
+      "note": "Mads，学习\"氛围编码（Vibe Code）\"的开发者",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "dov_wo",
+      "note": "Dov，Mango Labs 创始人，AI 与 Crypto 交叉研究",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "JanErik7117",
+      "note": "Jan Erik Syverød，AI 技术关注者",
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-03-01"
+    },
+    {
+      "handle": "DanAcosta",
+      "note": "Daniel Acosta，移除（停更至 2022 年）",
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-03-01"
+    },
+    {
+      "handle": "cc202201",
+      "note": "CC，移除（零数据，nitter 抓取失败）",
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-03-01"
+    },
+    {
+      "handle": "lake_delores14",
+      "note": "Delores，移除（零数据，nitter 抓取失败）",
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-03-01"
+    },
+    {
+      "handle": "Xking332",
+      "note": "X，移除（零数据，nitter 抓取失败）",
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-03-01"
+    },
+    {
+      "handle": "QuiverAI",
+      "note": "AI数据分析，周报推荐",
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-03-04"
+    },
+    {
+      "handle": "xn1cklas",
+      "note": "多源推荐，值得关注的技术创作者",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "camworboys",
+      "note": "来自 @jack 推荐的优质账号",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "FelixCraftAI",
+      "note": "@nateliason 推荐的 AI 工具专家",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "OpenAI",
+      "note": "@ilyasut、@sama 联合推荐的官方账号",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "AnthropicAI",
+      "note": "@jackclarkSF 推荐的 AI 研究前沿",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "arcprize",
+      "note": "@demishassabis、@xiao_ted 推荐的 AI 竞赛平台",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "Saboo_Shubham_",
+      "note": "AI Core & Research",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "LiorOnAI",
+      "note": "AI Core & Research",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "gan_chuang",
+      "note": "AI Core & Research",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "mntruell",
+      "note": "AI Core & Research",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "claudeai",
+      "note": "AI Core & Research",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "_arohan_",
+      "note": "AI Core & Research",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "HuaWenyue31539",
+      "note": "Wenyue Hua，KAUST AI Rising Star LLM-based agent, LLM reasoning",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "jocarrasqueira",
+      "note": "Joana Carrasqueira，former Head of DevRel ｜ Pharma scientist & MBA turned tec...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "feiliu_nlp",
+      "note": "Fei Liu，Working on large language models, LLM inference, reasonin...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "bindureddy",
+      "note": "Bindu Reddy，the world’s first AI super assistant and general-purpose ...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "GeminiApp",
+      "note": "Google Gemini，The Gemini app turns research into reality, bringing fron...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "NotebookLM",
+      "note": "NotebookLM，Think smarter, not harder. Meet your brain's new best friend",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "GoogleLabs",
+      "note": "Google Labs，Google’s home for our latest AI tools and experiments.",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "YuXiang_IRVL",
+      "note": "Yu Xiang，Ex- research scientist",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "Arminn_Ai",
+      "note": "ΛRMIN ｜ AI，CPP Higgsfield • Topaz Labs",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "NliGjvJbycSeD6t",
+      "note": "Yinhuai，PhD@HKUST｜Humanoid, Manipulation, CV",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "deepseek_ai",
+      "note": "DeepSeek，Unravel the mystery of AGI with curiosity. Answer the ess...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "ElevenLabs",
+      "note": "ElevenLabs，AI research and products that transform how we interact w...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "pirroh",
+      "note": "Michele Catasta，President & Head of AI",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "OpenAINewsroom",
+      "note": "OpenAI Newsroom，Tweets are on the record. If you like this account, you’l...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "huggingface",
+      "note": "Hugging Face，The AI community building the future.",
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-03-25"
+    },
+    {
+      "handle": "BradSchoenfeld",
+      "note": "Brad Schoenfeld, PhD，Researcher/educator on muscle building and fat loss. Auth...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "grok",
+      "note": "Grok",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "johnschulman2",
+      "note": "John Schulman，Interested in reinforcement learning, alignment, birds, j...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "PyTorch",
+      "note": "PyTorch，Tensors and neural networks in Python with strong hardwar...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "GoogleDeepMind",
+      "note": "Google DeepMind，We’re a team of scientists, engineers, ethicists and more...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "xai",
+      "note": "xAI",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "AIatMeta",
+      "note": "AI at Meta，Together with the AI community, we are pushing the bounda...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "GoogleAI",
+      "note": "Google AI，Making AI helpful for everyone. Show thinking ↓",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "elonmusk",
+      "note": "Elon Musk",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "danese60920",
+      "note": "OpenClaw ｜｜ SUPPORT ✪，The Al that does things. Emails, calendar, home automatio...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "searchcloudone",
+      "note": "Search Cloud One，We love everything in the cloud - the sky is not the limit",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "openclaw",
+      "note": "OpenClaw，The AI that does things. Emails, calendar, home automatio...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "steipete",
+      "note": "Peter Steinberger，Polyagentmorous ClawFather. Came back from retirement to ...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "moltbook",
+      "note": "moltbook，Where openclaw bots, clawdbots, and AI agents of any kind...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "zhiheng_huang",
+      "note": "ZH Huang，｜ AI agents for real work ｜",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "posthog",
+      "note": "PostHog，How developers build successful products. Hedgehog enthus...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "turborepo",
+      "note": "Turborepo",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "typelessdotcom",
+      "note": "Typeless，Voice = Superpowers ｜ Founder & CEO",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "XEng",
+      "note": "Engineering，updates from our engineering team",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "frankdilo",
+      "note": "Francesco Di Lorenzo，the AI-powered social media scheduler.",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "arisberikut",
+      "note": "Aris Cursor，Open to project Teacher Bootcamp Vibe coder Next.js + GoL...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "opencode",
+      "note": "OpenCode，The open source coding agent",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "indie_maker_fox",
+      "note": "Fox@MkSaaS.com，Directory boilerplate：",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "Zread_ai",
+      "note": "Zread.AI，Let the repo talk. For AI builders and human developers.",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "ProductHunt",
+      "note": "Product Hunt，Get new products in your inbox:",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "godofprompt",
+      "note": "God of Prompt，Sharing AI Prompts, Tips & Tricks. The Biggest Collection...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "JermicX",
+      "note": "Jermic 𝕏 ，正在做：AIART - AI 提示词灵感库、PicSeed - 灵感收集助手",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "raindesign007",
+      "note": "Rain，Vibe Coding，UX/UI，ProductDesign，AI",
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-03-25"
+    },
+    {
+      "handle": "woshi_ai",
+      "note": "WOSHI，Discover AI prompts .",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "ReflctWillie",
+      "note": "willie，Node Banana, easypeasyease Lnkdn:",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "CodeByPoonam",
+      "note": "Poonam Soni，Post about everything latest in AI ｜ Founder: AI Toast｜ D...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "googleaidevs",
+      "note": "Google AI Developers，AI for every developer. So what will you build?",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "folo_is",
+      "note": "Folo，Follow everything in one place. Join our community:",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "cline",
+      "note": "Cline，We turn your inference into production code.",
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-03-25"
+    },
+    {
+      "handle": "cursor_ai",
+      "note": "Cursor，The best way to code with AI.",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "MindBranches",
+      "note": "MindBranches，AI enhanced diagrams to help you understand complex conce...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "Tesla",
+      "note": "Tesla，Electric vehicles, giant batteries & solar, AI & robotics",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "tripoai",
+      "note": "Tripo，The only one you need to follow for 3D and AI. ｜ Webapp:",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "skirano",
+      "note": "Pietro Schirano，Creator of Claude Engineer, DesignerGPT, Sequential think...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "github",
+      "note": "GitHub，The AI-powered developer platform to build, scale, and de...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "Replit",
+      "note": "Replit ⠕，Idea to app, fast. Create beautiful, modern web applicati...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "oran_ge",
+      "note": "Orange AI，CEO of MarsWave. Build for Agents, by Agents.",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "pmndrs",
+      "note": "Poimandres，A developer collective building open tools for the creati...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "OpenAIDevs",
+      "note": "OpenAI Developers，Official updates for developers building with Codex & the...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "googledevs",
+      "note": "Google for Developers，Discover the latest developer tools, resources, events, a...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "readwise",
+      "note": "Readwise，Save your best highlights from Kindle, Twitter, Pocket, I...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "Microsoft",
+      "note": "Microsoft，We're on a mission to empower every person and every orga...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "akokoi1",
+      "note": "WY，大龄程序员，前搜狐员工，Golang、PHP、JavaScript、Dart、Swift开发，多年国际外包经验，全...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "EvanLing888",
+      "note": "Aria Ling，Linglish CEO ｜ AI重构沉浸式英语学习，让每一次输入都变成可衡量的成长。AI在改变世界；拒绝鸡汤，只...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "huangyun_122",
+      "note": "黄赟，Every great AI journey starts with a single Prompt vx: hu...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "fankaishuoai",
+      "note": "范凯说 AI ｜ AI Insights，从互联网创业走到 AI 时代。 分享趋势判断、转型框架与落地实践：内容创作、AI 产品、个人 IP、超级个体。 W...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "Hesamation",
+      "note": "ℏεsam，ai/ml • giving birth to agents in my spare time",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "irabukht",
+      "note": "Ira Bodnar，building AI agent for paid ads at",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "gregisenberg",
+      "note": "GREG ISENBERG，we build companies like",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "solzen77",
+      "note": "Solzen77，Solana, Polymarket, BNB Bot developer",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "clockmeta",
+      "note": "Clock，systems builder // shadow_clone_jutsu",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "0xFortuneRust",
+      "note": "FortuneRust，WebSite, Mobile, Game, Blockchain developer",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "mbaddar2",
+      "note": "Moh Baddar，Help SMEs Build Cost Efficient AI Solutions ｜ AI Engineer...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "jiayuan_jy",
+      "note": "Jiayuan (JY) Zhang，Building something new. Founder & CEO of",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "suresh_manian",
+      "note": "Resh，AI First Enthusiast ｜ Physics & CS @ CMU, MSAI @ Northeas...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "1khanfarrukh",
+      "note": "FARRUKH KHAN，Founder & CEO Inference Analytics, building AI for sensit...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "yanhua1010",
+      "note": "Yanhua，AI Solopreneur · Creator · Growth",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "aehyok",
+      "note": "AI少年，全栈独立开发者，CEO， 喜欢编程和爱折腾AI 我的个人网站：",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "zstmfhy",
+      "note": "AI奶爸，技术不该高冷，创作可以很暖 合作：ZST321456",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "YukerX",
+      "note": "Yuker，RUC '24 ｜ Law Student ｜ Musician ｜ Researcher ｜ Builder ｜...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "heyshrutimishra",
+      "note": "Shruti，Reality is programmable ｜ Building digital leverage w/ AI...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "Wasay6797",
+      "note": "Wasay Ali，Digital Consultant ｜ Helping Businesses Scale with Custom...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "tomkrcha",
+      "note": "Tom Krcha，Chief Vibe Officer at",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "VRR8DEoGXu9vsXQ",
+      "note": "小桂",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "LuizaJarovsky",
+      "note": "Luiza Jarovsky, PhD，Co-founder of the AI, Tech & Privacy Academy (1,400+ part...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "ben_m_somers",
+      "note": "Ben Somers，Tweeting about education & Building",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "averycode",
+      "note": "Avery，psychology grad turned software engineer, ex apple/hubspot",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "PMbackttfuture",
+      "note": "AI产品黄叔，两家大厂AI产品顾问 加社团学skills：",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "AlchainHust",
+      "note": "花叔，小红书：花叔（只工作不上班版 公众号：花叔 即刻：Alchian花生",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "H0wie_Xu",
+      "note": "Howie Xu，Chief AI Officer @ Gen, Lecturer at Stanford ｜ ex SVP of ...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "KintuLabs",
+      "note": "Chris Osborne，i like to build things",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "OnlyXuanwo",
+      "note": "Xuanwo，PMC Chair. VISION: Data Freedom. Working on",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "WhileTravelling",
+      "note": "Evrim Kanbur，Shanghai 14 years and counting. Teaching at Shanghai Jiao...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "NeuraNova9",
+      "note": "Audrey Crews，First women with Neuralink BCI, Thought-controlled creato...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "maddiedreese",
+      "note": "Maddie D. Reese，Learning! Doesn’t know how to code. 4x hackathon winner a...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "eliana_jordan",
+      "note": "Eliana，Just a dive instructor who learned to code ｜｜",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "ityouknows",
+      "note": "纯洁的微笑，AI 跨境电商：单店营收破万，自营近 10 家店，探索出海放大中",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "MersonVoice",
+      "note": "莫森 ｜ 破局哥，关注我 跟上破局哥的节奏！ 公司业务｜社群交流｜个人VX｜在网站",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "jimmyjiangYEZ",
+      "note": "Jimmy Jiang，Ex-Big Tech (EU & US)",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "IndieDevHailey",
+      "note": "开发者Hailey，独立开发者 · AIGC 实践派 AI × 全栈｜只做能跑的产品 PixTribe：灵感 → 作品 → 变现平台 ...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "dynamicwangs",
+      "note": "DynamicWang，Choreographer｜VisualArtist｜Photographer｜Composer｜AWPlanet...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "swyx",
+      "note": "swyx，achieve ambition with intentionality, intensity, integrit...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "lennysan",
+      "note": "Lenny Rachitsky，Deeply researched product, growth, and career advice",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "rileybrown",
+      "note": "Riley Brown，(the #1 full stack vibe coding platform)",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "lulumeservey",
+      "note": "Lulu Cheng Meservey，Rostra founder, Shopify board, ex Activision & Substack, ...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "PJaccetturo",
+      "note": "PJ Ace，- 300M+ Views ｜ Featured in Variety, Hollywood Reporter. ...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "enggirlfriend",
+      "note": "Engineer Girlfriend，working on AI, the fun kind",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "ayaboch",
+      "note": "Aya Bochman，⋅ software developer ⋅ bootstrapping to $1M ARR ⋅ I love ...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "Sutoscience",
+      "note": "Amy Suto ｜  Founder & Bestselling Author，with 30,000+ subscribers",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "stijnnoorman",
+      "note": "Stijn Noorman，Helping you grow your X business. Tweets on writing, busi...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "yupi996",
+      "note": "程序员鱼皮，项目狂魔，10+上线产品，GitHub 20k+ followers",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "YanXing_newone",
+      "note": "Thinker",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "hrswatigupta",
+      "note": "Swati Gupta，350K+ Audience on LinkedIn ｜ AI Content Creator ｜ Resume ...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "craftian_keskin",
+      "note": "Keskin，Midjourney, AI, Video Games. Love exploring new Midjourne...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "xiaohu",
+      "note": "小互，带你了解全球最前沿科技、AI动态... 学AI找小互，找小互，上",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "ttmouse",
+      "note": "ttmouse - 豆爸，“AI快崛醒了，赶紧给AI打工” ——我认真的 腾讯阿里十年设计 + 六年六赛道产品 第三个十年：不卷人，卷AI ...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "servasyy_ai",
+      "note": "huangserva，古早程序员 ｜ AI出海 ｜ 自由职业 机车游侠&机速购&骑享租创始人 15年前 freelance 起步 → 连...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "hx831126",
+      "note": "虎小象，不过是 Prompt Kiddide 罢了",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "shellywangcat",
+      "note": "Shelly，AI 探索 ，币圈摸鱼 很爱买锅跟做饭，INFJ 网络话痨 0 市场预算实现 1500 万用户 跑过百亿交易额 分...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "kat_kampf",
+      "note": "kat kampf，• she/her • views and subpar jokes are my own",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "guishou_56",
+      "note": "Niko，分享$0 → $10000/月的技术创业之路 公众号：Niko的出海记录",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "tomosman",
+      "note": "Tom Osman，Exploring what's possible with technology ｜ Initiator of",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "iX00AI",
+      "note": "iX，AI Video Creator ｜ Higgsfield Official Evangelist ｜ Found...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "brad_zhang2024",
+      "note": "烟花老师，AI 社区【一支烟花】 发起人， AI 应用架构师，分享深度 AI 内容，链接 AI 创业者",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "shesjuliez",
+      "note": "Julie Zhu，Design Lead @. Previously Senior Designer @ Alibaba. Poli...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "qin_ue",
+      "note": "QinUE，Former Creative Director ｜ Now AI slave",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "songguoxiansen",
+      "note": "松果先森，微信公众号：松果先森，扣666进AI群 AI交流TG群：",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "Astronaut_1216",
+      "note": "Zephyr.在思考丨阿杭杭杭，公开我的AI时代创业思考，保持分享、快速迭代、谦逊求教、日日精进",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "gkxspace",
+      "note": "余温，AI 产品构建 & AI 商业化方案 & 企业 AI 转型",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "Suryansh777777",
+      "note": "Suryansh Chourasia，- a photo studio designed for creators and brands who wan...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "Linkc",
+      "note": "陈言Linkc-Chen，自媒体副业，3个月变现10w+，一年做到小红书AI赛道头部。",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "YouMind_AI",
+      "note": "YouMind，Learn smarter. Create bolder.",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "MANISH1027512",
+      "note": "古一，正在孵化一个有温度又硬核的 AIGC 创作者社区",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "JundeMorsenWu",
+      "note": "JUNDE WU，Founder of Panoptes (acq.",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "msjiaozhu",
+      "note": "MapleShaw，Daily experiments, hacks & builds ｜ 把 AI 玩得越来越野",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "austinit",
+      "note": "Austin，一个程序员，通过开发产品和投资赚钱。编程段子居多，请勿特别当真。",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "caizhenghai",
+      "note": "forecho，8 年美股投资者，13 年程序开发。 - 联系我：",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "shaunrein",
+      "note": "Shaun Rein，Founder of The China Market Research Group (CMR). Author ...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "Navalquot",
+      "note": "Naval Ravikant Bot ｜ Navalism，Sharing Naval Ravikant quotes. Fan page, not affiliated. ...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "QuotesOfNaval",
+      "note": "Naval Ravikant Quotes",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "shizhiang1",
+      "note": "Eric 在搞钱",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "_FORAB",
+      "note": "AB Kuai.Dong，热爱研究、热爱家庭、热爱分享，2016 年入行从业。",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "howie_serious",
+      "note": "howie.serious，purity of thought. be exactly who you are : just a seriou...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "wshuyi",
+      "note": "Wang Shuyi，Teach AI for Science on",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "MatthewBerman",
+      "note": "Matthew Berman，Building Forward Future. YouTuber, Angel Investor, Develo...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "atulkumarzz",
+      "note": "Atul Kumar，Influencer Marketing biz: atulhx@gmail.com -",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "dotey",
+      "note": "宝玉，Prompt Engineer, dedicated to learning and disseminating ...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "0xCheshire",
+      "note": "柴郡｜Crypto+AI Plus，你要更相信你自己！ 商务合作 ｜ 联系我：",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "samuraipreneur",
+      "note": "The SamurAI，using ai to scale and to get more done in less time this ...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "PandaTalk8",
+      "note": "Mr Panda，程序员 ｜ AI 创业者 ｜ 个人IP教练 ｜ 商业技术观察 ｜ 公众号：PandaTalk8",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "DareFailed",
+      "note": "James Steinberg，30u30 Acquired YC Founder:",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "starzq",
+      "note": "Star@Day1Global Podcast，Top Podcast on AI, Robotics, Crypto ｜ ex Alibaba, Douban",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "RuiHuang_art",
+      "note": "Rui Huang，：stellaxis.info@gmail.com",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "minchoi",
+      "note": "Min Choi，Building with AI. Sharing what's wild, what's practical, ...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "amasad",
+      "note": "Amjad Masad",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "chrisboettcher9",
+      "note": "Chris Boettcher，Helping Men and Women over 40 lose 15-150 lbs and resolve...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "henuwangkai",
+      "note": "henu王凯，Chrome 插件市场可安装「松鼠快看」插件版本 微信：wangkaisv",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "Gorden_Sun",
+      "note": "Gorden Sun，只发AI相关信息，个人维护的AI资讯日报（已连续日更3年）",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "sairahul1",
+      "note": "Rahul",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "mortenjust",
+      "note": "Morten Just，I post stuff you can try and talk about products.",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "nealtaparia",
+      "note": "Neal Taparia，Entrepreneur & Investor ｜ I discuss working less and doin...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "punk2898",
+      "note": "Punk（2898 ），Vibe Coding Enthusiast ｜定居新加坡",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "FinanceYF5",
+      "note": "AI Will，增长顾问 ｜ AI行业分析师，Learn in Public",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "heyrobinai",
+      "note": "Robin Delta，I help you make money & get more work done with AI tools",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "AlphaSchoolATX",
+      "note": "Alpha，Our students love school, learn 2X fast, and learn life s...",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "ecomEddie",
+      "note": "EDDIE CHENG，(growth agency for DTC)",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "thsottiaux",
+      "note": "优先关注，AI 研究方向",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "thdxr",
+      "note": "开发工具方向",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "sundarpichai",
+      "note": "Google 战略动向",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "satyanadella",
+      "note": "Microsoft 官方背书，Azure AI 动态",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "OfficialLoganK",
+      "note": "顶级 AI 研究者背书",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "petergyang",
+      "note": "产品/创业视角",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "garrytan",
+      "note": "YC/创业生态核心节点",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "mustafasuleyman",
+      "note": "Microsoft AI 负责人",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "aakashgupta",
+      "note": "多圈层共振，信号强",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "doganuraldesign",
+      "note": "xAI 生态设计方向",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "dinomogs",
+      "note": "推荐人：@Mehedi_Crypto1",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "METR_Evals",
+      "note": "AI 评估研究",
+      "status": "active",
+      "added_at": "2026-01-01"
+    },
+    {
+      "handle": "tinkerapi",
+      "note": "推荐人：@miramurati",
+      "status": "active",
+      "added_at": "2026-01-01"
+    }
+  ]
+}

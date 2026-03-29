@@ -21,10 +21,27 @@ import re
 # 配置区
 # ============================================================================
 
-# 要监控的 X 账号列表
-TARGET_ACCOUNTS = [
-    # ── 原有账号 ──────────────────────────────────────────────
-    "dashen_wang",       # AI最严厉的父亲，技术架构师，研究 AI 自动化与人类行为
+# 账号配置文件路径
+ACCOUNTS_CONFIG_FILE = os.path.join(os.path.dirname(__file__), 'accounts.json')
+
+
+def load_target_accounts():
+    """从 accounts.json 加载活跃账号列表"""
+    if not os.path.exists(ACCOUNTS_CONFIG_FILE):
+        raise FileNotFoundError(f"账号配置文件不存在: {ACCOUNTS_CONFIG_FILE}")
+    
+    with open(ACCOUNTS_CONFIG_FILE, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    
+    # 只返回活跃账号的 handle
+    return [acc['handle'] for acc in data['accounts'] if acc['status'] == 'active']
+
+
+# 要监控的 X 账号列表（从配置文件加载）
+TARGET_ACCOUNTS = load_target_accounts()
+
+# nitter 实例列表（多实例 fallback）
+NITTER_INSTANCES = [
     "xingpt",            # XinGPT，AI 干货与个人成长分享
     "skyfree14242454",   # sky_AI，2026年从头学习 AI 的创业者
     "linxiaobei888",     # xiaobeiLin(小北)，软件工程，关注 AI Coding
@@ -291,6 +308,9 @@ TARGET_ACCOUNTS = [
     "mustafasuleyman",  # Microsoft AI 负责人
     "aakashgupta",  # 多圈层共振，信号强
     "doganuraldesign",  # xAI 生态设计方向
+    "dinomogs",  # 推荐人：@Mehedi_Crypto1
+    "METR_Evals",  # AI 评估研究
+    "tinkerapi",  # 推荐人：@miramurati
 ]
 
 # nitter 实例列表（多实例 fallback）

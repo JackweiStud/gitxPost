@@ -206,6 +206,37 @@
 
         <!-- Right: Weekly report content -->
         <div class="report-main">
+          <!-- Weekly Pipeline Progress -->
+          <div class="pipeline-progress card" v-if="weeklyGenerating">
+            <div class="section-bar">
+              <h3>周报生成进度</h3>
+              <span class="badge badge-amber">执行中</span>
+            </div>
+            <div class="pipeline-steps-compact">
+              <div
+                v-for="(step, idx) in weeklyPipelineSteps"
+                :key="step.id"
+                class="pipeline-step-compact"
+                :class="'step-' + step.status"
+              >
+                <div class="step-indicator">
+                  <svg v-if="step.status === 'done'" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>
+                  </svg>
+                  <svg v-else-if="step.status === 'error'" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/>
+                  </svg>
+                  <div v-else-if="step.status === 'running'" class="spinner"></div>
+                  <span v-else class="step-number">{{ idx + 1 }}</span>
+                </div>
+                <div class="step-info">
+                  <div class="step-label">{{ step.label }}</div>
+                  <div class="step-desc">{{ step.desc }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div v-if="weeklyLoading" class="skeleton-state">
             <div class="skeleton-section">
               <div class="skeleton-bar">
@@ -345,6 +376,12 @@ const selectedWeeklyDate = ref(null)
 const weeklyReport = ref(null)
 const weeklyLoading = ref(false)
 const weeklyGenerating = ref(false)
+
+// Weekly pipeline state
+const weeklyPipelineSteps = ref([
+  { id: 'analyze', label: '数据分析', desc: '聚合近 7 天数据', status: 'pending' },
+  { id: 'weekly', label: '生成周报', desc: 'AI 生成周报', status: 'pending' },
+])
 
 // Account actions state
 const accountActionStatus = ref({})
@@ -559,20 +596,36 @@ async function refreshDaily() {
 async function refreshWeekly() {
   weeklyGenerating.value = true
   generating.value = true
-  appStore.notify('正在生成周报，请稍候...', 'info', 15000)
+  
+  // 重置所有步骤状态
+  weeklyPipelineSteps.value.forEach(step => step.status = 'pending')
+  
   try {
+    // Step 1: 分析近 7 天数据
+    weeklyPipelineSteps.value[0].status = 'running'
+    appStore.notify('步骤 1/2: 分析近 7 天数据...', 'info', 10000)
+    const analyzeResult = await api.runAnalyze(7)
+    if (!analyzeResult.ok) {
+      weeklyPipelineSteps.value[0].status = 'error'
+      throw new Error('分析失败: ' + (analyzeResult.error || '未知错误'))
+    }
+    weeklyPipelineSteps.value[0].status = 'done'
+    
+    // Step 2: 生成周报
+    weeklyPipelineSteps.value[1].status = 'running'
+    appStore.notify('步骤 2/2: AI 生成周报...', 'info', 10000)
     const result = await api.runWeekly()
     if (result.ok) {
-      appStore.notify('周报生成完成', 'success')
+      weeklyPipelineSteps.value[1].status = 'done'
+      appStore.notify('周报生成完成！', 'success')
       await loadWeeklyReports()
       if (weeklyReports.value.length) {
         selectedWeeklyDate.value = weeklyReports.value[0].date
       }
     } else {
+      weeklyPipelineSteps.value[1].status = 'error'
       const errMsg = result.error || '未知错误'
-      if (errMsg.includes('分析结果不存在') || errMsg.includes('analysis')) {
-        appStore.notify('请先执行雷达分析后再生成周报', 'error')
-      } else if (errMsg.includes('API Key') || errMsg.includes('api_key')) {
+      if (errMsg.includes('API Key') || errMsg.includes('api_key')) {
         appStore.notify('LLM API Key 未配置', 'error')
       } else {
         appStore.notify('周报生成失败: ' + errMsg, 'error')
@@ -581,11 +634,7 @@ async function refreshWeekly() {
   } catch (e) {
     const errMsg = e.message || '未知错误'
     if (e.response?.status === 504) {
-      appStore.notify('周报生成超时，请重试', 'error')
-    } else if (errMsg.includes('分析结果不存在') || errMsg.includes('analysis')) {
-      appStore.notify('请先执行雷达分析后再生成周报', 'error')
-    } else if (errMsg.includes('API Key') || errMsg.includes('api_key')) {
-      appStore.notify('LLM API Key 未配置', 'error')
+      appStore.notify('操作超时，请重试', 'error')
     } else {
       appStore.notify('周报生成失败: ' + errMsg, 'error')
     }
@@ -1517,5 +1566,94 @@ onMounted(async () => {
 .tag-btn:disabled {
   cursor: default;
   opacity: 0.6;
+}
+
+/* ── 周报流水线进度 ───────────────────── */
+.pipeline-progress {
+  margin-bottom: 20px;
+  padding: 20px;
+}
+.pipeline-steps-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+.pipeline-step-compact {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  transition: all var(--transition-fast);
+}
+.pipeline-step-compact.step-running {
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+.pipeline-step-compact.step-done {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+.pipeline-step-compact.step-error {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+.step-indicator {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+  font-weight: 600;
+  font-size: 13px;
+}
+.step-running .step-indicator {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--accent-blue);
+}
+.step-done .step-indicator {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10B981;
+}
+.step-error .step-indicator {
+  background: rgba(239, 68, 68, 0.15);
+  color: #EF4444;
+}
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(59, 130, 246, 0.3);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.step-info {
+  flex: 1;
+}
+.step-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+.step-desc {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+}
+.badge-amber {
+  color: #F59E0B;
+  background: rgba(245, 158, 11, 0.1);
 }
 </style>
