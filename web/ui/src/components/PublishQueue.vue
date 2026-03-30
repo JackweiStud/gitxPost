@@ -35,7 +35,7 @@
           <div class="content-text">{{ getContentPreview(task) }}</div>
           <div class="content-meta">
             <span v-if="task.status === 'scheduled'" class="meta-scheduled">
-              预期 {{ formatTime(task.scheduled_at) }}
+              预期 {{ formatTime(task.scheduled_at) }} ({{ formatAbsoluteTime(task.scheduled_at) }})
             </span>
             <span v-else class="meta-time">{{ formatTime(task.created_at) }}</span>
             <span v-if="task.executed_at" class="meta-executed">
@@ -158,6 +158,18 @@ function formatTime(isoString) {
     return '刚刚'
   } catch (e) {
     return isoString
+  }
+}
+
+function formatAbsoluteTime(isoString) {
+  if (!isoString) return ''
+  try {
+    const date = new Date(isoString)
+    const hours = date.getHours().toString().padStart(2, '0')
+    const minutes = date.getMinutes().toString().padStart(2, '0')
+    return `${hours}:${minutes}`
+  } catch (e) {
+    return ''
   }
 }
 </script>
