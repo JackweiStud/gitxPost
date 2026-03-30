@@ -911,9 +911,9 @@ async def _process_queue_background():
             scheduled_tasks = [t for t in queue if t.get("status") == "scheduled"]
             
             if not scheduled_tasks:
-                print("📭 队列为空，处理器进入休眠（60秒后再检查）")
-                await asyncio.sleep(60)
-                continue
+                print("📭 队列为空，处理器自动退出")
+                _queue_processor_running = False
+                break  # 退出循环，结束处理器
             
             from datetime import timezone
             now = datetime.now(timezone.utc)
