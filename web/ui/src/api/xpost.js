@@ -61,3 +61,10 @@ export const installScheduler = (time = '09:00') => api.post('/scheduler/install
 export const uninstallScheduler = () => api.post('/scheduler/uninstall')
 export const runSchedulerNow = () => api.post('/scheduler/run-now')
 export const getSchedulerLogs = (lines = 50) => api.get('/scheduler/logs', { params: { lines } })
+
+// Publish Queue
+export const getPublishQueue = () => api.get('/publish/queue')
+export const publishPost = (data) => api.post('/publish/post', data)
+export const deletePublishTask = (taskId) => api.delete(`/publish/${taskId}`)
+export const cancelPublishTask = (taskId) => api.put(`/publish/${taskId}/cancel`)
+export const retryPublishTask = (taskId) => api.post(`/publish/${taskId}/retry`)

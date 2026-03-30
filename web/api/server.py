@@ -28,6 +28,7 @@ ACCOUNTS_JSON = BASE_DIR / "xinfo" / "accounts.json"
 VENV_PYTHON = BASE_DIR / ".venv" / "bin" / "python"
 XPOST_PY = BASE_DIR / "xpost.py"
 GENERATE_REPLIES_PY = BASE_DIR / "skills" / "x-reply-assistV2" / "scripts" / "generate_replies.py"
+PUBLISH_QUEUE_JSON = XINFO_LOG / "publish_queue.json"
 
 app = FastAPI(title="gitxPost API", version="0.1.0")
 
@@ -828,6 +829,239 @@ async def get_followers():
 async def fetch_followers(username: str = "jackaiwison"):
     """触发浏览器采集粉丝数"""
     return await _run_xpost("follower-stats", username, timeout=120)
+
+
+# ---------------------------------------------------------------------------
+# Routes: Publish Queue
+# ---------------------------------------------------------------------------
+
+def _read_publish_queue():
+    """读取发布队列"""
+    if not PUBLISH_QUEUE_JSON.exists():
+        return {"queue": []}
+    try:
+        return json.loads(PUBLISH_QUEUE_JSON.read_text("utf-8"))
+    except Exception:
+        return {"queue": []}
+
+
+def _write_publish_queue(data):
+    """写入发布队列"""
+    PUBLISH_QUEUE_JSON.parent.mkdir(parents=True, exist_ok=True)
+    PUBLISH_QUEUE_JSON.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8"
+    )
+
+
+def _generate_queue_id():
+    """生成队列任务 ID"""
+    import time
+    return f"pq_{int(time.time() * 1000)}"
+
+
+@app.get("/api/publish/queue")
+async def get_publish_queue():
+    """获取发布队列"""
+    data = _read_publish_queue()
+    return {"ok": True, "queue": data.get("queue", [])}
+
+
+class PublishPostRequest(BaseModel):
+    text: str
+    images: list[str] = []
+    publish: bool = True
+    scheduled_at: Optional[str] = None
+
+
+@app.post("/api/publish/post")
+async def publish_post(req: PublishPostRequest):
+    """发布 Post（立即或定时）"""
+    # 验证文本长度
+    if len(req.text) > 280:
+        raise HTTPException(400, detail="文本长度不能超过 280 字符")
+    
+    if not req.text.strip():
+        raise HTTPException(400, detail="文本不能为空")
+    
+    # 验证图片数量
+    if len(req.images) > 4:
+        raise HTTPException(400, detail="最多上传 4 张图片")
+    
+    # 解析定时时间
+    scheduled_at = req.scheduled_at
+    now = datetime.now()
+    
+    if scheduled_at:
+        try:
+            scheduled_dt = datetime.fromisoformat(scheduled_at.replace('Z', '+00:00'))
+        except Exception:
+            raise HTTPException(400, detail="时间格式错误，应为 ISO 8601 格式")
+    else:
+        scheduled_dt = now
+    
+    # 判断是立即执行还是加入队列
+    is_immediate = scheduled_dt <= now
+    
+    if is_immediate:
+        # 立即执行
+        try:
+            result = await _run_xpost(
+                "post",
+                req.text,
+                *(["--images"] + req.images if req.images else []),
+                *(["--publish"] if req.publish else []),
+                "--observe-ms", "900",
+                timeout=120
+            )
+            
+            # 记录到队列（已完成状态）
+            queue_data = _read_publish_queue()
+            task = {
+                "id": _generate_queue_id(),
+                "type": "post",
+                "status": "done" if result.get("ok") else "failed",
+                "created_at": now.isoformat(),
+                "scheduled_at": scheduled_dt.isoformat(),
+                "executed_at": datetime.now().isoformat(),
+                "content": {
+                    "text": req.text,
+                    "images": req.images
+                },
+                "result": result,
+                "error": result.get("error") if not result.get("ok") else None
+            }
+            queue_data["queue"].append(task)
+            _write_publish_queue(queue_data)
+            
+            return {
+                "ok": result.get("ok", False),
+                "mode": "immediate",
+                "task_id": task["id"],
+                "result": result
+            }
+        except Exception as exc:
+            raise HTTPException(500, detail=f"发布失败: {str(exc)}")
+    else:
+        # 加入队列
+        queue_data = _read_publish_queue()
+        task = {
+            "id": _generate_queue_id(),
+            "type": "post",
+            "status": "scheduled",
+            "created_at": now.isoformat(),
+            "scheduled_at": scheduled_dt.isoformat(),
+            "executed_at": None,
+            "content": {
+                "text": req.text,
+                "images": req.images,
+                "publish": req.publish
+            },
+            "result": None,
+            "error": None
+        }
+        queue_data["queue"].append(task)
+        _write_publish_queue(queue_data)
+        
+        return {
+            "ok": True,
+            "mode": "scheduled",
+            "task_id": task["id"],
+            "scheduled_at": scheduled_dt.isoformat()
+        }
+
+
+@app.delete("/api/publish/{task_id}")
+async def delete_publish_task(task_id: str):
+    """删除发布任务"""
+    queue_data = _read_publish_queue()
+    queue = queue_data.get("queue", [])
+    
+    # 查找任务
+    task_index = None
+    for i, task in enumerate(queue):
+        if task["id"] == task_id:
+            task_index = i
+            break
+    
+    if task_index is None:
+        raise HTTPException(404, detail="任务不存在")
+    
+    # 删除任务
+    deleted_task = queue.pop(task_index)
+    _write_publish_queue(queue_data)
+    
+    return {
+        "ok": True,
+        "deleted_task_id": task_id,
+        "deleted_task": deleted_task
+    }
+
+
+@app.put("/api/publish/{task_id}/cancel")
+async def cancel_publish_task(task_id: str):
+    """取消排队中的任务"""
+    queue_data = _read_publish_queue()
+    queue = queue_data.get("queue", [])
+    
+    # 查找任务
+    task = None
+    for t in queue:
+        if t["id"] == task_id:
+            task = t
+            break
+    
+    if task is None:
+        raise HTTPException(404, detail="任务不存在")
+    
+    if task["status"] not in ["scheduled", "running"]:
+        raise HTTPException(400, detail="只能取消排队中或执行中的任务")
+    
+    # 更新状态
+    task["status"] = "cancelled"
+    task["error"] = "用户取消"
+    _write_publish_queue(queue_data)
+    
+    return {
+        "ok": True,
+        "task_id": task_id,
+        "status": "cancelled"
+    }
+
+
+@app.post("/api/publish/{task_id}/retry")
+async def retry_publish_task(task_id: str):
+    """重试失败的任务"""
+    queue_data = _read_publish_queue()
+    queue = queue_data.get("queue", [])
+    
+    # 查找任务
+    task = None
+    for t in queue:
+        if t["id"] == task_id:
+            task = t
+            break
+    
+    if task is None:
+        raise HTTPException(404, detail="任务不存在")
+    
+    if task["status"] != "failed":
+        raise HTTPException(400, detail="只能重试失败的任务")
+    
+    # 重置状态，设置为立即执行
+    task["status"] = "scheduled"
+    task["scheduled_at"] = datetime.now().isoformat()
+    task["executed_at"] = None
+    task["result"] = None
+    task["error"] = None
+    _write_publish_queue(queue_data)
+    
+    return {
+        "ok": True,
+        "task_id": task_id,
+        "status": "scheduled",
+        "message": "任务已重新加入队列"
+    }
 
 
 # ---------------------------------------------------------------------------
