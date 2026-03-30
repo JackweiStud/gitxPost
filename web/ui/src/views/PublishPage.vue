@@ -300,8 +300,10 @@ async function loadQueue() {
 function connectWebSocket() {
   if (wsConnection) return
   
+  // 使用相对路径，通过 Vite 代理连接
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const wsUrl = `${protocol}//${window.location.hostname}:8765/ws/queue`
+  const host = window.location.host  // 包含端口号
+  const wsUrl = `${protocol}//${host}/ws/queue`
   
   console.log('🔌 连接 WebSocket:', wsUrl)
   wsConnection = new WebSocket(wsUrl)
