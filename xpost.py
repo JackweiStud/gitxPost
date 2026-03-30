@@ -1379,15 +1379,40 @@ def _cmd_radar_daily(args):
     summary = result_payload.get("summary", {})
     status = summary.get("status")
     preview = summary.get("new_ideas_preview", [])
+
+    # ── 过滤非当天推文，减少 LLM token 消耗 ──────────────────────
+    # RSS pub_date 格式为 RFC 2822: "Wed, 29 Mar 2026 21:29:31 GMT"
+    # 新增账号首次扫描会涌入大量历史推文，这里只保留当天的
+    from email.utils import parsedate_to_datetime as _parse_rfc2822
+    _today_str_val = datetime.now().strftime("%Y-%m-%d")
+    _today_preview = []
+    _skipped_old = 0
+    for _item in preview:
+        try:
+            _dt = _parse_rfc2822(_item.get("time", ""))
+            if _dt.strftime("%Y-%m-%d") == _today_str_val:
+                _today_preview.append(_item)
+            else:
+                _skipped_old += 1
+        except Exception:
+            _today_preview.append(_item)  # 解析失败的保留，不丢数据
+    if _today_preview:
+        preview = _today_preview
+        if _skipped_old:
+            print(f"  📅 日报过滤: 保留当天 {len(preview)} 条, 跳过历史 {_skipped_old} 条")
+    # 过滤后为空则保留原始 preview（兜底：首次使用/跨天场景）
+    # ── 过滤结束 ──────────────────────────────────────────────
+
     # 限制 preview 条数，避免 prompt 超出 LLM 输出 token 上限
     max_preview = getattr(args, 'max_preview', 300)
     if len(preview) > max_preview:
         import random
-        preview_sampled = random.sample(preview, max_preview)
-        result_payload = dict(result_payload)
-        result_payload["summary"] = dict(summary)
-        result_payload["summary"]["new_ideas_preview"] = preview_sampled
-        result_payload["summary"]["sampled_preview_count"] = max_preview
+        preview = random.sample(preview, max_preview)
+    # 将过滤/采样后的 preview 写回 result_payload，确保 prompt 使用干净数据
+    result_payload = dict(result_payload)
+    result_payload["summary"] = dict(summary)
+    result_payload["summary"]["new_ideas_preview"] = preview
+    result_payload["summary"]["sampled_preview_count"] = len(preview)
     if status == "no_new" or not preview:
         body = "\n".join(
             [
