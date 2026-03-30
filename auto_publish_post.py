@@ -133,6 +133,38 @@ def _split_text_segments(text: str) -> List[str]:
     return segments
 
 
+def _split_text_natural(text: str) -> List[str]:
+    """按自然语言分段（句子、短语）"""
+    # 按标点符号分段
+    import re
+    # 匹配句子结束符号或换行
+    pattern = r'([.!?\n:]+\s*)'
+    parts = re.split(pattern, text)
+    
+    segments = []
+    current = ""
+    
+    for part in parts:
+        if not part:
+            continue
+        current += part
+        # 如果遇到句子结束或长度超过 30，就作为一段
+        if re.match(r'[.!?\n:]+\s*$', part) or len(current) > 30:
+            if current.strip():
+                segments.append(current)
+            current = ""
+    
+    # 添加剩余部分
+    if current.strip():
+        segments.append(current)
+    
+    # 如果没有分段成功，按固定长度分
+    if not segments:
+        segments = [text[i:i+20] for i in range(0, len(text), 20)]
+    
+    return segments
+
+
 def _activate_chrome_window() -> None:
     """激活 Chrome 窗口到前台"""
     try:
@@ -236,41 +268,59 @@ def input_post_text(page: Page, text: str, step_pause_ms: int = STEP_PAUSE_MS) -
             try:
                 page.keyboard.press("Meta+A")
                 page.keyboard.press("Backspace")
+                page.wait_for_timeout(200)
             except Exception:
                 pass
             
-            # 输入文本
-            try:
-                for segment in _split_text_segments(text):
-                    page.keyboard.insert_text(segment)
-                    HumanBehaviorSimulator.random_delay(35, 95)
-            except Exception as exc:
-                print(f"   ⚠️  模拟输入失败，切换原生输入: {exc}")
-                handle.evaluate("(el) => el.focus()")
-                page.keyboard.insert_text(text)
-                page.wait_for_timeout(500)
+            # 分段输入文本，模拟真人打字
+            print(f"   📝 模拟打字输入 ({len(text)} 字符)...")
+            handle.evaluate("(el) => el.focus()")
+            page.wait_for_timeout(300)
+            
+            # 将文本按句子或短语分段（更自然）
+            segments = _split_text_natural(text)
+            for i, segment in enumerate(segments):
+                # 使用 type 方法逐字符输入，延迟 80-150ms
+                page.keyboard.type(segment, delay=random.randint(80, 150))
+                
+                # 段落间随机停顿（模拟思考）
+                if i < len(segments) - 1:
+                    pause = random.randint(150, 400)
+                    page.wait_for_timeout(pause)
+            
+            # 输入完成后等待
+            page.wait_for_timeout(600)
             
             # 验证输入
+            page.wait_for_timeout(400)
             current_text = handle.evaluate(
                 "el => el.innerText || el.textContent || el.value || ''"
             ) or ""
             
-            if text.strip() and text.strip() in current_text:
-                print(f"   ✅ 文本输入成功 (验证: {len(current_text)} 字符)")
+            # 清理文本用于比较（移除多余空白）
+            expected = text.strip()
+            actual = current_text.strip()
+            
+            print(f"   🔍 验证: 期望 {len(expected)} 字符, 实际 {len(actual)} 字符")
+            
+            # 检查文本是否完整
+            if expected in actual or actual in expected or len(actual) >= len(expected) * 0.95:
+                print(f"   ✅ 文本输入成功 (验证: {len(actual)} 字符)")
                 _pause_for_observation("文本已输入", step_pause_ms)
                 return True
             
-            if current_text.strip():
-                print(f"   ✅ 文本输入完成 (检测到 {len(current_text)} 字符)")
-                _pause_for_observation("文本已进入编辑器", step_pause_ms)
-                return True
+            # 如果验证失败，打印详细信息
+            print(f"   ⚠️  文本验证失败:")
+            print(f"       期望: {expected[:100]}...")
+            print(f"       实际: {actual[:100]}...")
             
-            raise RuntimeError("输入后文本框仍为空")
+            raise RuntimeError(f"输入验证失败: 期望 {len(expected)} 字符, 实际 {len(actual)} 字符")
             
         except Exception as exc:
             print(f"   ⚠️  输入失败: {exc}")
             logging.error("输入文本失败（尝试 %s）: %s", attempt + 1, exc, exc_info=True)
             if attempt < max_retries - 1:
+                print(f"   🔄 等待 2 秒后重试...")
                 page.wait_for_timeout(2000)
     
     _save_debug_artifacts(page)
