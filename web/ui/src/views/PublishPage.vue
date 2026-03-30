@@ -144,7 +144,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAppStore } from '../stores/app.js'
 import * as api from '../api/xpost.js'
 import PublishQueue from '../components/PublishQueue.vue'
@@ -159,6 +159,7 @@ const isScheduled = ref(false)
 const scheduledTime = ref('')
 const isPublishing = ref(false)
 const publishQueue = ref([])
+let wsConnection = null
 
 const circumference = 2 * Math.PI * 25
 
@@ -296,6 +297,65 @@ async function loadQueue() {
   }
 }
 
+function connectWebSocket() {
+  if (wsConnection) return
+  
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const wsUrl = `${protocol}//${window.location.hostname}:8765/ws/queue`
+  
+  console.log('🔌 连接 WebSocket:', wsUrl)
+  wsConnection = new WebSocket(wsUrl)
+  
+  wsConnection.onopen = () => {
+    console.log('✅ WebSocket 已连接')
+  }
+  
+  wsConnection.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data)
+      console.log('📨 收到 WebSocket 消息:', data.type)
+      
+      if (data.type === 'initial') {
+        // 初始队列数据
+        publishQueue.value = data.queue || []
+      } else if (data.type === 'task_added') {
+        // 新任务添加
+        publishQueue.value.push(data.task)
+      } else if (data.type === 'task_completed' || data.type === 'task_failed') {
+        // 任务状态更新
+        const index = publishQueue.value.findIndex(t => t.id === data.task_id)
+        if (index !== -1) {
+          publishQueue.value[index] = data.task
+        }
+      }
+    } catch (e) {
+      console.error('解析 WebSocket 消息失败:', e)
+    }
+  }
+  
+  wsConnection.onerror = (error) => {
+    console.error('❌ WebSocket 错误:', error)
+  }
+  
+  wsConnection.onclose = () => {
+    console.log('🔌 WebSocket 已断开')
+    wsConnection = null
+    // 3 秒后重连
+    setTimeout(() => {
+      if (!wsConnection) {
+        connectWebSocket()
+      }
+    }, 3000)
+  }
+}
+
+function disconnectWebSocket() {
+  if (wsConnection) {
+    wsConnection.close()
+    wsConnection = null
+  }
+}
+
 async function handleCancel(taskId) {
   try {
     await api.cancelPublishTask(taskId)
@@ -330,10 +390,16 @@ async function handleDelete(taskId) {
 
 onMounted(() => {
   loadQueue()
+  connectWebSocket()
+  
   // 设置默认定时时间为 1 小时后
   const defaultTime = new Date()
   defaultTime.setHours(defaultTime.getHours() + 1)
   scheduledTime.value = defaultTime.toISOString().slice(0, 16)
+})
+
+onUnmounted(() => {
+  disconnectWebSocket()
 })
 </script>
 

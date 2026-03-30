@@ -122,7 +122,9 @@ function getContentPreview(task) {
     const text = task.content?.text || ''
     return text.length > 50 ? text.substring(0, 50) + '...' : text
   } else if (task.type === 'article') {
-    return task.content?.md_path || '文章'
+    const mdPath = task.content?.md_path || ''
+    const filename = mdPath.split('/').pop() || '文章'
+    return `📄 ${filename}`
   }
   return ''
 }

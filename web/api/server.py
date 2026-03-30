@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -53,6 +53,13 @@ _running_tasks: dict[str, dict] = {}
 _xpost_run_lock = asyncio.Lock()
 _active_xpost_proc: Optional[asyncio.subprocess.Process] = None
 _xpost_proc_lock = asyncio.Lock()
+
+# 队列处理器后台任务
+_queue_processor_task: Optional[asyncio.Task] = None
+_queue_processor_running = False
+
+# WebSocket 连接管理
+_ws_connections: set[WebSocket] = set()
 
 
 def _python_bin() -> str:
@@ -858,10 +865,234 @@ def _write_publish_queue(data):
     )
 
 
+async def _broadcast_queue_update(event_type: str, task_id: str = None, task: dict = None):
+    """广播队列更新到所有 WebSocket 连接"""
+    if not _ws_connections:
+        return
+    
+    message = {
+        "type": event_type,  # "task_added", "task_updated", "task_completed", "task_failed"
+        "task_id": task_id,
+        "task": task,
+        "timestamp": datetime.now().isoformat()
+    }
+    
+    # 广播到所有连接
+    disconnected = set()
+    for ws in _ws_connections:
+        try:
+            await ws.send_json(message)
+        except Exception:
+            disconnected.add(ws)
+    
+    # 清理断开的连接
+    _ws_connections.difference_update(disconnected)
+
+
 def _generate_queue_id():
     """生成队列任务 ID"""
     import time
     return f"pq_{int(time.time() * 1000)}"
+
+
+async def _process_queue_background():
+    """后台队列处理器 - 智能调度"""
+    global _queue_processor_running
+    _queue_processor_running = True
+    
+    print("🚀 队列处理器已启动")
+    
+    while _queue_processor_running:
+        try:
+            data = _read_publish_queue()
+            queue = data.get("queue", [])
+            
+            # 检查是否有待处理任务
+            scheduled_tasks = [t for t in queue if t.get("status") == "scheduled"]
+            
+            if not scheduled_tasks:
+                print("📭 队列为空，处理器进入休眠（60秒后再检查）")
+                await asyncio.sleep(60)
+                continue
+            
+            from datetime import timezone
+            now = datetime.now(timezone.utc)
+            
+            # 查找最近要执行的任务
+            next_task_time = None
+            for task in scheduled_tasks:
+                scheduled_at = task.get("scheduled_at")
+                if not scheduled_at:
+                    continue
+                
+                try:
+                    scheduled_dt = datetime.fromisoformat(scheduled_at.replace('Z', '+00:00'))
+                    if scheduled_dt.tzinfo is None:
+                        scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
+                    
+                    if next_task_time is None or scheduled_dt < next_task_time:
+                        next_task_time = scheduled_dt
+                except Exception:
+                    continue
+            
+            # 执行到期任务
+            executed_any = False
+            for task in queue:
+                if task.get("status") != "scheduled":
+                    continue
+                
+                scheduled_at = task.get("scheduled_at")
+                if not scheduled_at:
+                    continue
+                
+                try:
+                    scheduled_dt = datetime.fromisoformat(scheduled_at.replace('Z', '+00:00'))
+                    if scheduled_dt.tzinfo is None:
+                        scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
+                except Exception:
+                    task["status"] = "failed"
+                    task["error"] = "时间格式错误"
+                    _write_publish_queue(data)
+                    continue
+                
+                # 如果还没到时间，跳过
+                if scheduled_dt > now:
+                    continue
+                
+                # 根据任务类型执行
+                task_type = task.get("type", "post")
+                print(f"📤 执行队列任务 {task['id']} (类型: {task_type})")
+                task["status"] = "publishing"
+                _write_publish_queue(data)
+                
+                try:
+                    if task_type == "post":
+                        result = await _execute_post_task(task)
+                    elif task_type == "article":
+                        result = await _execute_article_task(task)
+                    else:
+                        raise ValueError(f"未知任务类型: {task_type}")
+                    
+                    if result.get("ok"):
+                        task["status"] = "done"
+                        task["executed_at"] = datetime.now(timezone.utc).isoformat()
+                        task["result"] = result
+                        print(f"✅ 队列任务 {task['id']} 完成")
+                        # 广播任务完成
+                        await _broadcast_queue_update("task_completed", task["id"], task)
+                    else:
+                        task["status"] = "failed"
+                        task["error"] = result.get("error", "执行失败")
+                        print(f"❌ 队列任务 {task['id']} 失败")
+                        # 广播任务失败
+                        await _broadcast_queue_update("task_failed", task["id"], task)
+                    
+                    executed_any = True
+                    
+                except Exception as e:
+                    task["status"] = "failed"
+                    task["error"] = str(e)
+                    print(f"❌ 队列任务 {task['id']} 异常: {e}")
+                    # 广播任务失败
+                    await _broadcast_queue_update("task_failed", task["id"], task)
+                
+                _write_publish_queue(data)
+            
+            if executed_any:
+                print(f"✅ 队列处理完成，继续监控")
+                continue
+            
+            # 计算下次检查时间
+            if next_task_time:
+                wait_seconds = max(1, (next_task_time - now).total_seconds())
+                # 最多等待 60 秒，避免长时间不检查
+                wait_seconds = min(wait_seconds, 60)
+                print(f"⏰ 下个任务在 {next_task_time.strftime('%H:%M:%S')}，等待 {int(wait_seconds)} 秒")
+                await asyncio.sleep(wait_seconds)
+            else:
+                await asyncio.sleep(60)
+                
+        except Exception as e:
+            print(f"⚠️  队列处理器错误: {e}")
+            await asyncio.sleep(10)
+            continue
+
+
+def _ensure_queue_processor_running():
+    """确保队列处理器正在运行"""
+    global _queue_processor_task, _queue_processor_running
+    
+    if _queue_processor_task is None or _queue_processor_task.done():
+        _queue_processor_running = True
+        _queue_processor_task = asyncio.create_task(_process_queue_background())
+        print("✅ 队列处理器已启动")
+
+
+async def _execute_post_task(task: dict) -> dict:
+    """执行 Post 发布任务"""
+    content = task.get("content", {})
+    text = content.get("text", "")
+    images = content.get("images", [])
+    publish = content.get("publish", True)
+    
+    if not text:
+        return {"ok": False, "error": "缺少文本内容"}
+    
+    # 调用发布接口
+    args = ["post", text]
+    if images:
+        args.extend(["--images"] + images)
+    if publish:
+        args.append("--publish")
+    args.extend(["--no-wait", "--observe-ms", "900"])
+    
+    return await _run_xpost(*args, timeout=180)
+
+
+async def _execute_article_task(task: dict) -> dict:
+    """执行 Article 发布任务"""
+    content = task.get("content", {})
+    md_path = content.get("md_path", "")
+    publish = content.get("publish", True)
+    
+    if not md_path:
+        return {"ok": False, "error": "缺少文章路径"}
+    
+    # 调用文章发布接口
+    args = ["article", md_path]
+    if publish:
+        args.append("--publish")
+    args.extend(["--no-wait", "--observe-ms", "900"])
+    
+    return await _run_xpost(*args, timeout=300)
+
+
+@app.on_event("startup")
+async def startup_event():
+    """启动时检查是否有待处理任务"""
+    data = _read_publish_queue()
+    queue = data.get("queue", [])
+    scheduled_tasks = [t for t in queue if t.get("status") == "scheduled"]
+    
+    if scheduled_tasks:
+        print(f"📋 发现 {len(scheduled_tasks)} 个待处理任务，启动队列处理器")
+        _ensure_queue_processor_running()
+    else:
+        print("📭 队列为空，队列处理器待命")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """关闭时停止队列处理器"""
+    global _queue_processor_running, _queue_processor_task
+    _queue_processor_running = False
+    if _queue_processor_task:
+        _queue_processor_task.cancel()
+        try:
+            await _queue_processor_task
+        except asyncio.CancelledError:
+            pass
+    print("✅ 后台队列处理器已停止")
 
 
 @app.get("/api/publish/queue")
@@ -869,6 +1100,34 @@ async def get_publish_queue():
     """获取发布队列"""
     data = _read_publish_queue()
     return {"ok": True, "queue": data.get("queue", [])}
+
+
+@app.websocket("/ws/queue")
+async def websocket_queue(websocket: WebSocket):
+    """WebSocket 端点 - 实时推送队列更新"""
+    await websocket.accept()
+    _ws_connections.add(websocket)
+    print(f"🔌 WebSocket 连接建立，当前连接数: {len(_ws_connections)}")
+    
+    try:
+        # 发送当前队列状态
+        data = _read_publish_queue()
+        await websocket.send_json({
+            "type": "initial",
+            "queue": data.get("queue", [])
+        })
+        
+        # 保持连接，等待客户端断开
+        while True:
+            try:
+                await websocket.receive_text()
+            except WebSocketDisconnect:
+                break
+    except Exception as e:
+        print(f"⚠️  WebSocket 错误: {e}")
+    finally:
+        _ws_connections.discard(websocket)
+        print(f"🔌 WebSocket 连接断开，当前连接数: {len(_ws_connections)}")
 
 
 @app.post("/api/upload/image")
@@ -998,6 +1257,12 @@ async def publish_post(req: PublishPostRequest):
         }
         queue_data["queue"].append(task)
         _write_publish_queue(queue_data)
+        
+        # 广播任务添加
+        await _broadcast_queue_update("task_added", task["id"], task)
+        
+        # 启动队列处理器（如果未运行）
+        _ensure_queue_processor_running()
         
         return {
             "ok": True,
