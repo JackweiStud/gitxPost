@@ -831,6 +831,44 @@ async def fetch_followers(username: str = "jackaiwison"):
 
 
 # ---------------------------------------------------------------------------
+# Routes: Scheduler
+# ---------------------------------------------------------------------------
+
+@app.get("/api/scheduler/status")
+async def get_scheduler_status():
+    """查询调度器状态"""
+    return await _run_xpost("scheduler", "status")
+
+
+class InstallSchedulerRequest(BaseModel):
+    time: str = "09:00"
+
+
+@app.post("/api/scheduler/install")
+async def install_scheduler(req: InstallSchedulerRequest):
+    """安装调度器"""
+    return await _run_xpost("scheduler", "install", "--time", req.time)
+
+
+@app.post("/api/scheduler/uninstall")
+async def uninstall_scheduler():
+    """卸载调度器"""
+    return await _run_xpost("scheduler", "uninstall")
+
+
+@app.post("/api/scheduler/run-now")
+async def run_scheduler_now():
+    """立即执行一次"""
+    return await _run_xpost("scheduler", "run-now", timeout=900)
+
+
+@app.get("/api/scheduler/logs")
+async def get_scheduler_logs(lines: int = 50):
+    """获取最近日志"""
+    return await _run_xpost("scheduler", "logs", "--lines", str(lines))
+
+
+# ---------------------------------------------------------------------------
 # Routes: Pipeline
 # ---------------------------------------------------------------------------
 

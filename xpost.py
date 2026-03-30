@@ -1696,6 +1696,226 @@ def _detect_chrome_version():
         return None
 
 
+def _cmd_scheduler(args):
+    """管理 launchd 定时任务调度器"""
+    action = args.action
+    plist_template = BASE_DIR / "scripts" / "com.gitxpost.daily.plist"
+    plist_target = Path.home() / "Library" / "LaunchAgents" / "com.gitxpost.daily.plist"
+    scheduler_script = BASE_DIR / "scripts" / "daily_scheduler.sh"
+    label = "com.gitxpost.daily"
+
+    if action == "install":
+        # 解析时间参数
+        time_str = args.time or "09:00"
+        try:
+            hour, minute = map(int, time_str.split(":"))
+            if not (0 <= hour <= 23 and 0 <= minute <= 59):
+                raise ValueError
+        except Exception:
+            _print_json({"ok": False, "error": f"时间格式错误，应为 HH:MM (00:00-23:59)，收到: {time_str}"})
+            return 1
+
+        # 检查脚本是否存在
+        if not scheduler_script.exists():
+            _print_json({"ok": False, "error": f"调度脚本不存在: {scheduler_script}"})
+            return 1
+
+        # 读取模板并替换占位符
+        if not plist_template.exists():
+            _print_json({"ok": False, "error": f"plist 模板不存在: {plist_template}"})
+            return 1
+
+        plist_content = plist_template.read_text(encoding="utf-8")
+        plist_content = plist_content.replace("{HOUR}", str(hour))
+        plist_content = plist_content.replace("{MINUTE}", str(minute))
+
+        # 如果已安装，先卸载
+        if plist_target.exists():
+            subprocess.run(["launchctl", "unload", str(plist_target)], capture_output=True)
+
+        # 写入 plist
+        plist_target.parent.mkdir(parents=True, exist_ok=True)
+        plist_target.write_text(plist_content, encoding="utf-8")
+
+        # 加载到 launchd
+        proc = subprocess.run(["launchctl", "load", str(plist_target)], capture_output=True, text=True)
+        if proc.returncode != 0:
+            _print_json({
+                "ok": False,
+                "error": "launchctl load 失败",
+                "stderr": proc.stderr.strip(),
+            })
+            return 1
+
+        _print_json({
+            "ok": True,
+            "action": "install",
+            "scheduled_time": time_str,
+            "plist_path": str(plist_target),
+            "message": f"调度器已安装，将在每天 {time_str} 执行",
+        })
+        return 0
+
+    elif action == "uninstall":
+        if not plist_target.exists():
+            _print_json({
+                "ok": True,
+                "action": "uninstall",
+                "message": "调度器未安装",
+            })
+            return 0
+
+        # 卸载
+        proc = subprocess.run(["launchctl", "unload", str(plist_target)], capture_output=True, text=True)
+        plist_target.unlink()
+
+        _print_json({
+            "ok": True,
+            "action": "uninstall",
+            "message": "调度器已卸载",
+        })
+        return 0
+
+    elif action == "status":
+        # 检查 plist 是否存在
+        installed = plist_target.exists()
+        scheduled_time = None
+        next_run = None
+
+        if installed:
+            # 解析 plist 获取时间
+            try:
+                import xml.etree.ElementTree as ET
+                tree = ET.parse(plist_target)
+                root = tree.getroot()
+                plist_dict = root.find("dict")
+                keys = list(plist_dict.iter("key"))
+                for i, key in enumerate(keys):
+                    if key.text == "StartCalendarInterval":
+                        interval_dict = list(plist_dict)[i + 1]
+                        hour_elem = None
+                        minute_elem = None
+                        for j, k in enumerate(interval_dict.iter("key")):
+                            if k.text == "Hour":
+                                hour_elem = list(interval_dict)[j + 1]
+                            elif k.text == "Minute":
+                                minute_elem = list(interval_dict)[j + 1]
+                        if hour_elem is not None and minute_elem is not None:
+                            hour = int(hour_elem.text)
+                            minute = int(minute_elem.text)
+                            scheduled_time = f"{hour:02d}:{minute:02d}"
+                            
+                            # 计算下次执行时间
+                            now = datetime.now()
+                            next_run_dt = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                            if next_run_dt <= now:
+                                next_run_dt = next_run_dt.replace(day=now.day + 1)
+                            next_run = next_run_dt.strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                pass
+
+        # 检查最近执行日志
+        last_run = None
+        log_dir = XINFO_RUNTIME_DIR
+        if log_dir.exists():
+            log_files = sorted(log_dir.glob("scheduler_*.log"), reverse=True)
+            if log_files:
+                latest_log = log_files[0]
+                try:
+                    lines = latest_log.read_text(encoding="utf-8").splitlines()
+                    for line in lines:
+                        if line.startswith("==========") and "DONE" in line:
+                            # 提取时间戳
+                            match = re.search(r"DONE (.+?) =", line)
+                            if match:
+                                last_run = match.group(1).strip()
+                                break
+                except Exception:
+                    pass
+
+        _print_json({
+            "ok": True,
+            "action": "status",
+            "installed": installed,
+            "scheduled_time": scheduled_time,
+            "next_run": next_run,
+            "last_run": last_run,
+            "plist_path": str(plist_target) if installed else None,
+        })
+        return 0
+
+    elif action == "run-now":
+        if not scheduler_script.exists():
+            _print_json({"ok": False, "error": f"调度脚本不存在: {scheduler_script}"})
+            return 1
+
+        # 直接执行脚本
+        start_ts = time.time()
+        proc = subprocess.run(["/bin/bash", str(scheduler_script)], capture_output=True, text=True, cwd=str(BASE_DIR))
+        total_ms = int((time.time() - start_ts) * 1000)
+
+        _print_json({
+            "ok": proc.returncode == 0,
+            "action": "run-now",
+            "returncode": proc.returncode,
+            "stdout_tail": proc.stdout[-1000:] if proc.stdout else "",
+            "stderr_tail": proc.stderr[-1000:] if proc.stderr else "",
+            "timings": {"total_ms": total_ms},
+        })
+        return 0 if proc.returncode == 0 else 1
+
+    elif action == "logs":
+        lines_limit = args.lines or 50
+        log_dir = XINFO_RUNTIME_DIR
+        
+        if not log_dir.exists():
+            _print_json({
+                "ok": True,
+                "action": "logs",
+                "logs": [],
+                "message": "日志目录不存在",
+            })
+            return 0
+
+        log_files = sorted(log_dir.glob("scheduler_*.log"), reverse=True)
+        if not log_files:
+            _print_json({
+                "ok": True,
+                "action": "logs",
+                "logs": [],
+                "message": "暂无日志",
+            })
+            return 0
+
+        # 读取最新日志文件
+        latest_log = log_files[0]
+        try:
+            content = latest_log.read_text(encoding="utf-8")
+            lines = content.splitlines()
+            recent_lines = lines[-lines_limit:] if len(lines) > lines_limit else lines
+            
+            _print_json({
+                "ok": True,
+                "action": "logs",
+                "log_file": latest_log.name,
+                "total_lines": len(lines),
+                "returned_lines": len(recent_lines),
+                "logs": recent_lines,
+            })
+            return 0
+        except Exception as exc:
+            _print_json({
+                "ok": False,
+                "action": "logs",
+                "error": f"读取日志失败: {exc}",
+            })
+            return 1
+
+    else:
+        _print_json({"ok": False, "error": f"未知操作: {action}"})
+        return 1
+
+
 def _cmd_doctor(_args):
     deps = {}
     for mod in [
@@ -1856,6 +2076,12 @@ def main():
     p_follower.add_argument("username", nargs="?", help="X username (default: jackaiwison)")
     p_follower.add_argument("--timeout", type=int, default=30, help="Page load timeout in seconds")
     p_follower.set_defaults(func=_cmd_follower_stats)
+
+    p_scheduler = sub.add_parser("scheduler", help="Manage launchd daily task scheduler")
+    p_scheduler.add_argument("action", choices=["install", "uninstall", "status", "run-now", "logs"], help="Scheduler action")
+    p_scheduler.add_argument("--time", help="Scheduled time in HH:MM format (default: 09:00, only for install)")
+    p_scheduler.add_argument("--lines", type=int, default=50, help="Number of log lines to show (only for logs)")
+    p_scheduler.set_defaults(func=_cmd_scheduler)
 
     p_doctor = sub.add_parser("doctor", help="Check environment and deps")
     p_doctor.set_defaults(func=_cmd_doctor)

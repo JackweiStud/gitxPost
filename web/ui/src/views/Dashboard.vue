@@ -235,6 +235,104 @@
         </div>
       </div>
     </div>
+
+    <!-- Scheduler Card -->
+    <div class="card scheduler-card">
+      <div class="card-header">
+        <h3>定时任务</h3>
+        <span
+          class="badge"
+          :class="schedulerStatus?.installed ? 'badge-green' : 'badge-gray'"
+        >
+          {{ schedulerStatus?.installed ? '🟢 已启用' : '🔴 未安装' }}
+        </span>
+      </div>
+      
+      <div v-if="schedulerStatus?.installed" class="scheduler-info">
+        <div class="info-row">
+          <span class="info-label">执行时间</span>
+          <span class="info-value">每天 {{ schedulerStatus.scheduled_time }}</span>
+        </div>
+        <div class="info-row" v-if="schedulerStatus.last_run">
+          <span class="info-label">上次执行</span>
+          <span class="info-value">{{ schedulerStatus.last_run }}</span>
+        </div>
+        <div class="info-row" v-if="schedulerStatus.next_run">
+          <span class="info-label">下次执行</span>
+          <span class="info-value">{{ schedulerStatus.next_run }}</span>
+        </div>
+      </div>
+
+      <div v-else class="scheduler-empty">
+        <p>定时任务未安装，安装后将每天自动执行扫描、日报和粉丝统计。</p>
+      </div>
+
+      <div class="scheduler-actions">
+        <button
+          v-if="!schedulerStatus?.installed"
+          class="btn btn-primary"
+          @click="showInstallModal = true"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+          安装调度器
+        </button>
+        <template v-else>
+          <button class="btn btn-primary" @click="runSchedulerNow" :disabled="schedulerRunning">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            {{ schedulerRunning ? '执行中...' : '立即执行' }}
+          </button>
+          <button class="btn btn-ghost" @click="toggleLogs">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            {{ showLogs ? '隐藏日志' : '查看日志' }}
+          </button>
+          <button class="btn btn-ghost" @click="showInstallModal = true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            修改时间
+          </button>
+          <button class="btn btn-danger" @click="uninstallScheduler">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            卸载
+          </button>
+        </template>
+      </div>
+
+      <div v-if="showLogs && schedulerLogs" class="scheduler-logs">
+        <div class="logs-header">
+          <span class="logs-title">最近日志 ({{ schedulerLogs.log_file }})</span>
+          <button class="btn-icon" @click="loadSchedulerLogs">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+          </button>
+        </div>
+        <pre class="logs-content">{{ schedulerLogs.logs.join('\n') }}</pre>
+      </div>
+    </div>
+
+    <!-- Install Scheduler Modal -->
+    <div v-if="showInstallModal" class="modal-overlay" @click.self="showInstallModal = false">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>{{ schedulerStatus?.installed ? '修改执行时间' : '安装定时任务' }}</h3>
+          <button class="btn-icon" @click="showInstallModal = false">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="modal-body">
+          <label class="form-label">执行时间</label>
+          <input
+            type="time"
+            v-model="installTime"
+            class="form-input"
+          />
+          <p class="form-hint">调度器将在每天指定时间自动执行扫描、日报和粉丝统计任务</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" @click="showInstallModal = false">取消</button>
+          <button class="btn btn-primary" @click="installScheduler" :disabled="installing">
+            {{ installing ? '安装中...' : (schedulerStatus?.installed ? '确认修改' : '确认安装') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -246,7 +344,7 @@ import * as api from '../api/xpost.js'
 const appStore = useAppStore()
 const status = ref(null)
 const reports = ref([])
-const followers = ref(null)  // 新增：粉丝数据
+const followers = ref(null)
 const pipelineRunning = ref(false)
 const pipelineResult = ref(null)
 const pipelineAbort = ref(null)
@@ -255,6 +353,15 @@ const lastUpdateTime = ref(null)
 const isRefreshing = ref(false)
 const now = ref(Date.now())
 let timer = null
+
+// Scheduler state
+const schedulerStatus = ref(null)
+const showInstallModal = ref(false)
+const installTime = ref('09:00')
+const installing = ref(false)
+const schedulerRunning = ref(false)
+const showLogs = ref(false)
+const schedulerLogs = ref(null)
 
 const pipelineSteps = ref([
   { id: 'scan', label: '雷达扫描', desc: '抓取 230+ 账号最新推文', estimate: '3-8 分钟', status: 'pending', startTime: null, duration: null },
@@ -326,14 +433,16 @@ async function loadData() {
   if (isRefreshing.value) return
   isRefreshing.value = true
   try {
-    const [s, r, f] = await Promise.all([
+    const [s, r, f, sched] = await Promise.all([
       api.getStatus(), 
       api.getReports(),
-      api.getFollowers()
+      api.getFollowers(),
+      api.getSchedulerStatus()
     ])
     status.value = s
     reports.value = r.reports || []
     followers.value = f
+    schedulerStatus.value = sched
     lastUpdateTime.value = Date.now()
   } catch (e) {
     appStore.notify('加载数据失败: ' + e.message, 'error')
@@ -440,6 +549,75 @@ async function runScanOnly() {
     loadData()
   } catch (e) {
     appStore.notify('扫描失败: ' + e.message, 'error')
+  }
+}
+
+async function installScheduler() {
+  installing.value = true
+  try {
+    const result = await api.installScheduler(installTime.value)
+    if (result.ok) {
+      appStore.notify(result.message || '调度器安装成功', 'success')
+      showInstallModal.value = false
+      await loadData()
+    } else {
+      appStore.notify(result.error || '安装失败', 'error')
+    }
+  } catch (e) {
+    appStore.notify('安装失败: ' + e.message, 'error')
+  } finally {
+    installing.value = false
+  }
+}
+
+async function uninstallScheduler() {
+  if (!confirm('确定要卸载定时任务吗？')) return
+  try {
+    const result = await api.uninstallScheduler()
+    if (result.ok) {
+      appStore.notify(result.message || '调度器已卸载', 'success')
+      await loadData()
+    } else {
+      appStore.notify(result.error || '卸载失败', 'error')
+    }
+  } catch (e) {
+    appStore.notify('卸载失败: ' + e.message, 'error')
+  }
+}
+
+async function runSchedulerNow() {
+  schedulerRunning.value = true
+  appStore.notify('开始执行定时任务...', 'info')
+  try {
+    const result = await api.runSchedulerNow()
+    if (result.ok) {
+      appStore.notify('定时任务执行完成', 'success')
+      await loadData()
+    } else {
+      appStore.notify('执行失败: ' + (result.error || '未知错误'), 'error')
+    }
+  } catch (e) {
+    appStore.notify('执行失败: ' + e.message, 'error')
+  } finally {
+    schedulerRunning.value = false
+  }
+}
+
+async function loadSchedulerLogs() {
+  try {
+    const result = await api.getSchedulerLogs(50)
+    if (result.ok) {
+      schedulerLogs.value = result
+    }
+  } catch (e) {
+    appStore.notify('加载日志失败: ' + e.message, 'error')
+  }
+}
+
+async function toggleLogs() {
+  showLogs.value = !showLogs.value
+  if (showLogs.value && !schedulerLogs.value) {
+    await loadSchedulerLogs()
   }
 }
 
@@ -852,5 +1030,182 @@ onUnmounted(stopTimer)
 @media (max-width: 900px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .two-col { grid-template-columns: 1fr; }
+}
+
+.scheduler-card {
+  margin-top: 24px;
+}
+
+.scheduler-info {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+.info-label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.info-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.scheduler-empty {
+  padding: 16px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+}
+
+.scheduler-empty p {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.scheduler-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.scheduler-logs {
+  margin-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 16px;
+}
+
+.logs-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.logs-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.logs-content {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  max-height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  width: 90%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.modal-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.modal-body {
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.form-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  color: var(--text-primary);
+  transition: all var(--transition-fast);
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  background: var(--bg-secondary);
+}
+
+.form-hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
+.badge-gray {
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
 }
 </style>

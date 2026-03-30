@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.gitxpost.daily</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/jackwl/Code/gitcode/gitxPost/scripts/daily_scheduler.sh</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>{HOUR}</integer>
+    <key>Minute</key>
+    <integer>{MINUTE}</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/jackwl/Code/gitcode/gitxPost/xinfo/log/runtime/launchd_stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/jackwl/Code/gitcode/gitxPost/xinfo/log/runtime/launchd_stderr.log</string>
+</dict>
+</plist>

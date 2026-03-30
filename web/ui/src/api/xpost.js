@@ -54,3 +54,10 @@ export const runPipeline = (steps) => api.post('/pipeline/run', { steps })
 export const getFollowers = () => api.get('/followers')
 export const fetchFollowers = (username = 'jackaiwison') =>
   api.post('/followers/fetch', null, { params: { username } })
+
+// Scheduler
+export const getSchedulerStatus = () => api.get('/scheduler/status')
+export const installScheduler = (time = '09:00') => api.post('/scheduler/install', { time })
+export const uninstallScheduler = () => api.post('/scheduler/uninstall')
+export const runSchedulerNow = () => api.post('/scheduler/run-now')
+export const getSchedulerLogs = (lines = 50) => api.get('/scheduler/logs', { params: { lines } })
