@@ -75,6 +75,29 @@
           <div class="stat-label">原创帖</div>
         </div>
       </div>
+      <div class="stat-card" @click="$router.push('/followers')" style="cursor: pointer;">
+        <div class="stat-icon stat-icon-red">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value">
+            {{ followersData.count }}
+            <span v-if="followersData.changeText" class="stat-change" :class="{
+              'change-positive': followersData.change > 0,
+              'change-negative': followersData.change < 0,
+              'change-neutral': followersData.change === 0
+            }">
+              {{ followersData.changeText }}
+            </span>
+          </div>
+          <div class="stat-label">粉丝数</div>
+        </div>
+      </div>
     </div>
 
     <!-- Pipeline Progress -->
@@ -223,6 +246,7 @@ import * as api from '../api/xpost.js'
 const appStore = useAppStore()
 const status = ref(null)
 const reports = ref([])
+const followers = ref(null)  // 新增：粉丝数据
 const pipelineRunning = ref(false)
 const pipelineResult = ref(null)
 const pipelineAbort = ref(null)
@@ -268,13 +292,48 @@ const lastUpdateText = computed(() => {
   return `${hours} 小时前`
 })
 
+// 计算粉丝数据
+const followersData = computed(() => {
+  if (!followers.value?.records || followers.value.records.length === 0) {
+    return { count: '--', change: 0, changeText: '' }
+  }
+  
+  const records = followers.value.records
+  const latest = records[0]
+  const count = latest.followers || 0
+  
+  // 计算变化（相比前一天）
+  let change = 0
+  let changeText = ''
+  
+  if (records.length > 1) {
+    const previous = records[1]
+    change = count - (previous.followers || 0)
+    
+    if (change > 0) {
+      changeText = `+${change}`
+    } else if (change < 0) {
+      changeText = `${change}`
+    } else {
+      changeText = '持平'
+    }
+  }
+  
+  return { count, change, changeText }
+})
+
 async function loadData() {
   if (isRefreshing.value) return
   isRefreshing.value = true
   try {
-    const [s, r] = await Promise.all([api.getStatus(), api.getReports()])
+    const [s, r, f] = await Promise.all([
+      api.getStatus(), 
+      api.getReports(),
+      api.getFollowers()
+    ])
     status.value = s
     reports.value = r.reports || []
+    followers.value = f
     lastUpdateTime.value = Date.now()
   } catch (e) {
     appStore.notify('加载数据失败: ' + e.message, 'error')
@@ -528,12 +587,32 @@ onUnmounted(stopTimer)
 .stat-icon-green { background: var(--accent-green-dim); color: var(--accent-green); }
 .stat-icon-amber { background: var(--accent-amber-dim); color: var(--accent-amber); }
 .stat-icon-purple { background: var(--accent-purple-dim); color: var(--accent-purple); }
+.stat-icon-red { background: var(--accent-red-dim); color: var(--accent-red); }
 
 .stat-value {
   font-size: 18px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
+}
+.stat-change {
+  font-size: 12px;
+  font-weight: 600;
+  margin-left: 8px;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.stat-change.change-positive {
+  color: var(--accent-green);
+  background: var(--accent-green-dim);
+}
+.stat-change.change-negative {
+  color: var(--accent-red);
+  background: var(--accent-red-dim);
+}
+.stat-change.change-neutral {
+  color: var(--text-tertiary);
+  background: var(--bg-tertiary);
 }
 .stat-label {
   font-size: 12px;
