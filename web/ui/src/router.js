@@ -6,6 +6,7 @@ const routes = [
   { path: '/reply', name: 'reply', component: () => import('./views/ReplyWorkbench.vue') },
   { path: '/accounts', name: 'accounts', component: () => import('./views/AccountsPage.vue') },
   { path: '/settings', name: 'settings', component: () => import('./views/SettingsPage.vue') },
+  { path: '/followers', name: 'followers', component: () => import('./views/FollowersPage.vue') },
 ]
 
 export default createRouter({

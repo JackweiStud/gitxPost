@@ -1653,6 +1653,35 @@ def _cmd_radar_accounts(args):
     return 0 if proc.returncode == 0 else 1
 
 
+def _cmd_follower_stats(args):
+    """采集 X 粉丝数据（使用 patchright 浏览器）"""
+    script_path = BASE_DIR / "fetch_follower_stats.py"
+    if not script_path.exists():
+        _print_json({"ok": False, "error": "fetch_follower_stats.py 脚本不存在"})
+        return 1
+
+    username = args.username or os.environ.get("XPOST_USERNAME", "jackaiwison")
+    cmd_args = [username, "--json-only", "--headless"]
+    if args.timeout:
+        cmd_args.extend(["--timeout", str(args.timeout)])
+
+    proc = _run_python_script(script_path, cmd_args)
+
+    # 解析 stdout JSON
+    try:
+        result = json.loads(proc.stdout)
+    except Exception:
+        result = {
+            "ok": False,
+            "error": "解析输出失败",
+            "stdout_tail": proc.stdout[-500:] if proc.stdout else "",
+            "stderr_tail": proc.stderr[-500:] if proc.stderr else "",
+        }
+
+    _print_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def _detect_chrome_version():
     chrome_bin = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
     if not chrome_bin.exists():
@@ -1822,6 +1851,11 @@ def main():
     p_radar_accounts.add_argument("username", nargs="?", help="Account username")
     p_radar_accounts.add_argument("note", nargs="?", help="Optional note for add")
     p_radar_accounts.set_defaults(func=_cmd_radar_accounts)
+
+    p_follower = sub.add_parser("follower-stats", help="Fetch X follower/following counts")
+    p_follower.add_argument("username", nargs="?", help="X username (default: jackaiwison)")
+    p_follower.add_argument("--timeout", type=int, default=30, help="Page load timeout in seconds")
+    p_follower.set_defaults(func=_cmd_follower_stats)
 
     p_doctor = sub.add_parser("doctor", help="Check environment and deps")
     p_doctor.set_defaults(func=_cmd_doctor)

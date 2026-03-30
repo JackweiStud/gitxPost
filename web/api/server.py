@@ -808,6 +808,32 @@ class PipelineRunRequest(BaseModel):
     steps: list[str]  # ["scan", "analyze", "daily"]
 
 
+# ---------------------------------------------------------------------------
+# Routes: Followers
+# ---------------------------------------------------------------------------
+
+FOLLOWERS_JSON = XINFO_LOG / "followers.json"
+
+
+@app.get("/api/followers")
+async def get_followers():
+    """读取粉丝历史数据"""
+    data = _read_json(FOLLOWERS_JSON)
+    if data is None:
+        return {"ok": True, "username": "", "records": []}
+    return {"ok": True, **data}
+
+
+@app.post("/api/followers/fetch")
+async def fetch_followers(username: str = "jackaiwison"):
+    """触发浏览器采集粉丝数"""
+    return await _run_xpost("follower-stats", username, timeout=120)
+
+
+# ---------------------------------------------------------------------------
+# Routes: Pipeline
+# ---------------------------------------------------------------------------
+
 @app.post("/api/pipeline/run")
 async def run_pipeline(req: PipelineRunRequest):
     results = []

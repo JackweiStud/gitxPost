@@ -49,3 +49,8 @@ export const restoreRadarAccount = (handle) =>
   api.put(`/radar/accounts/${handle}/restore`)
 
 export const runPipeline = (steps) => api.post('/pipeline/run', { steps })
+
+// Followers
+export const getFollowers = () => api.get('/followers')
+export const fetchFollowers = (username = 'jackaiwison') =>
+  api.post('/followers/fetch', null, { params: { username } })
