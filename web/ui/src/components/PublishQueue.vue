@@ -34,7 +34,10 @@
         <div class="queue-content">
           <div class="content-text">{{ getContentPreview(task) }}</div>
           <div class="content-meta">
-            <span class="meta-time">{{ formatTime(task.scheduled_at) }}</span>
+            <span v-if="task.status === 'scheduled'" class="meta-scheduled">
+              预期 {{ formatTime(task.scheduled_at) }}
+            </span>
+            <span v-else class="meta-time">{{ formatTime(task.created_at) }}</span>
             <span v-if="task.executed_at" class="meta-executed">
               · 执行于 {{ formatTime(task.executed_at) }}
             </span>
@@ -258,6 +261,12 @@ function formatTime(isoString) {
 
 .meta-time {
   font-variant-numeric: tabular-nums;
+}
+
+.meta-scheduled {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-amber);
+  font-weight: 600;
 }
 
 .meta-executed {

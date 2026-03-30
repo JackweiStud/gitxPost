@@ -1916,6 +1916,133 @@ def _cmd_scheduler(args):
         return 1
 
 
+def _cmd_queue_processor(args):
+    """管理发布队列处理器"""
+    action = args.action
+    plist_template = BASE_DIR / "scripts" / "com.gitxpost.queue.plist"
+    plist_target = Path.home() / "Library" / "LaunchAgents" / "com.gitxpost.queue.plist"
+    processor_script = BASE_DIR / "scripts" / "process_publish_queue.py"
+    label = "com.gitxpost.queue"
+    log_dir = XINFO_RUNTIME_DIR
+
+    if action == "install":
+        # 检查脚本是否存在
+        if not processor_script.exists():
+            _print_json({"ok": False, "error": f"处理器脚本不存在: {processor_script}"})
+            return 1
+
+        # 读取模板并替换占位符
+        if not plist_template.exists():
+            _print_json({"ok": False, "error": f"plist 模板不存在: {plist_template}"})
+            return 1
+
+        plist_content = plist_template.read_text(encoding="utf-8")
+        plist_content = plist_content.replace("VENV_PYTHON_PATH", sys.executable)
+        plist_content = plist_content.replace("SCRIPT_PATH", str(processor_script))
+        plist_content = plist_content.replace("BASE_DIR", str(BASE_DIR))
+        plist_content = plist_content.replace("LOG_DIR", str(log_dir))
+
+        # 如果已安装，先卸载
+        if plist_target.exists():
+            subprocess.run(["launchctl", "unload", str(plist_target)], capture_output=True)
+
+        # 写入 plist
+        plist_target.parent.mkdir(parents=True, exist_ok=True)
+        plist_target.write_text(plist_content, encoding="utf-8")
+
+        # 加载到 launchd
+        proc = subprocess.run(["launchctl", "load", str(plist_target)], capture_output=True, text=True)
+        if proc.returncode != 0:
+            _print_json({
+                "ok": False,
+                "error": "launchctl load 失败",
+                "stderr": proc.stderr.strip(),
+            })
+            return 1
+
+        _print_json({
+            "ok": True,
+            "action": "install",
+            "plist_path": str(plist_target),
+            "message": "队列处理器已安装，将每 5 分钟检查一次队列",
+        })
+        return 0
+
+    elif action == "uninstall":
+        if not plist_target.exists():
+            _print_json({
+                "ok": True,
+                "action": "uninstall",
+                "message": "队列处理器未安装",
+            })
+            return 0
+
+        # 卸载
+        proc = subprocess.run(["launchctl", "unload", str(plist_target)], capture_output=True, text=True)
+        plist_target.unlink()
+
+        _print_json({
+            "ok": True,
+            "action": "uninstall",
+            "message": "队列处理器已卸载",
+        })
+        return 0
+
+    elif action == "status":
+        # 检查 plist 是否存在
+        installed = plist_target.exists()
+        
+        # 检查 launchd 状态
+        running = False
+        if installed:
+            proc = subprocess.run(
+                ["launchctl", "list", label],
+                capture_output=True,
+                text=True
+            )
+            running = proc.returncode == 0
+
+        _print_json({
+            "ok": True,
+            "action": "status",
+            "installed": installed,
+            "running": running,
+            "interval": "5 minutes",
+            "plist_path": str(plist_target) if installed else None,
+        })
+        return 0
+
+    elif action == "run-now":
+        # 检查脚本是否存在
+        if not processor_script.exists():
+            _print_json({"ok": False, "error": f"处理器脚本不存在: {processor_script}"})
+            return 1
+
+        # 直接执行脚本
+        start_ts = time.time()
+        proc = subprocess.run(
+            [sys.executable, str(processor_script)],
+            capture_output=True,
+            text=True,
+            cwd=str(BASE_DIR)
+        )
+        total_ms = int((time.time() - start_ts) * 1000)
+
+        _print_json({
+            "ok": proc.returncode == 0,
+            "action": "run-now",
+            "returncode": proc.returncode,
+            "stdout": proc.stdout,
+            "stderr": proc.stderr if proc.stderr else None,
+            "timings": {"total_ms": total_ms},
+        })
+        return 0 if proc.returncode == 0 else 1
+
+    else:
+        _print_json({"ok": False, "error": f"未知操作: {action}"})
+        return 1
+
+
 def _cmd_doctor(_args):
     deps = {}
     for mod in [
@@ -2082,6 +2209,10 @@ def main():
     p_scheduler.add_argument("--time", help="Scheduled time in HH:MM format (default: 09:00, only for install)")
     p_scheduler.add_argument("--lines", type=int, default=50, help="Number of log lines to show (only for logs)")
     p_scheduler.set_defaults(func=_cmd_scheduler)
+
+    p_queue = sub.add_parser("queue-processor", help="Manage publish queue processor")
+    p_queue.add_argument("action", choices=["install", "uninstall", "status", "run-now"], help="Queue processor action")
+    p_queue.set_defaults(func=_cmd_queue_processor)
 
     p_doctor = sub.add_parser("doctor", help="Check environment and deps")
     p_doctor.set_defaults(func=_cmd_doctor)
