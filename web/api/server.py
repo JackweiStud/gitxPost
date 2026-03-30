@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -29,6 +29,10 @@ VENV_PYTHON = BASE_DIR / ".venv" / "bin" / "python"
 XPOST_PY = BASE_DIR / "xpost.py"
 GENERATE_REPLIES_PY = BASE_DIR / "skills" / "x-reply-assistV2" / "scripts" / "generate_replies.py"
 PUBLISH_QUEUE_JSON = XINFO_LOG / "publish_queue.json"
+UPLOAD_DIR = XINFO_LOG / "uploads"
+
+# 确保上传目录存在
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="gitxPost API", version="0.1.0")
 
@@ -867,6 +871,34 @@ async def get_publish_queue():
     return {"ok": True, "queue": data.get("queue", [])}
 
 
+@app.post("/api/upload/image")
+async def upload_image(file: UploadFile = File(...)):
+    """上传图片"""
+    # 验证文件类型
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(400, detail="只支持图片文件")
+    
+    # 生成唯一文件名
+    import uuid
+    ext = Path(file.filename).suffix if file.filename else ".jpg"
+    filename = f"{uuid.uuid4().hex}{ext}"
+    filepath = UPLOAD_DIR / filename
+    
+    # 保存文件
+    try:
+        content = await file.read()
+        filepath.write_bytes(content)
+    except Exception as e:
+        raise HTTPException(500, detail=f"文件保存失败: {str(e)}")
+    
+    return {
+        "ok": True,
+        "path": str(filepath),
+        "filename": filename,
+        "url": f"/uploads/{filename}"
+    }
+
+
 class PublishPostRequest(BaseModel):
     text: str
     images: list[str] = []
@@ -890,11 +922,15 @@ async def publish_post(req: PublishPostRequest):
     
     # 解析定时时间
     scheduled_at = req.scheduled_at
-    now = datetime.now()
+    from datetime import timezone
+    now = datetime.now(timezone.utc)
     
     if scheduled_at:
         try:
             scheduled_dt = datetime.fromisoformat(scheduled_at.replace('Z', '+00:00'))
+            # 确保有时区信息
+            if scheduled_dt.tzinfo is None:
+                scheduled_dt = scheduled_dt.replace(tzinfo=timezone.utc)
         except Exception:
             raise HTTPException(400, detail="时间格式错误，应为 ISO 8601 格式")
     else:

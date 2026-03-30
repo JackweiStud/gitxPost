@@ -64,6 +64,13 @@ export const getSchedulerLogs = (lines = 50) => api.get('/scheduler/logs', { par
 
 // Publish Queue
 export const getPublishQueue = () => api.get('/publish/queue')
+export const uploadImage = (file) => {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post('/upload/image', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
 export const publishPost = (data) => api.post('/publish/post', data)
 export const deletePublishTask = (taskId) => api.delete(`/publish/${taskId}`)
 export const cancelPublishTask = (taskId) => api.put(`/publish/${taskId}/cancel`)

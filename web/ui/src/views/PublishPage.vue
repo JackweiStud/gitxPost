@@ -238,9 +238,23 @@ async function handlePublish() {
   isPublishing.value = true
   
   try {
-    // TODO: 上传图片到服务器，获取图片路径
-    // 目前先用空数组
+    // 上传图片到服务器
     const imagePaths = []
+    if (images.value.length > 0) {
+      appStore.notify('正在上传图片...', 'info')
+      for (const img of images.value) {
+        try {
+          const result = await api.uploadImage(img.file)
+          if (result.ok && result.path) {
+            imagePaths.push(result.path)
+          }
+        } catch (e) {
+          appStore.notify(`图片上传失败: ${e.message}`, 'error')
+          isPublishing.value = false
+          return
+        }
+      }
+    }
     
     const payload = {
       text: postText.value,
