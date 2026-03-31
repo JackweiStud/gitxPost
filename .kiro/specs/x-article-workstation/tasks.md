@@ -127,15 +127,15 @@
     - 文章不存在时返回 404
     - _Requirements: 10.2, 10.3, 11.5_
   
-  - [x]* 5.6 编写 CRUD API 集成测试
+  - [x] 5.6 编写 CRUD API 集成测试
     - 测试创建文章（有效和无效标题）
     - 测试获取文章列表和详情
     - 测试更新文章内容
     - 测试删除文章
     - 测试错误处理（404, 400）
 
-- [ ] 6. 实现文章工作流 API 端点
-  - [ ] 6.1 实现 POST /api/articles/{id}/outline 生成骨架
+- [x] 6. 实现文章工作流 API 端点
+  - [x] 6.1 实现 POST /api/articles/{id}/outline 生成骨架
     - 验证文章存在且 step=title
     - 立即返回 202 Accepted 响应
     - 启动后台异步任务调用 `xpost init --topic <title>`
@@ -144,10 +144,29 @@
     - 失败时广播 `article_error`
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 11.6, 16.1, 16.2_
   
-  - [ ] 6.2 实现 POST /api/articles/{id}/generate 生成全文
+  - [x] 6.2 实现 POST /api/articles/{id}/generate 生成全文
     - 验证文章存在且 step=outline
     - 立即返回 202 Accepted 响应
     - 启动后台异步任务调用 `xpost generate <md_path>`
+    - 广播 WebSocket 事件 `article_content_generating`
+    - 成功后更新 step=content，保存内容，广播 `article_content_generated`
+    - 失败时广播 `article_error`
+    - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5, 11.7, 16.1, 16.3_
+  
+  - [x] 6.3 实现 POST /api/articles/{id}/publish 发布文章
+    - 验证文章存在且 step=content 或 preview
+    - 立即返回 202 Accepted 响应
+    - 启动后台异步任务调用 `xpost publish <md_path> --publish`
+    - 广播 WebSocket 事件 `article_publishing`
+    - 成功后更新 status=published，设置 published_at，保存 article_url，广播 `article_published`
+    - 失败时广播 `article_error`
+    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 11.8, 16.1, 16.4_
+  
+  - [x]* 6.4 编写工作流 API 集成测试
+    - 测试完整工作流：create → outline → generate → publish
+    - 测试 WebSocket 事件顺序和内容
+    - 测试 CLI 工具调用参数正确性（使用 mock）
+    - 测试错误处理和错误事件广播
     - 广播 WebSocket 事件 `article_content_generating`
     - 成功后更新 step=content，保存内容，广播 `article_content_generated`
     - 失败时广播 `article_error`

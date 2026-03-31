@@ -1751,6 +1751,246 @@ async def delete_article(article_id: str):
     }
 
 
+@app.post("/api/articles/{article_id}/outline")
+async def generate_article_outline(article_id: str):
+    """生成文章骨架（异步）"""
+    from datetime import timezone
+    
+    # 验证文章存在
+    article = _read_article(article_id)
+    if article is None:
+        raise HTTPException(404, detail=f"文章不存在: {article_id}")
+    
+    # 验证步骤（可选：只在 title 步骤才能生成骨架）
+    # if article.get("step") != "title":
+    #     raise HTTPException(400, detail=f"当前步骤为 {article['step']}，无法生成骨架")
+    
+    title = article.get("title", "")
+    if not title:
+        raise HTTPException(400, detail="文章标题为空，无法生成骨架")
+    
+    md_path = ARTICLES_DIR / f"{article_id}.md"
+    
+    # 立即返回 202 Accepted
+    # 启动后台任务
+    asyncio.create_task(_generate_outline_background(article_id, title, str(md_path)))
+    
+    return {
+        "ok": True,
+        "article_id": article_id,
+        "status": "generating",
+        "message": "骨架生成任务已启动"
+    }
+
+
+async def _generate_outline_background(article_id: str, title: str, md_path: str):
+    """后台任务：生成文章骨架"""
+    from datetime import timezone
+    
+    try:
+        # 广播开始生成
+        await _broadcast_article_update("article_outline_generating", article_id, {
+            "title": title
+        })
+        
+        # 调用 xpost init 命令
+        result = await _run_xpost("init", md_path, "--topic", title, timeout=120)
+        
+        # xpost init 返回的是 {"created": true, ...} 而不是 {"ok": true}
+        # 检查是否成功创建
+        if result.get("created") or result.get("ok"):
+            # 读取生成的内容
+            content = _read_article_content(article_id)
+            if content is None:
+                content = ""
+            
+            # 更新文章元数据
+            article = _read_article(article_id)
+            if article:
+                article["outline"] = content
+                article["content"] = content
+                article["step"] = "outline"
+                article["updated_at"] = datetime.now(timezone.utc).isoformat()
+                _write_article(article_id, article)
+            
+            # 广播生成成功
+            await _broadcast_article_update("article_outline_generated", article_id, {
+                "outline": content,
+                "step": "outline"
+            })
+        else:
+            # 广播生成失败
+            error_msg = result.get("error", "骨架生成失败")
+            await _broadcast_article_update("article_error", article_id, {
+                "error": error_msg,
+                "step": "outline_generation",
+                "result": result
+            })
+    
+    except Exception as e:
+        # 广播异常错误
+        await _broadcast_article_update("article_error", article_id, {
+            "error": str(e),
+            "step": "outline_generation"
+        })
+
+
+@app.post("/api/articles/{article_id}/generate")
+async def generate_article_content(article_id: str):
+    """生成文章全文（异步）"""
+    from datetime import timezone
+    
+    # 验证文章存在
+    article = _read_article(article_id)
+    if article is None:
+        raise HTTPException(404, detail=f"文章不存在: {article_id}")
+    
+    # 验证步骤（可选：只在 outline 步骤才能生成全文）
+    # if article.get("step") != "outline":
+    #     raise HTTPException(400, detail=f"当前步骤为 {article['step']}，无法生成全文")
+    
+    md_path = ARTICLES_DIR / f"{article_id}.md"
+    
+    # 确保 Markdown 文件存在
+    if not md_path.exists():
+        raise HTTPException(400, detail="Markdown 文件不存在，请先生成骨架")
+    
+    # 立即返回 202 Accepted
+    # 启动后台任务
+    asyncio.create_task(_generate_content_background(article_id, str(md_path)))
+    
+    return {
+        "ok": True,
+        "article_id": article_id,
+        "status": "generating",
+        "message": "全文生成任务已启动"
+    }
+
+
+async def _generate_content_background(article_id: str, md_path: str):
+    """后台任务：生成文章全文"""
+    from datetime import timezone
+    
+    try:
+        # 广播开始生成
+        await _broadcast_article_update("article_content_generating", article_id, {})
+        
+        # 调用 xpost generate 命令
+        result = await _run_xpost("generate", md_path, timeout=300)
+        
+        if result.get("ok"):
+            # 读取生成的内容
+            content = _read_article_content(article_id)
+            if content is None:
+                content = ""
+            
+            # 更新文章元数据
+            article = _read_article(article_id)
+            if article:
+                article["content"] = content
+                article["step"] = "content"
+                article["updated_at"] = datetime.now(timezone.utc).isoformat()
+                _write_article(article_id, article)
+            
+            # 广播生成成功
+            await _broadcast_article_update("article_content_generated", article_id, {
+                "content": content,
+                "step": "content"
+            })
+        else:
+            # 广播生成失败
+            error_msg = result.get("error", "全文生成失败")
+            await _broadcast_article_update("article_error", article_id, {
+                "error": error_msg,
+                "step": "content_generation"
+            })
+    
+    except Exception as e:
+        # 广播异常错误
+        await _broadcast_article_update("article_error", article_id, {
+            "error": str(e),
+            "step": "content_generation"
+        })
+
+
+@app.post("/api/articles/{article_id}/publish")
+async def publish_article(article_id: str):
+    """发布文章（异步）"""
+    from datetime import timezone
+    
+    # 验证文章存在
+    article = _read_article(article_id)
+    if article is None:
+        raise HTTPException(404, detail=f"文章不存在: {article_id}")
+    
+    # 验证步骤（可选：只在 content 或 preview 步骤才能发布）
+    # if article.get("step") not in ["content", "preview"]:
+    #     raise HTTPException(400, detail=f"当前步骤为 {article['step']}，无法发布")
+    
+    md_path = ARTICLES_DIR / f"{article_id}.md"
+    
+    # 确保 Markdown 文件存在
+    if not md_path.exists():
+        raise HTTPException(400, detail="Markdown 文件不存在，请先生成内容")
+    
+    # 立即返回 202 Accepted
+    # 启动后台任务
+    asyncio.create_task(_publish_article_background(article_id, str(md_path)))
+    
+    return {
+        "ok": True,
+        "article_id": article_id,
+        "status": "publishing",
+        "message": "文章发布任务已启动"
+    }
+
+
+async def _publish_article_background(article_id: str, md_path: str):
+    """后台任务：发布文章"""
+    from datetime import timezone
+    
+    try:
+        # 广播开始发布
+        await _broadcast_article_update("article_publishing", article_id, {})
+        
+        # 调用 xpost publish 命令
+        result = await _run_xpost("publish", md_path, "--publish", timeout=300)
+        
+        if result.get("ok"):
+            # 提取文章 URL（如果有）
+            article_url = result.get("article_url") or result.get("url")
+            
+            # 更新文章元数据
+            article = _read_article(article_id)
+            if article:
+                article["status"] = "published"
+                article["published_at"] = datetime.now(timezone.utc).isoformat()
+                article["updated_at"] = datetime.now(timezone.utc).isoformat()
+                article["publish_result"] = result
+                _write_article(article_id, article)
+            
+            # 广播发布成功
+            await _broadcast_article_update("article_published", article_id, {
+                "status": "published",
+                "published_at": article["published_at"],
+                "article_url": article_url
+            })
+        else:
+            # 广播发布失败
+            error_msg = result.get("error", "文章发布失败")
+            await _broadcast_article_update("article_error", article_id, {
+                "error": error_msg,
+                "step": "publishing"
+            })
+    
+    except Exception as e:
+        # 广播异常错误
+        await _broadcast_article_update("article_error", article_id, {
+            "error": str(e),
+            "step": "publishing"
+        })
+
+
 # ---------------------------------------------------------------------------
 # Routes: Scheduler
 # ---------------------------------------------------------------------------
