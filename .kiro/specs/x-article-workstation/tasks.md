@@ -92,8 +92,8 @@
 
 ### Phase 3: 核心 API 端点实现
 
-- [ ] 5. 实现文章 CRUD API 端点
-  - [ ] 5.1 实现 POST /api/articles 创建文章
+- [x] 5. 实现文章 CRUD API 端点
+  - [x] 5.1 实现 POST /api/articles 创建文章
     - 验证 title 非空（Requirements 2.2, 2.3）
     - 生成唯一 article_id
     - 创建初始 JSON 元数据（status=draft, step=title）
@@ -101,33 +101,33 @@
     - 返回 article_id 和 title
     - _Requirements: 1.1, 1.2, 1.3, 2.4, 2.5, 11.2_
   
-  - [ ] 5.2 实现 GET /api/articles 获取文章列表
+  - [x] 5.2 实现 GET /api/articles 获取文章列表
     - 调用 `_list_articles()` 获取所有文章
     - 按 updated_at 倒序排列
     - 返回文章列表（不包含 content 字段）
     - _Requirements: 9.1, 9.2, 9.3, 11.1_
   
-  - [ ] 5.3 实现 GET /api/articles/{id} 获取文章详情
+  - [x] 5.3 实现 GET /api/articles/{id} 获取文章详情
     - 读取 JSON 元数据和 Markdown 内容
     - 返回完整文章对象（包含 content）
     - 文章不存在时返回 404
     - _Requirements: 11.3_
   
-  - [ ] 5.4 实现 PUT /api/articles/{id} 更新文章内容
+  - [x] 5.4 实现 PUT /api/articles/{id} 更新文章内容
     - 接收 content 参数
     - 更新 JSON 元数据和 Markdown 文件
     - 更新 updated_at 时间戳
     - 返回更新后的 updated_at
     - _Requirements: 6.5, 11.4_
   
-  - [ ] 5.5 实现 DELETE /api/articles/{id} 删除文章
+  - [x] 5.5 实现 DELETE /api/articles/{id} 删除文章
     - 删除 JSON 元数据文件
     - 删除 Markdown 文件
     - 返回成功响应
     - 文章不存在时返回 404
     - _Requirements: 10.2, 10.3, 11.5_
   
-  - [ ]* 5.6 编写 CRUD API 集成测试
+  - [x]* 5.6 编写 CRUD API 集成测试
     - 测试创建文章（有效和无效标题）
     - 测试获取文章列表和详情
     - 测试更新文章内容

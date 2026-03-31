@@ -1595,6 +1595,163 @@ async def retry_publish_task(task_id: str):
 
 
 # ---------------------------------------------------------------------------
+# Routes: Articles
+# ---------------------------------------------------------------------------
+
+class CreateArticleRequest(BaseModel):
+    title: str
+
+
+class UpdateArticleRequest(BaseModel):
+    content: str
+
+
+@app.post("/api/articles")
+async def create_article(req: CreateArticleRequest):
+    """创建新文章"""
+    from datetime import timezone
+    
+    # 验证标题非空
+    if not req.title.strip():
+        raise HTTPException(400, detail="标题不能为空")
+    
+    # 生成唯一 article_id
+    article_id = _generate_article_id()
+    
+    # 创建初始 JSON 元数据
+    now = datetime.now(timezone.utc).isoformat()
+    article_data = {
+        "id": article_id,
+        "title": req.title.strip(),
+        "status": "draft",
+        "step": "title",
+        "created_at": now,
+        "updated_at": now,
+        "published_at": None,
+        "outline": "",
+        "content": "",
+        "md_path": str(ARTICLES_DIR / f"{article_id}.md"),
+        "publish_result": None
+    }
+    
+    # 保存元数据
+    try:
+        _write_article(article_id, article_data)
+    except Exception as e:
+        raise HTTPException(500, detail=f"创建文章失败: {str(e)}")
+    
+    # 广播文章创建事件
+    await _broadcast_article_update("article_created", article_id, {
+        "id": article_id,
+        "title": article_data["title"],
+        "status": article_data["status"],
+        "step": article_data["step"]
+    })
+    
+    return {
+        "ok": True,
+        "article_id": article_id,
+        "title": article_data["title"],
+        "created_at": article_data["created_at"]
+    }
+
+
+@app.get("/api/articles")
+async def get_articles():
+    """获取文章列表（按 updated_at 倒序）"""
+    articles = _list_articles()
+    
+    return {
+        "ok": True,
+        "articles": articles,
+        "total": len(articles)
+    }
+
+
+@app.get("/api/articles/{article_id}")
+async def get_article(article_id: str):
+    """获取文章详情（包含完整内容）"""
+    # 读取元数据
+    article = _read_article(article_id)
+    if article is None:
+        raise HTTPException(404, detail=f"文章不存在: {article_id}")
+    
+    # 读取 Markdown 内容
+    content = _read_article_content(article_id)
+    if content is not None:
+        article["content"] = content
+    
+    return {
+        "ok": True,
+        "article": article
+    }
+
+
+@app.put("/api/articles/{article_id}")
+async def update_article(article_id: str, req: UpdateArticleRequest):
+    """更新文章内容"""
+    from datetime import timezone
+    
+    # 读取现有文章
+    article = _read_article(article_id)
+    if article is None:
+        raise HTTPException(404, detail=f"文章不存在: {article_id}")
+    
+    # 更新内容和时间戳
+    article["content"] = req.content
+    article["updated_at"] = datetime.now(timezone.utc).isoformat()
+    
+    # 保存元数据和内容
+    try:
+        _write_article(article_id, article)
+        _write_article_content(article_id, req.content)
+    except Exception as e:
+        raise HTTPException(500, detail=f"更新文章失败: {str(e)}")
+    
+    # 广播文章更新事件
+    await _broadcast_article_update("article_updated", article_id, {
+        "updated_at": article["updated_at"]
+    })
+    
+    return {
+        "ok": True,
+        "article_id": article_id,
+        "updated_at": article["updated_at"]
+    }
+
+
+@app.delete("/api/articles/{article_id}")
+async def delete_article(article_id: str):
+    """删除文章"""
+    # 检查文章是否存在
+    article = _read_article(article_id)
+    if article is None:
+        raise HTTPException(404, detail=f"文章不存在: {article_id}")
+    
+    # 删除 JSON 元数据文件
+    json_path = ARTICLES_DIR / f"{article_id}.json"
+    md_path = ARTICLES_DIR / f"{article_id}.md"
+    
+    try:
+        if json_path.exists():
+            json_path.unlink()
+        
+        if md_path.exists():
+            md_path.unlink()
+    except Exception as e:
+        raise HTTPException(500, detail=f"删除文章失败: {str(e)}")
+    
+    # 广播文章删除事件
+    await _broadcast_article_update("article_deleted", article_id, {})
+    
+    return {
+        "ok": True,
+        "article_id": article_id,
+        "message": "文章已删除"
+    }
+
+
+# ---------------------------------------------------------------------------
 # Routes: Scheduler
 # ---------------------------------------------------------------------------
 
