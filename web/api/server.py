@@ -30,9 +30,13 @@ XPOST_PY = BASE_DIR / "xpost.py"
 GENERATE_REPLIES_PY = BASE_DIR / "skills" / "x-reply-assistV2" / "scripts" / "generate_replies.py"
 PUBLISH_QUEUE_JSON = XINFO_LOG / "publish_queue.json"
 UPLOAD_DIR = XINFO_LOG / "uploads"
+ARTICLES_DIR = XINFO_LOG / "articles"
 
 # 确保上传目录存在
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# 确保文章目录存在
+ARTICLES_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="gitxPost API", version="0.1.0")
 
@@ -60,6 +64,83 @@ _queue_processor_running = False
 
 # WebSocket 连接管理
 _ws_connections: set[WebSocket] = set()
+
+
+# ---------------------------------------------------------------------------
+# WebSocket Manager
+# ---------------------------------------------------------------------------
+
+class WebSocketManager:
+    """WebSocket 连接管理器 - 处理连接生命周期和消息广播"""
+    
+    def __init__(self, name: str):
+        """初始化管理器
+        
+        Args:
+            name: 管理器名称，用于日志标识
+        """
+        self.name = name
+        self.connections: set[WebSocket] = set()
+    
+    async def connect(self, websocket: WebSocket):
+        """接受并注册新连接
+        
+        Args:
+            websocket: WebSocket 连接对象
+        """
+        await websocket.accept()
+        self.connections.add(websocket)
+        print(f"🔌 [{self.name}] WebSocket 连接建立，当前连接数: {len(self.connections)}")
+    
+    def disconnect(self, websocket: WebSocket):
+        """断开并清理连接
+        
+        Args:
+            websocket: WebSocket 连接对象
+        """
+        self.connections.discard(websocket)
+        print(f"🔌 [{self.name}] WebSocket 连接断开，当前连接数: {len(self.connections)}")
+    
+    async def broadcast(self, message: dict):
+        """广播消息到所有连接
+        
+        Args:
+            message: 要广播的消息字典
+        """
+        if not self.connections:
+            return
+        
+        disconnected = set()
+        
+        for ws in self.connections:
+            try:
+                await ws.send_json(message)
+            except Exception as e:
+                print(f"⚠️  [{self.name}] 向 WebSocket 发送消息失败: {e}")
+                disconnected.add(ws)
+        
+        # 清理断开的连接
+        self.connections.difference_update(disconnected)
+        
+        if disconnected:
+            print(f"🧹 [{self.name}] 清理了 {len(disconnected)} 个断开的连接")
+    
+    async def close_all(self):
+        """关闭所有连接（应用关闭时调用）"""
+        print(f"🧹 [{self.name}] 关闭 {len(self.connections)} 个 WebSocket 连接")
+        
+        for ws in list(self.connections):
+            try:
+                await ws.close()
+            except Exception:
+                pass
+        
+        self.connections.clear()
+
+
+# 创建管理器实例
+_queue_ws_manager = WebSocketManager("Queue")
+_article_ws_manager = WebSocketManager("Article")
 
 
 def _python_bin() -> str:
@@ -867,9 +948,6 @@ def _write_publish_queue(data):
 
 async def _broadcast_queue_update(event_type: str, task_id: str = None, task: dict = None):
     """广播队列更新到所有 WebSocket 连接"""
-    if not _ws_connections:
-        return
-    
     message = {
         "type": event_type,  # "task_added", "task_updated", "task_completed", "task_failed"
         "task_id": task_id,
@@ -877,22 +955,143 @@ async def _broadcast_queue_update(event_type: str, task_id: str = None, task: di
         "timestamp": datetime.now().isoformat()
     }
     
-    # 广播到所有连接
-    disconnected = set()
-    for ws in _ws_connections:
-        try:
-            await ws.send_json(message)
-        except Exception:
-            disconnected.add(ws)
-    
-    # 清理断开的连接
-    _ws_connections.difference_update(disconnected)
+    await _queue_ws_manager.broadcast(message)
 
 
 def _generate_queue_id():
     """生成队列任务 ID"""
     import time
     return f"pq_{int(time.time() * 1000)}"
+
+
+# ---------------------------------------------------------------------------
+# Helpers: Articles
+# ---------------------------------------------------------------------------
+
+def _generate_article_id():
+    """生成文章 ID - 格式: art_<timestamp_ms>"""
+    import time
+    return f"art_{int(time.time() * 1000)}"
+
+
+def _read_article(article_id: str) -> Optional[dict]:
+    """读取文章 JSON 元数据"""
+    json_path = ARTICLES_DIR / f"{article_id}.json"
+    if not json_path.exists():
+        return None
+    try:
+        return json.loads(json_path.read_text("utf-8"))
+    except Exception as e:
+        print(f"⚠️  读取文章元数据失败 {article_id}: {e}")
+        return None
+
+
+def _write_article(article_id: str, data: dict):
+    """原子性写入文章 JSON 元数据"""
+    from datetime import timezone
+    
+    json_path = ARTICLES_DIR / f"{article_id}.json"
+    temp_path = json_path.with_suffix(".json.tmp")
+    
+    try:
+        # 确保目录存在
+        ARTICLES_DIR.mkdir(parents=True, exist_ok=True)
+        
+        # 写入临时文件
+        temp_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8"
+        )
+        
+        # 原子性重命名
+        temp_path.rename(json_path)
+    except Exception as e:
+        # 清理临时文件
+        if temp_path.exists():
+            temp_path.unlink()
+        raise RuntimeError(f"写入文章元数据失败 {article_id}: {e}")
+
+
+def _read_article_content(article_id: str) -> Optional[str]:
+    """读取文章 Markdown 内容"""
+    md_path = ARTICLES_DIR / f"{article_id}.md"
+    if not md_path.exists():
+        return None
+    try:
+        return md_path.read_text("utf-8")
+    except Exception as e:
+        print(f"⚠️  读取文章内容失败 {article_id}: {e}")
+        return None
+
+
+def _write_article_content(article_id: str, content: str):
+    """原子性写入文章 Markdown 内容"""
+    md_path = ARTICLES_DIR / f"{article_id}.md"
+    temp_path = md_path.with_suffix(".md.tmp")
+    
+    try:
+        # 确保目录存在
+        ARTICLES_DIR.mkdir(parents=True, exist_ok=True)
+        
+        # 写入临时文件
+        temp_path.write_text(content, encoding="utf-8")
+        
+        # 原子性重命名
+        temp_path.rename(md_path)
+    except Exception as e:
+        # 清理临时文件
+        if temp_path.exists():
+            temp_path.unlink()
+        raise RuntimeError(f"写入文章内容失败 {article_id}: {e}")
+
+
+def _list_articles() -> list[dict]:
+    """列出所有文章，按 updated_at 倒序排列"""
+    if not ARTICLES_DIR.exists():
+        return []
+    
+    articles = []
+    for json_file in ARTICLES_DIR.glob("*.json"):
+        try:
+            data = json.loads(json_file.read_text("utf-8"))
+            # 只返回基本信息，不包含 content
+            articles.append({
+                "id": data.get("id"),
+                "title": data.get("title"),
+                "status": data.get("status"),
+                "step": data.get("step"),
+                "created_at": data.get("created_at"),
+                "updated_at": data.get("updated_at"),
+                "published_at": data.get("published_at"),
+            })
+        except Exception as e:
+            print(f"⚠️  读取文章列表时跳过损坏文件 {json_file.name}: {e}")
+            continue
+    
+    # 按 updated_at 倒序排列
+    articles.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+    
+    return articles
+
+
+async def _broadcast_article_update(event_type: str, article_id: str, data: dict = None):
+    """广播文章更新到所有 Article WebSocket 连接
+    
+    Args:
+        event_type: 事件类型（article_outline_generating, article_outline_generated, etc.）
+        article_id: 文章 ID
+        data: 附加数据（如生成的内容）
+    """
+    from datetime import timezone
+    
+    message = {
+        "type": event_type,
+        "article_id": article_id,
+        "data": data or {},
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await _article_ws_manager.broadcast(message)
 
 
 async def _process_queue_background():
@@ -1083,8 +1282,10 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """关闭时停止队列处理器"""
+    """关闭时停止队列处理器和 WebSocket 连接"""
     global _queue_processor_running, _queue_processor_task
+    
+    # 停止队列处理器
     _queue_processor_running = False
     if _queue_processor_task:
         _queue_processor_task.cancel()
@@ -1093,6 +1294,11 @@ async def shutdown_event():
         except asyncio.CancelledError:
             pass
     print("✅ 后台队列处理器已停止")
+    
+    # 关闭所有 WebSocket 连接
+    await _queue_ws_manager.close_all()
+    await _article_ws_manager.close_all()
+
 
 
 @app.get("/api/publish/queue")
@@ -1105,9 +1311,7 @@ async def get_publish_queue():
 @app.websocket("/ws/queue")
 async def websocket_queue(websocket: WebSocket):
     """WebSocket 端点 - 实时推送队列更新"""
-    await websocket.accept()
-    _ws_connections.add(websocket)
-    print(f"🔌 WebSocket 连接建立，当前连接数: {len(_ws_connections)}")
+    await _queue_ws_manager.connect(websocket)
     
     try:
         # 发送当前队列状态
@@ -1124,10 +1328,35 @@ async def websocket_queue(websocket: WebSocket):
             except WebSocketDisconnect:
                 break
     except Exception as e:
-        print(f"⚠️  WebSocket 错误: {e}")
+        print(f"⚠️  [Queue] WebSocket 错误: {e}")
     finally:
-        _ws_connections.discard(websocket)
-        print(f"🔌 WebSocket 连接断开，当前连接数: {len(_ws_connections)}")
+        _queue_ws_manager.disconnect(websocket)
+
+
+@app.websocket("/ws/articles")
+async def websocket_articles(websocket: WebSocket):
+    """WebSocket 端点 - 实时推送文章更新"""
+    await _article_ws_manager.connect(websocket)
+    
+    try:
+        # 发送当前文章列表
+        articles = _list_articles()
+        await websocket.send_json({
+            "type": "initial",
+            "articles": articles
+        })
+        
+        # 保持连接，等待客户端断开
+        while True:
+            try:
+                await websocket.receive_text()
+            except WebSocketDisconnect:
+                break
+    except Exception as e:
+        print(f"⚠️  [Article] WebSocket 错误: {e}")
+    finally:
+        _article_ws_manager.disconnect(websocket)
+
 
 
 @app.post("/api/upload/image")
