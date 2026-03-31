@@ -195,39 +195,39 @@
 
 ### Phase 4: 前端基础组件
 
-- [ ] 8. 实现前端路由和导航
-  - [ ] 8.1 添加文章路由配置
+- [x] 8. 实现前端路由和导航
+  - [x] 8.1 添加文章路由配置
     - 在 `web/ui/src/router/index.ts` 中添加 `/articles` 路由
     - 添加 `/articles/:id` 路由
     - 配置路由懒加载
     - _Requirements: 12.1, 12.2_
   
-  - [ ] 8.2 添加侧边栏导航菜单项
+  - [x] 8.2 添加侧边栏导航菜单项
     - 在侧边栏组件中添加"文章"菜单项
     - 使用 📝 图标
     - 链接到 `/articles` 路由
     - _Requirements: 12.1, 12.3_
 
-- [ ] 9. 实现 Markdown 编辑和预览组件
-  - [ ] 9.1 创建 MarkdownEditor.vue 组件
+- [x] 9. 实现 Markdown 编辑和预览组件
+  - [x] 9.1 创建 MarkdownEditor.vue 组件
     - 实现 textarea 或使用第三方编辑器库
     - 支持 v-model 双向绑定
     - 支持 placeholder 和 readonly 属性
     - _Requirements: 4.1, 4.3, 6.1, 6.3_
   
-  - [ ] 9.2 创建 MarkdownPreview.vue 组件
+  - [x] 9.2 创建 MarkdownPreview.vue 组件
     - 使用 marked 库渲染 Markdown 为 HTML
     - 使用 highlight.js 高亮代码块
     - 实时更新预览（watch content prop）
     - 添加样式美化渲染结果
     - _Requirements: 7.2, 7.3, 7.4_
   
-  - [ ]* 9.3 编写 Markdown 组件单元测试
+  - [x]* 9.3 编写 Markdown 组件单元测试
     - 测试编辑器输入和输出
     - 测试预览渲染正确性
     - 测试代码高亮功能
 
-- [ ] 10. Checkpoint - 验证前端基础组件
+- [x] 10. Checkpoint - 验证前端基础组件
   - 测试路由导航正常
   - 测试 Markdown 编辑器和预览功能
   - 确保所有测试通过，询问用户是否继续
