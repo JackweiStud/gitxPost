@@ -234,8 +234,8 @@
 
 ### Phase 5: 前端页面实现
 
-- [ ] 11. 实现文章列表页面
-  - [ ] 11.1 创建 ArticleListPage.vue 组件
+- [x] 11. 实现文章列表页面
+  - [x] 11.1 创建 ArticleListPage.vue 组件
     - 实现页面布局（标题 + 新建按钮 + 列表）
     - 实现 `loadArticles()` 方法调用 GET /api/articles
     - 显示文章列表（标题、状态、时间）
@@ -244,28 +244,28 @@
     - 实现"删除"按钮，显示确认对话框
     - _Requirements: 9.1, 9.2, 9.4, 9.5, 9.6, 9.7, 10.1_
   
-  - [ ]* 11.2 编写文章列表页面测试
+  - [x]* 11.2 编写文章列表页面测试
     - 测试文章列表加载和显示
     - 测试新建文章按钮
     - 测试删除文章功能
     - 测试导航到编辑器
 
-- [ ] 12. 实现文章编辑器页面
-  - [ ] 12.1 创建 ArticleEditorPage.vue 基础结构
+- [x] 12. 实现文章编辑器页面
+  - [x] 12.1 创建 ArticleEditorPage.vue 基础结构
     - 实现页面布局（标题栏 + 内容区）
     - 实现 `loadArticle(id)` 方法加载文章数据
     - 实现状态管理（article, currentStep, loading, error）
     - 实现 WebSocket 连接管理（onMounted/onUnmounted）
     - _Requirements: 13.1, 13.2_
   
-  - [ ] 12.2 实现标题输入步骤（step=title）
+  - [x] 12.2 实现标题输入步骤（step=title）
     - 显示标题输入框
     - 实现"保存标题"按钮调用 PUT /api/articles/{id}
     - 实现"生成骨架"按钮调用 POST /api/articles/{id}/outline
     - 显示加载状态和错误消息
     - _Requirements: 2.1, 3.6_
   
-  - [ ] 12.3 实现骨架编辑步骤（step=outline）
+  - [x] 12.3 实现骨架编辑步骤（step=outline）
     - 使用 MarkdownEditor 和 MarkdownPreview 组件
     - 实现左右分栏布局
     - 实现"保存草稿"按钮
@@ -273,31 +273,46 @@
     - 实现"生成全文"按钮调用 POST /api/articles/{id}/generate
     - _Requirements: 4.2, 4.4, 4.5, 5.6, 7.5_
   
-  - [ ] 12.4 实现内容编辑步骤（step=content）
+  - [x] 12.4 实现内容编辑步骤（step=content）
     - 使用 MarkdownEditor 和 MarkdownPreview 组件
     - 实现"保存草稿"按钮
     - 实现"重新生成"按钮
     - 实现"预览"按钮切换到 preview 步骤
     - _Requirements: 6.2, 6.4, 6.6_
   
-  - [ ] 12.5 实现预览步骤（step=preview）
+  - [x] 12.5 实现预览步骤（step=preview）
     - 全屏显示 MarkdownPreview 组件
     - 实现"返回编辑"按钮
     - 实现"发布"按钮调用 POST /api/articles/{id}/publish
     - 发布成功后显示文章 URL
     - _Requirements: 8.1, 8.8_
   
-  - [ ] 12.6 实现步骤导航
+  - [x] 12.6 实现步骤导航
     - 实现"上一步"和"下一步"按钮
     - 根据 currentStep 显示对应界面
     - 更新 step 字段到后端
     - _Requirements: 13.3, 13.4, 13.5_
   
-  - [ ] 12.7 实现 WebSocket 消息处理
+  - [x] 12.7 实现 WebSocket 消息处理
     - 实现 `handleWebSocketMessage(event)` 方法
     - 处理 `article_outline_generated` 事件更新内容
     - 处理 `article_content_generated` 事件更新内容
     - 处理 `article_published` 事件显示成功消息
+    - 处理 `article_error` 事件显示错误消息
+    - 更新 loading 状态
+    - _Requirements: Architecture requirement_
+  
+  - [x]* 12.8 编写文章编辑器页面测试
+    - 测试各步骤界面显示
+    - 测试步骤导航
+    - 测试 WebSocket 消息处理
+    - 测试错误处理
+
+- [x] 13. Checkpoint - 验证前端页面
+  - 手动测试完整工作流
+  - 测试 WebSocket 实时更新
+  - 测试错误处理和用户反馈
+  - 确保所有测试通过，询问用户是否继续
     - 处理 `article_error` 事件显示错误消息
     - 更新 loading 状态
     - _Requirements: Architecture requirement_
