@@ -25,7 +25,7 @@
     </select>
     
     <div class="header-badges">
-      <span class="step-badge" :class="`step-${currentStep}`">
+      <span class="step-badge" :class="`step-${step}`">
         {{ stepLabel }}
       </span>
       <span class="status-badge" :class="`status-${status}`">

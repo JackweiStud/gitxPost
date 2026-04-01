@@ -2,25 +2,24 @@
   <transition name="fade">
     <div v-if="visible" class="progress-indicator">
       <div class="progress-header">
-        <span class="progress-title">{{ currentStepTitle }}</span>
-        <span class="progress-percent">{{ progress }}%</span>
+        <span class="progress-title">自动生成日志</span>
       </div>
-      
-      <div class="progress-bar-container">
-        <div class="progress-bar">
-          <div 
-            class="progress-fill" 
-            :style="{ width: progress + '%' }"
-            :class="{ 'progress-complete': progress >= 100 }"
-          ></div>
+
+      <div class="log-panel" role="log" aria-live="polite">
+        <div
+          v-for="(entry, index) in displayEntries"
+          :key="entry.id"
+          class="log-line"
+          :class="entry.level"
+        >
+          <span class="log-prefix">{{ prefixByLevel[entry.level] || '•' }}</span>
+          <span class="log-text">{{ formatEntryText(entry, index) }}</span>
         </div>
       </div>
-      
-      <div class="progress-message">{{ statusMessage }}</div>
-      
-      <button 
-        v-if="canCancel" 
-        class="btn-cancel" 
+
+      <button
+        v-if="canCancel"
+        class="btn-cancel"
         @click="$emit('cancel')"
       >
         取消
@@ -33,81 +32,81 @@
 import { computed } from 'vue'
 
 const props = defineProps({
-  // 是否显示进度指示器
   visible: {
     type: Boolean,
     default: false
   },
-  // 当前步骤：idle | outline | content | complete | error
   currentStep: {
     type: String,
     default: 'idle',
     validator: (value) => ['idle', 'outline', 'content', 'complete', 'error'].includes(value)
   },
-  // 进度百分比 (0-100)
-  progress: {
-    type: Number,
-    default: 0,
-    validator: (value) => value >= 0 && value <= 100
-  },
-  // 是否可以取消
   canCancel: {
     type: Boolean,
     default: false
   },
-  // 自定义状态消息（可选）
-  customMessage: {
-    type: String,
-    default: ''
+  pulse: {
+    type: Number,
+    default: 0
+  },
+  logEntries: {
+    type: Array,
+    default: () => []
   }
 })
 
 defineEmits(['cancel'])
 
-// 当前步骤标题
-const currentStepTitle = computed(() => {
-  const titles = {
-    idle: '准备中',
-    outline: '生成骨架',
-    content: '生成全文',
-    complete: '完成',
-    error: '错误'
+const fallbackEntries = {
+  idle: [{ id: 'idle', text: '等待用户点击一键生成', level: 'pending' }],
+  outline: [{ id: 'outline', text: '正在整理文章骨架...', level: 'running' }],
+  content: [{ id: 'content', text: '正在扩写正文...', level: 'running' }],
+  complete: [{ id: 'complete', text: '正文已生成并同步回编辑器，可直接继续修改', level: 'done' }],
+  error: [{ id: 'error', text: '生成失败，请查看错误提示', level: 'error' }]
+}
+
+const prefixByLevel = {
+  running: '▶',
+  done: '✓',
+  error: '!',
+  pending: '•',
+  info: '•'
+}
+
+const displayEntries = computed(() => {
+  if (props.logEntries && props.logEntries.length > 0) {
+    return props.logEntries.map((entry, index) => ({
+      id: entry.id || `${index}-${entry.text}`,
+      text: entry.text,
+      level: entry.level || 'info'
+    }))
   }
-  return titles[props.currentStep] || '处理中'
+
+  return fallbackEntries[props.currentStep] || fallbackEntries.idle
 })
 
-// 状态消息
-const statusMessage = computed(() => {
-  // 如果有自定义消息，优先使用
-  if (props.customMessage) {
-    return props.customMessage
+const liveEntryIndex = computed(() => {
+  if (!props.logEntries || props.logEntries.length === 0) {
+    return -1
   }
-  
-  // 根据步骤和进度生成默认消息
-  if (props.currentStep === 'outline') {
-    if (props.progress < 30) {
-      return '正在分析主题...'
-    } else if (props.progress < 70) {
-      return '正在生成大纲...'
-    } else {
-      return '正在优化结构...'
+
+  for (let index = props.logEntries.length - 1; index >= 0; index--) {
+    if ((props.logEntries[index].level || 'info') === 'running') {
+      return index
     }
-  } else if (props.currentStep === 'content') {
-    // 根据进度估算章节
-    const totalSections = 5
-    const currentSection = Math.min(
-      Math.floor(((props.progress - 50) / 50) * totalSections) + 1,
-      totalSections
-    )
-    return `正在扩展第 ${currentSection}/${totalSections} 章节...`
-  } else if (props.currentStep === 'complete') {
-    return '生成完成！'
-  } else if (props.currentStep === 'error') {
-    return '生成失败，请重试'
   }
-  
-  return '正在处理...'
+
+  return -1
 })
+
+const formatEntryText = (entry, index) => {
+  if (index === liveEntryIndex.value && entry.level === 'running') {
+    const suffix = '.'.repeat((props.pulse % 3) + 1)
+    return `${entry.text}${suffix}`
+  }
+
+  return entry.text
+}
 </script>
 
 <style scoped>
@@ -115,85 +114,75 @@ const statusMessage = computed(() => {
   background: white;
   border: 1px solid #e5e7eb;
   border-radius: 12px;
-  padding: 20px;
+  padding: 18px 20px 20px;
   margin: 16px 0;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
 .progress-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
 }
 
 .progress-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: #111827;
+  letter-spacing: 0.01em;
 }
 
-.progress-percent {
-  font-size: 14px;
+.log-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.log-line {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #475569;
+}
+
+.log-line.running {
+  color: #1d4ed8;
   font-weight: 600;
-  color: #3b82f6;
-  font-variant-numeric: tabular-nums;
 }
 
-.progress-bar-container {
-  margin-bottom: 12px;
+.log-line.done {
+  color: #16a34a;
 }
 
-.progress-bar {
-  width: 100%;
-  height: 8px;
-  background: #e5e7eb;
-  border-radius: 4px;
-  overflow: hidden;
+.log-line.error {
+  color: #dc2626;
 }
 
-.progress-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #3b82f6, #2563eb);
-  border-radius: 4px;
-  transition: width 0.3s ease-out;
-  position: relative;
+.log-line.pending,
+.log-line.info {
+  color: #64748b;
 }
 
-.progress-fill::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(255, 255, 255, 0.3),
-    transparent
-  );
-  animation: shimmer 2s infinite;
+.log-prefix {
+  width: 16px;
+  flex: 0 0 16px;
+  text-align: center;
+  font-weight: 700;
 }
 
-.progress-fill.progress-complete {
-  background: linear-gradient(90deg, #10b981, #059669);
-}
-
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-.progress-message {
-  font-size: 14px;
-  color: #6b7280;
-  margin-bottom: 12px;
-  min-height: 20px;
+.log-text {
+  flex: 1;
+  word-break: break-word;
 }
 
 .btn-cancel {
@@ -218,7 +207,6 @@ const statusMessage = computed(() => {
   background: #e5e7eb;
 }
 
-/* 淡入淡出动画 */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.3s ease, transform 0.3s ease;
@@ -234,23 +222,19 @@ const statusMessage = computed(() => {
   transform: translateY(10px);
 }
 
-/* 响应式设计 */
 @media (max-width: 768px) {
   .progress-indicator {
     padding: 16px;
     margin: 12px 0;
   }
-  
+
   .progress-title {
-    font-size: 15px;
+    font-size: 14px;
   }
-  
-  .progress-percent {
-    font-size: 13px;
-  }
-  
-  .progress-message {
-    font-size: 13px;
+
+  .log-panel {
+    padding: 12px 14px;
+    max-height: 180px;
   }
 }
 </style>

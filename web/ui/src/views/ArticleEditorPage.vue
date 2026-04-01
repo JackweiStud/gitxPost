@@ -24,8 +24,9 @@
       <ProgressIndicator
         :visible="isGenerating"
         :current-step="currentStep"
-        :progress="progress"
         :can-cancel="canCancel"
+        :pulse="logPulse"
+        :log-entries="activityLog"
         @cancel="handleCancelGeneration"
       />
 
@@ -65,7 +66,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import { useWorkflowOrchestrator } from '../composables/useWorkflowOrchestrator.js'
@@ -78,6 +79,7 @@ import MarkdownPreview from '../components/MarkdownPreview.vue'
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
+const articleId = computed(() => route.params.id)
 
 const loading = ref(true)
 const publishing = ref(false)
@@ -87,13 +89,59 @@ const saveStatus = ref('saved')
 const lastSaved = ref(null)
 
 // 使用 WorkflowOrchestrator
-const orchestrator = useWorkflowOrchestrator(route.params.id)
+const handleWebSocketUpdate = (data) => {
+  if (data.article_id !== articleId.value) return
+  if (!article.value) return
+  
+  switch (data.type) {
+    case 'article_outline_generated':
+      content.value = data.data.outline || ''
+      article.value = {
+        ...article.value,
+        outline: data.data.outline || '',
+        content: data.data.outline || '',
+        step: 'outline'
+      }
+      appStore.notify('骨架生成成功，编辑器已同步刷新', 'success')
+      break
+      
+    case 'article_content_generated':
+      content.value = data.data.content || ''
+      article.value = {
+        ...article.value,
+        content: data.data.content || '',
+        step: 'content'
+      }
+      appStore.notify('全文生成成功，编辑器已同步刷新', 'success')
+      break
+      
+    case 'article_published':
+      publishing.value = false
+      article.value = {
+        ...article.value,
+        status: 'published',
+        published_at: data.data.published_at
+      }
+      appStore.notify('文章发布成功', 'success')
+      break
+      
+    case 'article_error':
+      publishing.value = false
+      appStore.notify(`操作失败: ${data.data.error}`, 'error')
+      break
+  }
+}
+
+const orchestrator = useWorkflowOrchestrator(articleId, {
+  onArticleEvent: handleWebSocketUpdate
+})
 const {
   currentStep,
-  progress,
   canCancel,
   selectedStyle,
   isGenerating,
+  activityLog,
+  logPulse,
   startAutoGeneration,
   cancelGeneration,
 } = orchestrator
@@ -102,7 +150,7 @@ const {
 const loadArticle = async () => {
   loading.value = true
   try {
-    const response = await fetch(`http://127.0.0.1:8900/api/articles/${route.params.id}`)
+    const response = await fetch(`http://127.0.0.1:8900/api/articles/${articleId.value}`)
     const data = await response.json()
     
     if (data.ok) {
@@ -127,7 +175,7 @@ const loadArticle = async () => {
 }
 
 watch(
-  () => route.params.id,
+  articleId,
   () => {
     loadArticle()
   },
@@ -189,7 +237,7 @@ const handlePublish = async () => {
   publishing.value = true
   
   try {
-    const response = await fetch(`http://127.0.0.1:8900/api/articles/${route.params.id}/publish`, {
+    const response = await fetch(`http://127.0.0.1:8900/api/articles/${articleId.value}/publish`, {
       method: 'POST'
     })
     
@@ -213,46 +261,6 @@ const handleTogglePreview = () => {
   // TODO: 实现预览模式切换（P1 任务）
   console.log('Toggle preview')
 }
-
-// 监听 WebSocket 事件更新内容
-const handleWebSocketUpdate = (data) => {
-  if (data.article_id !== route.params.id) return
-  
-  switch (data.type) {
-    case 'article_outline_generated':
-      content.value = data.data.outline || ''
-      article.value.step = 'outline'
-      appStore.notify('骨架生成成功', 'success')
-      break
-      
-    case 'article_content_generated':
-      content.value = data.data.content || ''
-      article.value.step = 'content'
-      appStore.notify('全文生成成功', 'success')
-      break
-      
-    case 'article_published':
-      publishing.value = false
-      article.value.status = 'published'
-      article.value.published_at = data.data.published_at
-      appStore.notify('文章发布成功', 'success')
-      break
-      
-    case 'article_error':
-      publishing.value = false
-      appStore.notify(`操作失败: ${data.data.error}`, 'error')
-      break
-  }
-}
-
-onMounted(() => {
-  // 监听 WebSocket 消息（通过 orchestrator 的 WebSocket）
-  // 注意：orchestrator 已经处理了进度更新，这里只处理内容更新
-})
-
-onUnmounted(() => {
-  // orchestrator 会自动清理 WebSocket
-})
 </script>
 
 <style scoped>
