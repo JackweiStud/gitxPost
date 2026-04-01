@@ -61,6 +61,9 @@ PLACEHOLDER_HINTS = [
     "[在这里填入你的主题",
 ]
 
+# radar-daily 默认上限（低于旧版 100k，避免与部分备用网关不兼容；可用 CLI 调大）
+DEFAULT_RADAR_DAILY_MAX_TOKENS = 16384
+
 
 class RadarReportGenerationError(RuntimeError):
     def __init__(self, message: str, attempt_logs=None):
@@ -342,7 +345,25 @@ def _resolve_generate_config(args):
         or os.environ.get("XPOST_LLM_MODEL")
         or "claude-sonnet-4-6"
     )
-    return {"api_key": api_key, "api_url": api_url, "model": model}
+    fb_url = os.environ.get("XPOST_LLM_FALLBACK_API_URL")
+    fb_key = os.environ.get("XPOST_LLM_FALLBACK_API_KEY")
+    fb_model = os.environ.get("XPOST_LLM_FALLBACK_MODEL")
+    chain = _build_llm_chain(
+        api_url,
+        api_key,
+        model,
+        label_primary="primary",
+        fallback_url=fb_url,
+        fallback_key=fb_key,
+        fallback_model=fb_model,
+        label_fallback="fallback",
+    )
+    return {
+        "api_key": api_key,
+        "api_url": api_url,
+        "model": model,
+        "llm_chain": chain,
+    }
 
 
 def _resolve_radar_llm_config(args):
@@ -358,7 +379,82 @@ def _resolve_radar_llm_config(args):
         or os.environ.get("XPOST_LLM_MODEL")
         or "claude-opus-4-6"
     )
-    return {"api_key": api_key, "api_url": api_url, "model": model}
+    fb_url = os.environ.get("XPOST_LLM_FALLBACK_API_URL")
+    fb_key = os.environ.get("XPOST_LLM_FALLBACK_API_KEY")
+    fb_model = (
+        os.environ.get("XPOST_RADAR_LLM_FALLBACK_MODEL")
+        or os.environ.get("XPOST_LLM_FALLBACK_MODEL")
+    )
+    chain = _build_llm_chain(
+        api_url,
+        api_key,
+        model,
+        label_primary="primary",
+        fallback_url=fb_url,
+        fallback_key=fb_key,
+        fallback_model=fb_model,
+        label_fallback="fallback",
+    )
+    return {
+        "api_key": api_key,
+        "api_url": api_url,
+        "model": model,
+        "llm_chain": chain,
+    }
+
+
+def _infer_llm_api_kind(api_url: str) -> str:
+    u = (api_url or "").lower()
+    if "/messages" in u:
+        return "anthropic"
+    return "openai"
+
+
+def _openai_chat_completions_url(api_url: str) -> str:
+    url = (api_url or "").strip().rstrip("/")
+    if not url:
+        return url
+    if url.endswith("/chat/completions"):
+        return url
+    if url.endswith("/v1"):
+        return f"{url}/chat/completions"
+    return url
+
+
+def _build_llm_chain(
+    api_url: Optional[str],
+    api_key: Optional[str],
+    model: Optional[str],
+    *,
+    label_primary: str,
+    fallback_url: Optional[str],
+    fallback_key: Optional[str],
+    fallback_model: Optional[str],
+    label_fallback: str,
+):
+    chain = []
+    if api_key and api_url and model:
+        chain.append(
+            {
+                "label": label_primary,
+                "api_url": api_url,
+                "api_key": api_key,
+                "model": model,
+                "kind": _infer_llm_api_kind(api_url),
+            }
+        )
+    if fallback_key and fallback_url and fallback_model:
+        fb_kind = os.environ.get("XPOST_LLM_FALLBACK_API_KIND") or "openai"
+        chain.append(
+            {
+                "label": label_fallback,
+                "api_url": fallback_url,
+                "api_key": fallback_key,
+                "model": fallback_model,
+                "kind": fb_kind.strip().lower() if fb_kind else "openai",
+            }
+        )
+    return chain
 
 
 def _build_generation_prompt(md_path: Path, raw_markdown: str, style: Optional[str], topic: Optional[str]):
@@ -490,6 +586,165 @@ def _call_messages_api(
     return _strip_markdown_fences(text)
 
 
+def _call_openai_chat_api(
+    api_url: str,
+    api_key: str,
+    model: str,
+    prompt: str,
+    max_tokens: int,
+    *,
+    return_debug: bool = False,
+):
+    endpoint = _openai_chat_completions_url(api_url)
+    if not endpoint:
+        raise RuntimeError("OpenAI 兼容 LLM URL 为空")
+    payload = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "temperature": 0.6,
+        "messages": [
+            {
+                "role": "user",
+                "content": prompt,
+            }
+        ],
+    }
+    payload_json = json.dumps(payload, ensure_ascii=False)
+    try:
+        proc = subprocess.run(
+            [
+                "curl",
+                "-sS",
+                "--http1.1",
+                "--retry",
+                "2",
+                "--retry-all-errors",
+                "--connect-timeout",
+                "30",
+                "-X",
+                "POST",
+                endpoint,
+                "-H",
+                f"Authorization: Bearer {api_key}",
+                "-H",
+                "Content-Type: application/json",
+                "-d",
+                payload_json,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+    except Exception as exc:
+        raise RuntimeError(f"LLM API 请求失败: {exc}") from exc
+
+    if proc.returncode != 0:
+        raise RuntimeError(f"curl 请求失败: {proc.stderr.strip() or proc.stdout.strip()}")
+
+    raw = proc.stdout
+    try:
+        data = json.loads(raw)
+    except Exception as exc:
+        raise RuntimeError(f"LLM API 返回非 JSON: {raw[:300]}") from exc
+
+    err_obj = data.get("error")
+    if err_obj:
+        msg = err_obj.get("message") if isinstance(err_obj, dict) else str(err_obj)
+        raise RuntimeError(f"LLM API 返回异常: {msg or raw[:300]}")
+
+    choices = data.get("choices", [])
+    if not choices:
+        raise RuntimeError(f"LLM API 返回无 choices: {raw[:300]}")
+
+    msg = choices[0].get("message", {}) or {}
+    content = msg.get("content", "")
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                parts.append(item.get("text", ""))
+        text = "\n".join(parts).strip()
+    else:
+        text = str(content or "").strip()
+
+    content_types = ["text"] if text else []
+    if return_debug:
+        return {
+            "text": _strip_markdown_fences(text) if text else "",
+            "raw_response": raw,
+            "content_types": content_types,
+        }
+    if not text:
+        raise RuntimeError("LLM 返回为空")
+    return _strip_markdown_fences(text)
+
+
+def _effective_max_tokens_for_spec(spec: dict, max_tokens: int) -> int:
+    """备用链路（label=fallback）自动压低 max_tokens，适配 Gemini 等 OpenAI 兼容网关。"""
+    if spec.get("label") != "fallback":
+        return max_tokens
+    raw = os.environ.get("XPOST_LLM_FALLBACK_MAX_TOKENS", "8192")
+    try:
+        cap = int(raw)
+    except ValueError:
+        cap = 8192
+    cap = max(1, cap)
+    return min(max_tokens, cap)
+
+
+def _call_llm_spec(
+    spec: dict,
+    prompt: str,
+    max_tokens: int,
+    *,
+    return_debug: bool = False,
+):
+    eff_max = _effective_max_tokens_for_spec(spec, max_tokens)
+    kind = (spec.get("kind") or _infer_llm_api_kind(spec.get("api_url", ""))).lower()
+    if kind == "anthropic":
+        return _call_messages_api(
+            spec["api_url"],
+            spec["api_key"],
+            spec["model"],
+            prompt,
+            eff_max,
+            return_debug=return_debug,
+        )
+    return _call_openai_chat_api(
+        spec["api_url"],
+        spec["api_key"],
+        spec["model"],
+        prompt,
+        eff_max,
+        return_debug=return_debug,
+    )
+
+
+def _call_llm_with_fallback(
+    chain: list,
+    prompt: str,
+    max_tokens: int,
+    *,
+    return_debug: bool = False,
+):
+    if not chain:
+        raise RuntimeError("未配置任何 LLM 端点")
+    errors = []
+    for spec in chain:
+        try:
+            out = _call_llm_spec(spec, prompt, max_tokens, return_debug=return_debug)
+            meta = {
+                "route": spec.get("label"),
+                "model": spec.get("model"),
+                "api_url": spec.get("api_url"),
+            }
+            return out, meta
+        except Exception as exc:
+            label = spec.get("label") or "?"
+            errors.append(f"{label}: {exc}")
+    raise RuntimeError("所有 LLM 端点均失败: " + " | ".join(errors))
+
+
 def _parse_json_response(raw_text: str):
     text = _strip_markdown_fences(raw_text).strip()
     try:
@@ -572,7 +827,7 @@ def _looks_like_markdown_report(text: str) -> bool:
     return any(marker in sample for marker in markers)
 
 
-def _generate_radar_report(prompt: str, llm_cfg: dict, max_tokens: int):
+def _generate_radar_report(prompt: str, llm_chain: list, max_tokens: int):
     attempts = [
         {
             "label": "json",
@@ -596,10 +851,8 @@ def _generate_radar_report(prompt: str, llm_cfg: dict, max_tokens: int):
     attempt_logs = []
     for attempt in attempts:
         try:
-            response = _call_messages_api(
-                llm_cfg["api_url"],
-                llm_cfg["api_key"],
-                llm_cfg["model"],
+            response, llm_meta = _call_llm_with_fallback(
+                llm_chain,
                 attempt["prompt"],
                 max_tokens,
                 return_debug=True,
@@ -622,9 +875,11 @@ def _generate_radar_report(prompt: str, llm_cfg: dict, max_tokens: int):
                         "content_types": response.get("content_types", []),
                         "markdown_len": len(payload.get("markdown", "")),
                         "raw_preview": _truncate_text(response.get("raw_response")),
+                        "llm_route": llm_meta.get("route"),
+                        "llm_model": llm_meta.get("model"),
                     }
                 )
-                return payload, attempt_logs
+                return payload, attempt_logs, llm_meta
             last_error = RuntimeError("LLM 未返回 markdown")
             attempt_logs.append(
                 {
@@ -633,6 +888,7 @@ def _generate_radar_report(prompt: str, llm_cfg: dict, max_tokens: int):
                     "error": str(last_error),
                     "content_types": response.get("content_types", []),
                     "raw_preview": _truncate_text(response.get("raw_response")),
+                    "llm_route": llm_meta.get("route"),
                 }
             )
         except Exception as exc:
@@ -913,14 +1169,14 @@ def _cmd_generate(args):
         return 1
 
     cfg = _resolve_generate_config(args)
-    if not cfg["api_key"]:
-            _print_json(
-                {
-                    "ok": False,
-                    "error": "未找到 LLM API Key。请在项目 .env 或当前 shell 中设置 XPOST_LLM_API_KEY。",
-                }
-            )
-            return 1
+    if not cfg.get("llm_chain"):
+        _print_json(
+            {
+                "ok": False,
+                "error": "未配置可用 LLM。请设置 XPOST_LLM_API_KEY（及 URL/模型），或完整设置备份变量 XPOST_LLM_FALLBACK_API_URL、XPOST_LLM_FALLBACK_API_KEY、XPOST_LLM_FALLBACK_MODEL。",
+            }
+        )
+        return 1
 
     raw_markdown = _read_text(md_path)
     try:
@@ -931,12 +1187,11 @@ def _cmd_generate(args):
 
     start_ts = time.time()
     try:
-        generated = _call_messages_api(
-            api_url=cfg["api_url"],
-            api_key=cfg["api_key"],
-            model=cfg["model"],
-            prompt=prompt,
-            max_tokens=args.max_tokens,
+        generated, llm_meta = _call_llm_with_fallback(
+            cfg["llm_chain"],
+            prompt,
+            args.max_tokens,
+            return_debug=False,
         )
     except Exception as exc:
         _print_json({"ok": False, "error": f"LLM 生成失败: {exc}"})
@@ -967,7 +1222,10 @@ def _cmd_generate(args):
             "md_path": str(output_path),
             "backup_path": str(backup_path) if backup_path else None,
             "model": cfg["model"],
+            "llm_model_effective": llm_meta.get("model"),
+            "llm_route": llm_meta.get("route"),
             "api_url": cfg["api_url"],
+            "llm_api_url_effective": llm_meta.get("api_url"),
             "generated_chars": len(generated),
             "validate": {
                 "ok": ok,
@@ -1358,19 +1616,19 @@ def _cmd_radar_daily(args):
             "api_url": llm_cfg.get("api_url"),
         }
     )
-    if not llm_cfg.get("api_key"):
+    if not llm_cfg.get("llm_chain"):
         log_path = _record_radar_runtime(
             "radar-daily",
             {
                 **runtime_context,
                 "ok": False,
-                "error": "未找到 Radar LLM API Key。请在项目 .env 或当前 shell 中设置 XPOST_LLM_API_KEY。",
+                "error": "未配置可用 LLM。请设置 XPOST_LLM_API_KEY，或完整设置 XPOST_LLM_FALLBACK_API_URL / KEY / MODEL。",
             },
         )
         _print_json(
             {
                 "ok": False,
-                "error": "未找到 Radar LLM API Key。请在项目 .env 或当前 shell 中设置 XPOST_LLM_API_KEY。",
+                "error": "未配置可用 LLM。请设置 XPOST_LLM_API_KEY，或完整设置 XPOST_LLM_FALLBACK_API_URL / KEY / MODEL。",
                 "log_path": log_path,
             }
         )
@@ -1423,10 +1681,13 @@ def _cmd_radar_daily(args):
         )
         report_json = {"markdown": body, "actions": []}
         attempt_logs = []
+        llm_used = None
     else:
         try:
             prompt = _build_radar_daily_prompt(result_payload, interests_payload)
-            report_json, attempt_logs = _generate_radar_report(prompt, llm_cfg, args.max_tokens)
+            report_json, attempt_logs, llm_used = _generate_radar_report(
+                prompt, llm_cfg["llm_chain"], args.max_tokens
+            )
         except Exception as exc:
             log_path = _record_radar_runtime(
                 "radar-daily",
@@ -1457,16 +1718,19 @@ def _cmd_radar_daily(args):
         _print_json({"ok": False, "error": "Radar 日报生成失败：LLM 未返回 markdown", "log_path": log_path})
         return 1
 
+    eff_model = (llm_used or {}).get("model") or llm_cfg["model"]
+    eff_route = (llm_used or {}).get("route")
+
     added_actions = _append_actions(actions_path, report_json.get("actions", []))
-    report_text = _wrap_report_markdown(
-        markdown_body,
-        {
-            "report_type": "radar_daily",
-            "generated_at": _now_str(),
-            "llm_model": llm_cfg["model"],
-            "source_result_file": str(result_path),
-        },
-    )
+    daily_meta = {
+        "report_type": "radar_daily",
+        "generated_at": _now_str(),
+        "llm_model": eff_model,
+        "source_result_file": str(result_path),
+    }
+    if eff_route:
+        daily_meta["llm_route"] = eff_route
+    report_text = _wrap_report_markdown(markdown_body, daily_meta)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(report_text, encoding="utf-8")
     log_path = _record_radar_runtime(
@@ -1476,6 +1740,8 @@ def _cmd_radar_daily(args):
             "ok": True,
             "actions_added": added_actions,
             "attempts": attempt_logs,
+            "llm_route": eff_route,
+            "llm_model_effective": eff_model,
         },
     )
 
@@ -1486,7 +1752,8 @@ def _cmd_radar_daily(args):
             "output_path": str(output_path),
             "actions_path": str(actions_path),
             "actions_added": added_actions,
-            "llm_model": llm_cfg["model"],
+            "llm_model": eff_model,
+            "llm_route": eff_route,
             "created_support_files": created_support,
             "log_path": log_path,
         }
@@ -1531,19 +1798,19 @@ def _cmd_radar_weekly(args):
             "api_url": llm_cfg.get("api_url"),
         }
     )
-    if not llm_cfg.get("api_key"):
+    if not llm_cfg.get("llm_chain"):
         log_path = _record_radar_runtime(
             "radar-weekly",
             {
                 **runtime_context,
                 "ok": False,
-                "error": "未找到 Radar LLM API Key。请在项目 .env 或当前 shell 中设置 XPOST_LLM_API_KEY。",
+                "error": "未配置可用 LLM。请设置 XPOST_LLM_API_KEY，或完整设置 XPOST_LLM_FALLBACK_API_URL / KEY / MODEL。",
             },
         )
         _print_json(
             {
                 "ok": False,
-                "error": "未找到 Radar LLM API Key。请在项目 .env 或当前 shell 中设置 XPOST_LLM_API_KEY。",
+                "error": "未配置可用 LLM。请设置 XPOST_LLM_API_KEY，或完整设置 XPOST_LLM_FALLBACK_API_URL / KEY / MODEL。",
                 "log_path": log_path,
             }
         )
@@ -1551,7 +1818,9 @@ def _cmd_radar_weekly(args):
 
     try:
         prompt = _build_radar_weekly_prompt(analysis_payload, actions_payload)
-        report_json, attempt_logs = _generate_radar_report(prompt, llm_cfg, args.max_tokens)
+        report_json, attempt_logs, llm_used = _generate_radar_report(
+            prompt, llm_cfg["llm_chain"], args.max_tokens
+        )
     except Exception as exc:
         log_path = _record_radar_runtime(
             "radar-weekly",
@@ -1582,17 +1851,20 @@ def _cmd_radar_weekly(args):
         _print_json({"ok": False, "error": "Radar 周报生成失败：LLM 未返回 markdown", "log_path": log_path})
         return 1
 
+    eff_model = (llm_used or {}).get("model") or llm_cfg["model"]
+    eff_route = (llm_used or {}).get("route")
+
     added_actions = _append_actions(actions_path, report_json.get("actions", []))
-    report_text = _wrap_report_markdown(
-        markdown_body,
-        {
-            "report_type": "radar_weekly",
-            "generated_at": _now_str(),
-            "llm_model": llm_cfg["model"],
-            "source_analysis_file": str(analysis_path),
-            "scope_days": analysis_payload.get("scope_days", 7),
-        },
-    )
+    weekly_meta = {
+        "report_type": "radar_weekly",
+        "generated_at": _now_str(),
+        "llm_model": eff_model,
+        "source_analysis_file": str(analysis_path),
+        "scope_days": analysis_payload.get("scope_days", 7),
+    }
+    if eff_route:
+        weekly_meta["llm_route"] = eff_route
+    report_text = _wrap_report_markdown(markdown_body, weekly_meta)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(report_text, encoding="utf-8")
     log_path = _record_radar_runtime(
@@ -1602,6 +1874,8 @@ def _cmd_radar_weekly(args):
             "ok": True,
             "actions_added": added_actions,
             "attempts": attempt_logs,
+            "llm_route": eff_route,
+            "llm_model_effective": eff_model,
         },
     )
 
@@ -1612,7 +1886,8 @@ def _cmd_radar_weekly(args):
             "output_path": str(output_path),
             "actions_path": str(actions_path),
             "actions_added": added_actions,
-            "llm_model": llm_cfg["model"],
+            "llm_model": eff_model,
+            "llm_route": eff_route,
             "created_support_files": created_support,
             "log_path": log_path,
         }
@@ -2180,7 +2455,12 @@ def main():
     p_radar_daily.add_argument("--output", help="Output markdown path (default: xinfo/log/day/YYYY-MM-DD.md)")
     p_radar_daily.add_argument("--model", help="LLM model override (default: claude-opus-4-6)")
     p_radar_daily.add_argument("--api-url", help="LLM messages API URL override")
-    p_radar_daily.add_argument("--max-tokens", type=int, default=100000, help="LLM max tokens for daily report")
+    p_radar_daily.add_argument(
+        "--max-tokens",
+        type=int,
+        default=DEFAULT_RADAR_DAILY_MAX_TOKENS,
+        help=f"LLM max tokens for daily report (default: {DEFAULT_RADAR_DAILY_MAX_TOKENS}; fallback 链路另受 XPOST_LLM_FALLBACK_MAX_TOKENS 上限)",
+    )
     p_radar_daily.add_argument("--max-preview", type=int, default=200, help="Max preview tweets to include in prompt (default: 100)")
     p_radar_daily.set_defaults(func=_cmd_radar_daily)
 

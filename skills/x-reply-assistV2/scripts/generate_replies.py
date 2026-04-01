@@ -4,6 +4,7 @@
 用法: python generate_replies.py "<tweet_text>" "<handle>"
 
 输出 JSON: {"A": "...", "B": "...", "C": "..."}
+主 LLM 失败时自动尝试 XPOST_LLM_FALLBACK_*（与 xpost 一致）。
 """
 
 import json
@@ -14,16 +15,14 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-ENV_PATH = Path("/Users/jackwl/Code/gitcode/gitxPost/.env")
-load_dotenv(ENV_PATH)
+# scripts/ → x-reply-assistV2 → skills → 仓库根（gitxPost）
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _SCRIPT_DIR.parents[2]
+load_dotenv(_REPO_ROOT / ".env")
+# API 子进程 cwd 常为仓库根，再加载一次以兜底路径差异
+load_dotenv(Path.cwd() / ".env")
 
-API_KEY = os.getenv("XPOST_LLM_API_KEY", "")
-API_URL = os.getenv("XPOST_LLM_API_URL", "")
-MODEL = os.getenv("XPOST_LLM_MODEL", "claude-opus-4-6")
-
-if not API_KEY:
-    print(json.dumps({"error": "XPOST_LLM_API_KEY not set in .env"}))
-    sys.exit(1)
+REPLY_MAX_TOKENS = 1024
 
 
 def _strip_markdown_fences(text: str) -> str:
@@ -32,8 +31,66 @@ def _strip_markdown_fences(text: str) -> str:
     return text.strip()
 
 
-def _is_anthropic_api(url: str) -> bool:
-    return "anthropic" in url.lower() or "claude" in url.lower()
+def _infer_llm_kind(api_url: str) -> str:
+    u = (api_url or "").lower()
+    if "/messages" in u:
+        return "anthropic"
+    return "openai"
+
+
+def _openai_chat_completions_url(api_url: str) -> str:
+    url = (api_url or "").strip().rstrip("/")
+    if not url:
+        return url
+    if url.endswith("/chat/completions"):
+        return url
+    if url.endswith("/v1"):
+        return f"{url}/chat/completions"
+    return url
+
+
+def _effective_max_tokens_for_spec(spec: dict, max_tokens: int) -> int:
+    if spec.get("label") != "fallback":
+        return max_tokens
+    raw = os.getenv("XPOST_LLM_FALLBACK_MAX_TOKENS", "8192")
+    try:
+        cap = int(raw)
+    except ValueError:
+        cap = 8192
+    cap = max(1, cap)
+    return min(max_tokens, cap)
+
+
+def _build_reply_llm_chain():
+    chain = []
+    pk = os.getenv("XPOST_LLM_API_KEY")
+    pu = os.getenv("XPOST_LLM_API_URL", "")
+    pm = os.getenv("XPOST_LLM_MODEL", "claude-opus-4-6")
+    if pk and pu and pm:
+        chain.append(
+            {
+                "label": "primary",
+                "api_url": pu,
+                "api_key": pk,
+                "model": pm,
+                "kind": _infer_llm_kind(pu),
+            }
+        )
+    fb_u = os.getenv("XPOST_LLM_FALLBACK_API_URL")
+    fb_k = os.getenv("XPOST_LLM_FALLBACK_API_KEY")
+    fb_m = os.getenv("XPOST_LLM_FALLBACK_MODEL")
+    if fb_u and fb_k and fb_m:
+        fb_kind = (os.getenv("XPOST_LLM_FALLBACK_API_KIND") or "openai").strip().lower()
+        chain.append(
+            {
+                "label": "fallback",
+                "api_url": fb_u,
+                "api_key": fb_k,
+                "model": fb_m,
+                "kind": fb_kind,
+            }
+        )
+    return chain
 
 
 def build_prompt(tweet_text: str, handle: str) -> str:
@@ -73,52 +130,8 @@ BAD reply examples (typical AI slop — avoid at all costs):
 - "非常认同！这个观点真的说到了AI开发者的心坎里，受益匪浅！"""
 
 
-def call_llm(prompt: str) -> dict:
-    import httpx
-
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    if _is_anthropic_api(API_URL):
-        headers["Anthropic-Version"] = "2023-06-01"
-        payload = {
-            "model": MODEL,
-            "max_tokens": 1024,
-            "temperature": 0.7,
-            "messages": [{"role": "user", "content": prompt}],
-        }
-    else:
-        payload = {
-            "model": MODEL,
-            "max_tokens": 1024,
-            "temperature": 0.7,
-            "messages": [{"role": "user", "content": prompt}],
-        }
-
-    with httpx.Client(timeout=120) as client:
-        resp = client.post(API_URL, json=payload, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
-
-    if _is_anthropic_api(API_URL):
-        if data.get("type") != "message":
-            err = data.get("error", {}).get("message") or json.dumps(data)[:300]
-            raise RuntimeError(f"LLM 返回异常: {err}")
-        parts = [item.get("text", "") for item in data.get("content", []) if item.get("type") == "text"]
-        text = "\n".join(parts).strip()
-    else:
-        choices = data.get("choices", [])
-        if not choices:
-            raise RuntimeError(f"LLM 返回无 choices: {json.dumps(data)[:300]}")
-        text = choices[0].get("message", {}).get("content", "").strip()
-
-    if not text:
-        raise RuntimeError("LLM 返回为空")
-
+def _parse_llm_text_to_json(text: str) -> dict:
     text = _strip_markdown_fences(text)
-
     try:
         return json.loads(text)
     except Exception:
@@ -128,6 +141,85 @@ def call_llm(prompt: str) -> dict:
     if start == -1 or end == 0:
         raise ValueError(f"No JSON in response: {text[:200]}")
     return json.loads(text[start:end])
+
+
+def _call_llm_once(spec: dict, prompt: str) -> str:
+    import urllib.request
+    import urllib.error
+
+    kind = (spec.get("kind") or _infer_llm_kind(spec.get("api_url", ""))).lower()
+    max_tok = _effective_max_tokens_for_spec(spec, REPLY_MAX_TOKENS)
+    payload = {
+        "model": spec["model"],
+        "max_tokens": max_tok,
+        "temperature": 0.7,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+
+    if kind == "anthropic":
+        url = spec["api_url"]
+    else:
+        url = _openai_chat_completions_url(spec["api_url"])
+
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(url, data=body, method="POST")
+    req.add_header("Authorization", f"Bearer {spec['api_key']}")
+    req.add_header("Content-Type", "application/json")
+    if kind == "anthropic":
+        req.add_header("Anthropic-Version", "2023-06-01")
+
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            raw = resp.read().decode("utf-8")
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(
+            f"Server error '{e.code}' for url '{url}'"
+        ) from e
+
+    data = json.loads(raw)
+
+    if kind == "anthropic":
+        if data.get("type") != "message":
+            err = data.get("error", {}).get("message") or json.dumps(data)[:300]
+            raise RuntimeError(f"LLM 返回异常: {err}")
+        parts = [item.get("text", "") for item in data.get("content", []) if item.get("type") == "text"]
+        text = "\n".join(parts).strip()
+    else:
+        err_obj = data.get("error")
+        if err_obj:
+            msg = err_obj.get("message") if isinstance(err_obj, dict) else str(err_obj)
+            raise RuntimeError(f"LLM 返回异常: {msg or json.dumps(data)[:300]}")
+        choices = data.get("choices", [])
+        if not choices:
+            raise RuntimeError(f"LLM 返回无 choices: {json.dumps(data)[:300]}")
+        msg = choices[0].get("message", {}) or {}
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            parts = [p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text"]
+            text = "\n".join(parts).strip()
+        else:
+            text = str(content or "").strip()
+
+    if not text:
+        raise RuntimeError("LLM 返回为空")
+    return text
+
+
+def call_llm(prompt: str) -> dict:
+    chain = _build_reply_llm_chain()
+    if not chain:
+        raise RuntimeError(
+            "未配置可用 LLM：请设置 XPOST_LLM_API_KEY（及 URL/模型），或完整设置 XPOST_LLM_FALLBACK_API_URL、XPOST_LLM_FALLBACK_API_KEY、XPOST_LLM_FALLBACK_MODEL"
+        )
+    errors = []
+    for spec in chain:
+        try:
+            text = _call_llm_once(spec, prompt)
+            return _parse_llm_text_to_json(text)
+        except Exception as exc:
+            label = spec.get("label") or "?"
+            errors.append(f"{label}: {exc}")
+    raise RuntimeError("所有 LLM 端点均失败: " + " | ".join(errors))
 
 
 if __name__ == "__main__":

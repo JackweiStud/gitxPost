@@ -10,6 +10,83 @@
   - 仍未解决的边界或风险
 - 如果改动影响验收方式或测试结论，需要同步更新 `CI/` 目录下的文档。
 
+日期：2026-04-01
+
+## 本次补充：回帖生成 HTTP 改用 urllib（Antigravity 对 httpx 返回 502）
+
+范围：`skills/x-reply-assistV2/scripts/generate_replies.py`（`/api/reply/generate` 子进程）
+
+### 问题
+
+- 同一 payload：`curl` 与标准库 **`urllib.request`** 访问 `http://127.0.0.1:8045/v1/chat/completions` 正常；venv 内 **`httpx`** 稳定得到 **502**（空 body），导致主端失败后备用也无法成功。
+
+### 变更
+
+- `_call_llm_once` 的 HTTP 请求改为 **`urllib.request`**（`urlopen` 超时 120s），主备两端路径统一，**不再用 httpx 调 LLM**。
+
+### 验证
+
+- `python3 -m py_compile skills/x-reply-assistV2/scripts/generate_replies.py` 通过。
+
+### 风险
+
+- 若后续需要企业代理、mTLS 等，可再评估改为与 `xpost.py` 一致的 `curl` 子进程或集中 HTTP 客户端。
+
+---
+
+## 本次补充：回帖生成脚本 LLM 主备切换
+
+范围：`skills/x-reply-assistV2/scripts/generate_replies.py`（`/api/reply/generate` 子进程）
+
+### 行为
+
+- 与 `xpost.py` 相同：按 `primary` → `fallback` 依次请求；主端失败（含 HTTP 5xx、超时、解析错误等）时自动尝试 `XPOST_LLM_FALLBACK_*`。
+- 备用端走 OpenAI Chat Completions；`…/v1` 自动补全为 `…/v1/chat/completions`；`label=fallback` 时 `max_tokens` 受 `XPOST_LLM_FALLBACK_MAX_TOKENS` 约束（默认 8192）。
+- `.env` 路径改为相对仓库根（从 `scripts/` 上溯 **2** 级到 gitxPost 根）；并额外 `load_dotenv(Path.cwd() / ".env")` 兜底。（曾误用 `parents[3]` 导致读不到 `.env`、报「未配置可用 LLM」，已改为 `parents[2]`。）
+
+### 验证
+
+- `python3 -m py_compile skills/x-reply-assistV2/scripts/generate_replies.py` 通过。
+- 端到端：`generate_replies.py` 在 primary 失败后 fallback 可返回 `A`/`B`/`C` JSON（与 urllib 条目联调一致）。
+
+---
+
+## 本次补充：雷达日报默认 max_tokens + 备用链路自动封顶
+
+范围：`xpost.py`、`.env.example`
+
+### 行为
+
+- `radar-daily` 的 `--max-tokens` 默认由 100000 改为 **16384**（仍可通过 CLI 调大）。
+- `label=fallback` 的端点在发起请求前将 `max_tokens` 限制为 `min(用户值, XPOST_LLM_FALLBACK_MAX_TOKENS)`，环境变量未设时默认为 **8192**。
+
+### 验证
+
+- `python3 -m py_compile xpost.py` 通过。
+
+---
+
+## 本次补充：LLM 主备切换（Anthropic Messages → OpenAI 兼容）
+
+范围：`xpost.py`、`.env.example`
+
+### 行为
+
+- `xpost generate`、`radar-daily`、`radar-weekly` 在调用 LLM 时按顺序尝试 **`llm_chain`**：先主配置（`XPOST_LLM_*`，URL 含 `/messages` 时走 Anthropic Messages），失败后自动尝试备份（`XPOST_LLM_FALLBACK_*`，默认按 **OpenAI Chat Completions** 请求）。
+- 备份 URL 支持 `…/v1` 后缀，会自动拼接为 `…/v1/chat/completions`。
+- 若未设置主 Key 但完整设置了三个 `FALLBACK` 变量，可仅使用备份端。
+- JSON 输出增加 `llm_route`（`primary` / `fallback`）、`llm_model_effective`（及 generate 的 `llm_api_url_effective`）便于确认实际走哪条链路。
+
+### 验证
+
+- `python3 -m py_compile xpost.py` 通过。
+
+### 风险
+
+- 备份网关若与 OpenAI 字段不完全兼容，需按需调整或设置 `XPOST_LLM_FALLBACK_API_KIND`（当前仅区分 anthropic / openai）。
+
+---
+
 日期：2026-03-24
 
 ## 本次补充：批量回复功能完善（队列 + 进度显示）
