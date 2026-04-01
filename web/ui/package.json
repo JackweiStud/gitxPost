@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "e2e:article": "python3 e2e/article_workflow_regression.py"
   },
   "dependencies": {
     "axios": "^1.13.6",

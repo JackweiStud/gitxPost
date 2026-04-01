@@ -126,6 +126,25 @@ def test_create_article_trims_whitespace():
     assert data["title"] == "测试标题"
 
 
+def test_update_article_title_and_style():
+    """测试更新文章标题和风格"""
+    create_response = client.post("/api/articles", json={"title": "原始标题"})
+    article_id = create_response.json()["article_id"]
+
+    response = client.put(f"/api/articles/{article_id}", json={
+        "title": "更新后的标题",
+        "style": "tech",
+    })
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+
+    detail = client.get(f"/api/articles/{article_id}").json()
+    assert detail["article"]["title"] == "更新后的标题"
+    assert detail["article"].get("style") == "tech"
+
+
 def test_create_multiple_articles_unique_ids():
     """测试创建多篇文章 - ID 唯一性"""
     titles = ["文章1", "文章2", "文章3"]
@@ -503,9 +522,9 @@ def test_missing_required_fields():
     # 更新文章时缺少 content
     create_response = client.post("/api/articles", json={"title": "测试"})
     article_id = create_response.json()["article_id"]
-    
+
     response = client.put(f"/api/articles/{article_id}", json={})
-    assert response.status_code == 422
+    assert response.status_code == 400
 
 
 def test_concurrent_operations():

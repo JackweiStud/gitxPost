@@ -14,6 +14,7 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent  # gitxPost root
@@ -969,9 +970,10 @@ def _generate_queue_id():
 # ---------------------------------------------------------------------------
 
 def _generate_article_id():
-    """生成文章 ID - 格式: art_<timestamp_ms>"""
+    """生成文章 ID - 格式: art_<timestamp_ms>_<suffix>"""
     import time
-    return f"art_{int(time.time() * 1000)}"
+    import uuid
+    return f"art_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}"
 
 
 def _read_article(article_id: str) -> Optional[dict]:
@@ -1603,7 +1605,9 @@ class CreateArticleRequest(BaseModel):
 
 
 class UpdateArticleRequest(BaseModel):
-    content: str
+    content: str | None = None
+    title: str | None = None
+    style: str | None = None
 
 
 @app.post("/api/articles")
@@ -1689,7 +1693,7 @@ async def get_article(article_id: str):
 
 @app.put("/api/articles/{article_id}")
 async def update_article(article_id: str, req: UpdateArticleRequest):
-    """更新文章内容"""
+    """更新文章内容、标题或风格"""
     from datetime import timezone
     
     # 读取现有文章
@@ -1697,14 +1701,29 @@ async def update_article(article_id: str, req: UpdateArticleRequest):
     if article is None:
         raise HTTPException(404, detail=f"文章不存在: {article_id}")
     
-    # 更新内容和时间戳
-    article["content"] = req.content
+    # 至少要有一个可更新字段
+    if req.content is None and req.title is None and req.style is None:
+        raise HTTPException(400, detail="至少需要提供 content、title 或 style 之一")
+
+    # 更新字段和时间戳
+    if req.content is not None:
+        article["content"] = req.content
+    if req.title is not None:
+        title = req.title.strip()
+        if not title:
+            raise HTTPException(400, detail="标题不能为空")
+        article["title"] = title
+    if req.style is not None:
+        if req.style not in ["zara", "tech", "fun"]:
+            raise HTTPException(400, detail=f"无效的风格参数: {req.style}，支持的风格: zara, tech, fun")
+        article["style"] = req.style
     article["updated_at"] = datetime.now(timezone.utc).isoformat()
-    
+
     # 保存元数据和内容
     try:
         _write_article(article_id, article)
-        _write_article_content(article_id, req.content)
+        if req.content is not None:
+            _write_article_content(article_id, req.content)
     except Exception as e:
         raise HTTPException(500, detail=f"更新文章失败: {str(e)}")
     
@@ -1751,6 +1770,20 @@ async def delete_article(article_id: str):
     }
 
 
+@app.post("/api/articles/{article_id}/cancel")
+async def cancel_article_generation(article_id: str):
+    """取消当前正在进行的生成任务
+    
+    Returns:
+        {
+            "ok": true,
+            "cancelled": true,
+            "message": "已取消生成任务"
+        }
+    """
+    return await _kill_active_xpost()
+
+
 @app.post("/api/articles/{article_id}/outline")
 async def generate_article_outline(article_id: str):
     """生成文章骨架（异步）"""
@@ -1793,8 +1826,8 @@ async def _generate_outline_background(article_id: str, title: str, md_path: str
             "title": title
         })
         
-        # 调用 xpost init 命令
-        result = await _run_xpost("init", md_path, "--topic", title, timeout=120)
+        # 调用 xpost init 命令（添加 --style 参数，默认使用 tech 风格）
+        result = await _run_xpost("init", md_path, "--topic", title, "--style", "tech", timeout=120)
         
         # xpost init 返回的是 {"created": true, ...} 而不是 {"ok": true}
         # 检查是否成功创建
@@ -1913,6 +1946,148 @@ async def _generate_content_background(article_id: str, md_path: str):
         })
 
 
+@app.post("/api/articles/{article_id}/auto-generate")
+async def auto_generate_article(article_id: str, style: str = "zara"):
+    """一键生成：自动完成 outline → content 流程
+    
+    Args:
+        article_id: 文章 ID
+        style: 文章风格 (zara/tech/fun)
+    
+    Returns:
+        {
+            "ok": true,
+            "article_id": "art_123",
+            "status": "generating",
+            "message": "自动生成任务已启动"
+        }
+    """
+    from datetime import timezone
+    
+    # 验证文章存在
+    article = _read_article(article_id)
+    if article is None:
+        raise HTTPException(404, detail=f"文章不存在: {article_id}")
+    
+    # 验证风格参数
+    if style not in ["zara", "tech", "fun"]:
+        raise HTTPException(400, detail=f"无效的风格参数: {style}，支持的风格: zara, tech, fun")
+    
+    title = article.get("title", "")
+    if not title:
+        raise HTTPException(400, detail="文章标题为空，无法生成")
+    
+    md_path = ARTICLES_DIR / f"{article_id}.md"
+    
+    # 立即返回 202 Accepted
+    # 启动后台任务
+    asyncio.create_task(_auto_generate_background(article_id, title, str(md_path), style))
+    
+    return {
+        "ok": True,
+        "article_id": article_id,
+        "status": "generating",
+        "message": "自动生成任务已启动",
+        "style": style
+    }
+
+
+@app.post("/api/articles/{article_id}/images")
+async def upload_article_image(article_id: str, file: UploadFile = File(...)):
+    """上传文章图片
+    
+    Args:
+        article_id: 文章 ID
+        file: 图片文件
+    
+    Returns:
+        {
+            "ok": true,
+            "image_url": "/images/articles/art_123/image_456.png",
+            "markdown": "![image](/images/articles/art_123/image_456.png)"
+        }
+    """
+    from datetime import timezone
+    import time
+    
+    # 验证文章存在
+    article = _read_article(article_id)
+    if article is None:
+        raise HTTPException(404, detail=f"文章不存在: {article_id}")
+    
+    # 验证文件类型
+    allowed_types = ["image/png", "image/jpeg", "image/gif", "image/webp"]
+    if not file.content_type or file.content_type not in allowed_types:
+        raise HTTPException(400, detail=f"不支持的文件类型: {file.content_type}，仅支持 PNG, JPEG, GIF, WebP")
+    
+    # 创建图片目录
+    images_dir = ARTICLES_DIR / article_id / "images"
+    images_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 生成唯一文件名（使用时间戳）
+    ext = Path(file.filename).suffix if file.filename else ".jpg"
+    image_id = int(time.time() * 1000)
+    filename = f"image_{image_id}{ext}"
+    image_path = images_dir / filename
+    
+    # 保存文件
+    try:
+        content = await file.read()
+        image_path.write_bytes(content)
+    except Exception as e:
+        raise HTTPException(500, detail=f"图片保存失败: {str(e)}")
+    
+    # 更新文章元数据
+    if "images" not in article:
+        article["images"] = []
+    article["images"].append(filename)
+    article["updated_at"] = datetime.now(timezone.utc).isoformat()
+    
+    try:
+        _write_article(article_id, article)
+    except Exception as e:
+        # 如果元数据更新失败，删除已上传的图片
+        if image_path.exists():
+            image_path.unlink()
+        raise HTTPException(500, detail=f"更新文章元数据失败: {str(e)}")
+    
+    # 返回相对 URL 和 Markdown 语法
+    image_url = f"/images/articles/{article_id}/{filename}"
+    markdown = f"![{filename}]({image_url})"
+    
+    return {
+        "ok": True,
+        "image_url": image_url,
+        "markdown": markdown,
+        "filename": filename
+    }
+
+
+@app.get("/images/articles/{article_id}/{image_path:path}")
+async def serve_article_image(article_id: str, image_path: str):
+    """提供文章图片静态访问。
+
+    兼容两种来源：
+    1. 手动上传：/images/articles/<article_id>/<filename>
+    2. 生成内容相对路径：/images/articles/<article_id>/images/<filename>
+    """
+    article_root = ARTICLES_DIR / article_id
+    if not article_root.exists():
+        raise HTTPException(404, detail=f"文章不存在: {article_id}")
+
+    normalized_path = image_path.lstrip("/")
+    candidates = [
+        article_root / normalized_path,
+        article_root / "images" / normalized_path,
+    ]
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return FileResponse(candidate)
+
+    raise HTTPException(404, detail=f"图片不存在: {article_id}/{image_path}")
+
+
 @app.post("/api/articles/{article_id}/publish")
 async def publish_article(article_id: str):
     """发布文章（异步）"""
@@ -1943,6 +2118,96 @@ async def publish_article(article_id: str):
         "status": "publishing",
         "message": "文章发布任务已启动"
     }
+
+
+async def _auto_generate_background(article_id: str, title: str, md_path: str, style: str = "zara"):
+    """后台任务：自动生成 outline + content
+    
+    Args:
+        article_id: 文章 ID
+        title: 文章标题
+        md_path: Markdown 文件路径
+        style: 文章风格 (zara/tech/fun)
+    """
+    from datetime import timezone
+    
+    try:
+        # Step 1: Generate outline
+        await _broadcast_article_update("article_outline_generating", article_id, {
+            "step": "outline",
+            "progress": 0,
+            "style": style
+        })
+        
+        # 调用 xpost init 命令，传入 style 参数
+        # 一键生成需要从标题重新构建骨架，即使 Markdown 文件已经被自动保存过也要覆盖
+        result = await _run_xpost("init", md_path, "--topic", title, "--style", style, "--force", timeout=120)
+        
+        # xpost init 返回的是 {"created": true, ...} 而不是 {"ok": true}
+        if not (result.get("created") or result.get("ok")):
+            raise Exception(f"Outline generation failed: {result.get('error', 'Unknown error')}")
+        
+        # 读取生成的骨架内容
+        content = _read_article_content(article_id)
+        if content is None:
+            content = ""
+        
+        # 更新文章元数据 - 保存 style
+        article = _read_article(article_id)
+        if article:
+            article["outline"] = content
+            article["content"] = content
+            article["step"] = "outline"
+            article["style"] = style  # 保存风格到元数据
+            article["updated_at"] = datetime.now(timezone.utc).isoformat()
+            _write_article(article_id, article)
+        
+        # 广播骨架生成完成
+        await _broadcast_article_update("article_outline_generated", article_id, {
+            "outline": content,
+            "step": "outline",
+            "progress": 50,
+            "style": style
+        })
+        
+        # Step 2: Generate content
+        await _broadcast_article_update("article_content_generating", article_id, {
+            "step": "content",
+            "progress": 50
+        })
+        
+        # 调用 xpost generate 命令
+        result = await _run_xpost("generate", md_path, timeout=300)
+        
+        if not result.get("ok"):
+            raise Exception(f"Content generation failed: {result.get('error', 'Unknown error')}")
+        
+        # 读取生成的全文内容
+        content = _read_article_content(article_id)
+        if content is None:
+            content = ""
+        
+        # 更新文章元数据
+        article = _read_article(article_id)
+        if article:
+            article["content"] = content
+            article["step"] = "content"
+            article["updated_at"] = datetime.now(timezone.utc).isoformat()
+            _write_article(article_id, article)
+        
+        # 广播全文生成完成
+        await _broadcast_article_update("article_content_generated", article_id, {
+            "content": content,
+            "step": "content",
+            "progress": 100
+        })
+        
+    except Exception as e:
+        # 广播错误
+        await _broadcast_article_update("article_error", article_id, {
+            "error": str(e),
+            "step": "auto_generation"
+        })
 
 
 async def _publish_article_background(article_id: str, md_path: str):

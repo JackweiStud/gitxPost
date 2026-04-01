@@ -5,7 +5,7 @@
 </template>
 
 <script setup>
-import { ref, watch, computed } from 'vue'
+import { computed } from 'vue'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github.css'
@@ -14,8 +14,44 @@ const props = defineProps({
   content: {
     type: String,
     default: ''
+  },
+  articleId: {
+    type: String,
+    default: ''
   }
 })
+
+const BACKEND_ORIGIN = 'http://127.0.0.1:8900'
+
+const resolveImageSrc = (src) => {
+  if (!src) return src
+
+  if (/^(https?:)?\/\//.test(src) || src.startsWith('data:') || src.startsWith('blob:')) {
+    return src
+  }
+
+  if (src.startsWith('/images/articles/')) {
+    return `${BACKEND_ORIGIN}${src}`
+  }
+
+  if (src.startsWith('/images/')) {
+    return `${BACKEND_ORIGIN}${src}`
+  }
+
+  const normalized = src.replace(/^\.?\//, '')
+  if (normalized.startsWith('images/')) {
+    if (props.articleId) {
+      return `${BACKEND_ORIGIN}/images/articles/${props.articleId}/${normalized}`
+    }
+    return `${BACKEND_ORIGIN}/${normalized}`
+  }
+
+  if (normalized.startsWith('uploads/')) {
+    return `${BACKEND_ORIGIN}/${normalized}`
+  }
+
+  return src
+}
 
 // 配置 marked
 marked.setOptions({
@@ -40,7 +76,20 @@ const renderedHtml = computed(() => {
   }
   
   try {
-    return marked.parse(props.content)
+    const html = marked.parse(props.content)
+    if (typeof window === 'undefined') {
+      return html
+    }
+
+    const doc = new DOMParser().parseFromString(html, 'text/html')
+    doc.querySelectorAll('img').forEach((img) => {
+      const src = img.getAttribute('src')
+      if (src) {
+        img.setAttribute('src', resolveImageSrc(src))
+      }
+    })
+
+    return doc.body.innerHTML
   } catch (err) {
     console.error('Markdown parse error:', err)
     return '<p class="error-hint">Markdown 解析失败</p>'
