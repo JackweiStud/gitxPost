@@ -133,14 +133,11 @@ const loadArticles = async () => {
 
 // 创建文章
 const createArticle = async () => {
-  const title = prompt('请输入文章标题:')
-  if (!title || !title.trim()) return
-  
   try {
     const response = await fetch('http://127.0.0.1:8900/api/articles', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: title.trim() })
+      body: JSON.stringify({ title: '未命名文章' })
     })
     
     const data = await response.json()

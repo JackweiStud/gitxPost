@@ -43,11 +43,15 @@ python xpost.py doctor
 ```bash
 python xpost.py init content/drafts/your_article.md --topic "Your topic" --style zara
 python xpost.py generate content/drafts/your_article.md
+python xpost.py auto-img content/drafts/your_article.md --style zara
 python xpost.py validate content/drafts/your_article.md
 python xpost.py parse content/drafts/your_article.md
 ```
 
 `generate` 会从项目 `.env` 或当前 shell 环境变量读取 LLM 配置。
+`auto-img` 会扫描 Markdown 中的 `images/` 占位符，先用文本 LLM 生成插图 brief，再调用 Gemini Flash Image 生成真实图片并写回文章目录。
+其中 `images/cover.png` 使用封面横幅模板，正文 `images/*.png` 使用 isometric 示意图模板。
+Web/API 流程里，文章会统一落到 `xinfo/log/articles/<article_id>/`，其中 `article.json`、`article.md` 和 `images/` 分开管理。
 
 ### Article
 

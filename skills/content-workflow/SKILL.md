@@ -1,6 +1,6 @@
 ---
 name: content-workflow
-description: 引导 gitxPost 的 Markdown 文章工作流：选择写作风格、生成草稿骨架、用 xpost 生成真实文章、按需运行 Antigravity 配图流程、校验并解析 Markdown，并为 X Article 发布做准备。当用户提到写 X 文章、选择 zara 或 tech 或 fun 风格、添加文章配图、准备发布 Markdown 时使用。
+description: 引导 gitxPost 的 Markdown 文章工作流：选择写作风格、生成草稿骨架、用 xpost 生成真实文章、按需运行 Gemini Flash Image / Antigravity 配图流程、校验并解析 Markdown，并为 X Article 发布做准备。当用户提到写 X 文章、选择 zara 或 tech 或 fun 风格、添加文章配图、准备发布 Markdown 时使用。
 ---
 # Content Workflow
 
@@ -10,7 +10,7 @@ description: 引导 gitxPost 的 Markdown 文章工作流：选择写作风格�
 - 用户在问该选哪种 prompt 风格
 - 用户想在发布前先生成 Markdown 文章骨架
 - 用户想把骨架稿补成真实成文
-- 用户想结合 Antigravity 处理文章配图
+- 用户想给文章自动配图，或结合 Antigravity 处理文章配图
 
 ## Style selection
 
@@ -27,6 +27,8 @@ cd /Users/jackwl/Code/gitcode/gitxPost
 source .venv/bin/activate
 python xpost.py init content/drafts/your_article.md --topic "Your topic" --style tech
 ```
+
+文章在 Web/API 流程里会统一落到 `xinfo/log/articles/<article_id>/`，其中 `article.json`、`article.md` 和 `images/` 各自独立。
 
 ### 2. Write against the repo template
 
@@ -50,7 +52,18 @@ python xpost.py generate content/drafts/your_article.md
 - 复制顶部嵌入的 Prompt 区块到 Claude / OpenClaw / Codex
 - 明确要求它只输出最终 Markdown，保留图片路径和文末结构
 
-### 4. Optional: auto-generate images with Antigravity
+### 4. Optional: auto-generate images with Gemini Flash Image
+
+如果当前仓库可直接运行本地配图命令，优先使用：
+
+```bash
+python xpost.py auto-img content/drafts/your_article.md --style zara
+```
+
+该命令会先用文本 LLM 规划配图 brief，再调用 Gemini Flash Image 生成真实图片并写回文章目录。
+其中 `images/cover.png` 走横幅封面图模板，正文占位图则走 clean modern isometric / 示意图模板。
+
+如果本地图像模型不可用、或需要更强的人工视觉控制时，再走 Antigravity 工作流。
 
 在 Antigravity 中执行：
 

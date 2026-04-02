@@ -18,10 +18,20 @@ const props = defineProps({
   articleId: {
     type: String,
     default: ''
+  },
+  imageVersion: {
+    type: String,
+    default: ''
   }
 })
 
 const BACKEND_ORIGIN = 'http://127.0.0.1:8900'
+
+const appendVersion = (url) => {
+  if (!props.imageVersion || !url) return url
+  const version = encodeURIComponent(props.imageVersion)
+  return url.includes('?') ? `${url}&v=${version}` : `${url}?v=${version}`
+}
 
 const resolveImageSrc = (src) => {
   if (!src) return src
@@ -31,23 +41,23 @@ const resolveImageSrc = (src) => {
   }
 
   if (src.startsWith('/images/articles/')) {
-    return `${BACKEND_ORIGIN}${src}`
+    return appendVersion(`${BACKEND_ORIGIN}${src}`)
   }
 
   if (src.startsWith('/images/')) {
-    return `${BACKEND_ORIGIN}${src}`
+    return appendVersion(`${BACKEND_ORIGIN}${src}`)
   }
 
   const normalized = src.replace(/^\.?\//, '')
   if (normalized.startsWith('images/')) {
     if (props.articleId) {
-      return `${BACKEND_ORIGIN}/images/articles/${props.articleId}/${normalized}`
+      return appendVersion(`${BACKEND_ORIGIN}/images/articles/${props.articleId}/${normalized}`)
     }
-    return `${BACKEND_ORIGIN}/${normalized}`
+    return appendVersion(`${BACKEND_ORIGIN}/${normalized}`)
   }
 
   if (normalized.startsWith('uploads/')) {
-    return `${BACKEND_ORIGIN}/${normalized}`
+    return appendVersion(`${BACKEND_ORIGIN}/${normalized}`)
   }
 
   return src

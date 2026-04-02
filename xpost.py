@@ -22,13 +22,18 @@ xpost CLI：面向本地 Agent/自动化的 gitxPost 统一入口。
 所有子命令均输出 JSON，便于 Agent/LLM 解析。
 """
 import argparse
+import base64
+import hashlib
 import json
 import os
 import re
+import random
 import shutil
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -39,6 +44,7 @@ SCRIPTS_DIR = BASE_DIR / "article_tooling" / "scripts"
 PROMPTS_DIR = BASE_DIR / "content" / "prompts"
 XINFO_DIR = BASE_DIR / "xinfo"
 XINFO_LOG_DIR = XINFO_DIR / "log"
+ARTICLES_DIR = XINFO_LOG_DIR / "articles"
 XINFO_DAY_DIR = XINFO_LOG_DIR / "day"
 XINFO_WEEK_DIR = XINFO_LOG_DIR / "week"
 XINFO_RUNTIME_DIR = XINFO_LOG_DIR / "runtime"
@@ -329,6 +335,511 @@ def _strip_markdown_fences(text: str) -> str:
         stripped = re.sub(r"^```[a-zA-Z0-9_-]*\n", "", stripped)
         stripped = re.sub(r"\n```$", "", stripped)
     return stripped.strip()
+
+
+IMAGE_SLOT_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
+
+
+def _normalize_line_text(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").strip())
+
+
+def _extract_markdown_image_slots(markdown: str) -> list[dict]:
+    lines = markdown.splitlines()
+    slots = []
+
+    for line_index, raw_line in enumerate(lines):
+        for match in IMAGE_SLOT_RE.finditer(raw_line):
+            alt = (match.group(1) or "").strip()
+            path = (match.group(2) or "").strip()
+            if not path.startswith("images/"):
+                continue
+
+            context_before = []
+            for idx in range(line_index - 1, max(-1, line_index - 5), -1):
+                candidate = _normalize_line_text(lines[idx])
+                if candidate:
+                    context_before.append(candidate)
+            context_before.reverse()
+
+            context_after = []
+            for idx in range(line_index + 1, min(len(lines), line_index + 5)):
+                candidate = _normalize_line_text(lines[idx])
+                if candidate:
+                    context_after.append(candidate)
+
+            basename = Path(path).name.lower()
+            role = "cover" if basename in {"cover.png", "hero.png", "banner.png"} or "cover" in basename else "inline"
+            slots.append(
+                {
+                    "path": path,
+                    "alt": alt,
+                    "role": role,
+                    "line": line_index + 1,
+                    "context_before": context_before,
+                    "context_after": context_after,
+                    "context": "\n".join(context_before[-2:] + context_after[:2]).strip(),
+                }
+            )
+
+    return slots
+
+
+def _fallback_auto_image_plan(title: str, style: str, slots: list[dict]) -> dict:
+    images = []
+    for slot in slots:
+        basename = Path(slot["path"]).name
+        role = slot["role"]
+        subject = slot["alt"] or title
+        context = slot["context"] or title
+        prompt = _build_image_prompt(title, style, {
+            "role": role,
+            "subject": subject,
+            "scene": context,
+            "caption": subject,
+        })
+
+        images.append(
+            {
+                "path": slot["path"],
+                "filename": basename,
+                "role": role,
+                "subject": subject,
+                "scene": context,
+                "palette": [],
+                "composition": "wide banner" if role == "cover" else "inline illustration",
+                "caption": subject,
+                "prompt": prompt,
+            }
+        )
+
+    return {
+        "images": images,
+    }
+
+
+def _style_visual_phrase(style: str) -> str:
+    return {
+        "zara": "clean editorial style, warm and practical, polished but approachable",
+        "tech": "modern high-tech style, precise, structured, minimal",
+        "fun": "playful and friendly style, energetic, colorful",
+    }.get(style, "clean editorial style")
+
+
+def _style_lighting_phrase(style: str) -> str:
+    return {
+        "zara": "soft studio lighting",
+        "tech": "crisp cinematic lighting",
+        "fun": "bright lively lighting",
+    }.get(style, "soft studio lighting")
+
+
+def _build_image_prompt(title: str, style: str, spec: dict) -> str:
+    role = str(spec.get("role") or "inline").strip().lower()
+    subject = _normalize_line_text(
+        spec.get("subject")
+        or spec.get("caption")
+        or spec.get("scene")
+        or title
+    ) or title
+    scene = _normalize_line_text(
+        spec.get("scene")
+        or spec.get("caption")
+        or title
+    ) or title
+    style_phrase = _style_visual_phrase(style)
+
+    if role == "cover":
+        lighting = _style_lighting_phrase(style)
+        action_phrase = scene if scene else f"illustrating {title}"
+        return (
+            f"A wide banner style futuristic cinematic shot of {subject}, {action_phrase}, "
+            f"{style_phrase}, {lighting}, wide 5:2 aspect ratio, ultra-wide angle, zoomed out, "
+            f"small subject centered, lots of negative space on top and bottom, central composition, "
+            f"essential subject in the middle horizontal strip, safe for cropping, no text."
+        )
+
+    concept = scene if scene else subject
+    return (
+        f"A clean, modern isometric illustration of {concept}, {style_phrase}, white background."
+    )
+
+
+def _build_auto_image_prompt(title: str, style: str, slots: list[dict], prompt_hint: Optional[str]) -> str:
+    slots_json = json.dumps(slots, ensure_ascii=False, indent=2)
+    prompt_hint_text = prompt_hint.strip() if prompt_hint else ""
+    return "\n".join(
+        [
+            "你是文章插图策划师和视觉导演。",
+            "请根据文章内容，为每个 Markdown 图片占位符生成适合 Gemini 图像模型使用的 JSON 方案。",
+            "只输出 JSON，不要解释，不要使用 Markdown 代码围栏。",
+            f"文章标题：{title}",
+            f"文章风格：{style}",
+            f"风格补充 Prompt（可选）：{prompt_hint_text or '无'}",
+            "图片占位符信息：",
+            slots_json,
+            "",
+            "返回 JSON 结构如下：",
+            "{",
+            '  "images": [',
+            "    {",
+            '      "path": "images/cover.png",',
+            '      "role": "cover",',
+            '      "subject": "一句话概括主体",',
+            '      "scene": "场景描述",',
+            '      "palette": ["#1D4ED8", "#38BDF8", "#E2E8F0"],',
+            '      "composition": "wide cinematic banner",',
+            '      "caption": "图片短标题",',
+            '      "prompt": "English or Chinese prompt for Gemini Flash Image"',
+            "    }",
+            "  ]",
+            "}",
+            "",
+            "要求：",
+            "1. cover 图要适合 16:9 横幅，尽量不要包含多余文字。",
+            "2. cover 图优先使用 wide banner 风格，强调横向构图、居中主体、留白充足。",
+            "3. inline 图要适合文章正文插图，表达清晰、易理解，优先使用 clean modern isometric illustration。",
+            "4. palette 最多 3 个主色，优先使用与文章风格匹配的颜色。",
+            "5. prompt 要可执行，描述主体、动作、环境、构图和风格。",
+        ]
+    )
+
+
+def _parse_auto_image_plan(raw_text: str, fallback: dict) -> dict:
+    try:
+        parsed = _parse_json_response(raw_text)
+    except Exception:
+        return fallback
+
+    if not isinstance(parsed, dict):
+        return fallback
+
+    images = parsed.get("images")
+    if not isinstance(images, list) or not images:
+        return fallback
+
+    normalized = []
+    for idx, item in enumerate(images):
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or "").strip()
+        if not path.startswith("images/"):
+            continue
+        role = str(item.get("role") or ("cover" if Path(path).name.lower() == "cover.png" else "inline")).strip()
+        prompt = str(item.get("prompt") or "").strip()
+        if not prompt:
+            continue
+        normalized.append(
+            {
+                "path": path,
+                "filename": Path(path).name,
+                "role": role,
+                "subject": str(item.get("subject") or "").strip(),
+                "scene": str(item.get("scene") or "").strip(),
+                "palette": item.get("palette") if isinstance(item.get("palette"), list) else [],
+                "composition": str(item.get("composition") or "").strip(),
+                "caption": str(item.get("caption") or "").strip(),
+                "prompt": prompt,
+            }
+        )
+
+    return {"images": normalized or fallback.get("images", [])}
+
+
+def _sanitize_image_prompt(prompt: str) -> str:
+    prompt = (prompt or "").strip()
+    replacements = {
+        r"\bbikini\b": "chic summer swimwear",
+        r"\bremove watermark\b": "clean up the corner, remove any text overlay",
+        r"\bdelete watermark\b": "clean up the corner, remove any text overlay",
+        r"\bremove logo\b": "clean up branded elements",
+        r"\bdelete logo\b": "clean up branded elements",
+    }
+    for pattern, replacement in replacements.items():
+        prompt = re.sub(pattern, replacement, prompt, flags=re.IGNORECASE)
+    return prompt
+
+
+def _resolve_image_generation_config(args):
+    api_url = (
+        getattr(args, "image_api_url", None)
+        or getattr(args, "api_url", None)
+        or os.environ.get("XPOST_IMAGE_API_URL")
+        or os.environ.get("XPOST_LLM_FALLBACK_API_URL")
+        or os.environ.get("XPOST_LLM_API_URL")
+        or "http://127.0.0.1:8045/v1"
+    )
+    api_key = (
+        getattr(args, "image_api_key", None)
+        or os.environ.get("XPOST_IMAGE_API_KEY")
+        or os.environ.get("XPOST_LLM_FALLBACK_API_KEY")
+        or os.environ.get("XPOST_LLM_API_KEY")
+    )
+    model = (
+        getattr(args, "image_model", None)
+        or os.environ.get("XPOST_IMAGE_MODEL")
+        or "gemini-3.1-flash-image"
+    )
+    if model.startswith("antigravity/"):
+        model = model.split("/", 1)[1]
+    if not api_key:
+        raise RuntimeError("未配置图像生成 API Key")
+    return {
+        "api_url": api_url,
+        "api_key": api_key,
+        "model": model,
+    }
+
+
+def _call_gemini_image_api(
+    api_url: str,
+    api_key: str,
+    model: str,
+    prompt: str,
+    *,
+    image_path: Optional[Path] = None,
+):
+    endpoint = _openai_chat_completions_url(api_url)
+    if not endpoint:
+        raise RuntimeError("图像生成 API URL 为空")
+
+    if image_path:
+        image_path = Path(image_path).expanduser().resolve()
+        if not image_path.exists():
+            raise RuntimeError(f"输入图片不存在: {image_path}")
+        ext = image_path.suffix.lstrip(".").lower()
+        mime = {"jpg": "jpeg", "jpeg": "jpeg", "png": "png", "webp": "webp", "gif": "gif"}.get(ext, "jpeg")
+        with image_path.open("rb") as f:
+            img_b64 = base64.b64encode(f.read()).decode("utf-8")
+        content = [
+            {"type": "image_url", "image_url": {"url": f"data:image/{mime};base64,{img_b64}"}},
+            {"type": "text", "text": prompt},
+        ]
+    else:
+        content = prompt
+
+    payload = {
+        "model": model,
+        "modalities": ["text", "image"],
+        "messages": [
+            {
+                "role": "user",
+                "content": content,
+            }
+        ],
+    }
+    payload_json = json.dumps(payload, ensure_ascii=False)
+    last_err = None
+    for attempt in range(1, 4):
+        req = urllib.request.Request(
+            endpoint,
+            method="POST",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            data=payload_json.encode("utf-8"),
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=300) as resp:
+                raw = resp.read().decode("utf-8")
+            data = json.loads(raw)
+            err_obj = data.get("error")
+            if err_obj:
+                msg = err_obj.get("message") if isinstance(err_obj, dict) else str(err_obj)
+                raise RuntimeError(f"图像生成 API 返回异常: {msg or raw[:300]}")
+            return data
+        except urllib.error.HTTPError as exc:
+            payload = exc.read().decode("utf-8", errors="replace")
+            if 400 <= exc.code < 500:
+                raise RuntimeError(f"图像生成 API 请求失败 ({exc.code}): {payload}") from exc
+            last_err = RuntimeError(f"图像生成 API 请求失败 ({exc.code}): {payload}")
+        except urllib.error.URLError as exc:
+            last_err = RuntimeError(f"图像生成 API 连接失败: {exc.reason}")
+        except TimeoutError:
+            last_err = RuntimeError("图像生成 API 请求超时")
+
+        if attempt < 3:
+            time.sleep(3)
+
+    if isinstance(last_err, Exception):
+        raise last_err
+    raise RuntimeError("图像生成 API 请求失败")
+
+
+def _extract_generated_image_bytes(data: dict) -> bytes:
+    data = data or {}
+    if isinstance(data, dict):
+        if isinstance(data.get("b64_json"), str) and data["b64_json"].strip():
+            return base64.b64decode(data["b64_json"].strip())
+        if isinstance(data.get("data"), list):
+            first_item = data["data"][0] if data["data"] else None
+            if isinstance(first_item, dict) and isinstance(first_item.get("b64_json"), str) and first_item["b64_json"].strip():
+                return base64.b64decode(first_item["b64_json"].strip())
+            for item in data["data"]:
+                if not isinstance(item, dict):
+                    continue
+                if isinstance(item.get("b64_json"), str) and item["b64_json"].strip():
+                    return base64.b64decode(item["b64_json"].strip())
+    choices = data.get("choices") or []
+    if not choices:
+        raise RuntimeError("图像生成 API 返回无 choices")
+    msg = choices[0].get("message", {}) or {}
+    content = msg.get("content", "")
+
+    def _try_parse_data_uri(url: str) -> Optional[bytes]:
+        if url.startswith("data:image/") and "," in url:
+            return base64.b64decode(url.split(",", 1)[1])
+        return None
+
+    if isinstance(content, list):
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") == "image_url":
+                url = part.get("image_url", {}).get("url", "")
+                image_bytes = _try_parse_data_uri(url)
+                if image_bytes:
+                    return image_bytes
+            if part.get("type") == "text":
+                text = part.get("text", "")
+                match = re.search(r"data:image/\w+;base64,([A-Za-z0-9+/=]+)", text)
+                if match:
+                    return base64.b64decode(match.group(1))
+    elif isinstance(content, str):
+        image_bytes = _try_parse_data_uri(content)
+        if image_bytes:
+            return image_bytes
+        match = re.search(r"data:image/\w+;base64,([A-Za-z0-9+/=]+)", content)
+        if match:
+            return base64.b64decode(match.group(1))
+
+    raise RuntimeError("图像生成 API 返回中未找到图像内容")
+
+
+def _write_generated_image(image_bytes: bytes, out_path: Path):
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_bytes(image_bytes)
+
+
+def _cmd_auto_img(args):
+    md_path = Path(args.md_path).expanduser().resolve()
+    if not md_path.exists():
+        _print_json({"ok": False, "error": "Markdown 文件不存在"})
+        return 1
+
+    raw_markdown = _read_text(md_path)
+    title = (args.topic or _extract_h1_title(raw_markdown) or md_path.stem).strip()
+    style = args.style or "zara"
+    slots = _extract_markdown_image_slots(raw_markdown)
+    if not slots:
+        _print_json(
+            {
+                "ok": True,
+                "md_path": str(md_path),
+                "generated": [],
+                "message": "未找到图片占位符，跳过自动配图",
+            }
+        )
+        return 0
+
+    cfg = _resolve_generate_config(args)
+    prompt_hint = _load_prompt(style)
+    plan = _fallback_auto_image_plan(title, style, slots)
+    llm_used = False
+
+    if cfg.get("llm_chain"):
+        try:
+            prompt = _build_auto_image_prompt(title, style, slots, prompt_hint)
+            response, llm_meta = _call_llm_with_fallback(
+                cfg["llm_chain"],
+                prompt,
+                max_tokens=2800,
+                return_debug=True,
+            )
+            plan = _parse_auto_image_plan(response["text"], plan)
+            llm_used = True
+            llm_route = llm_meta.get("route")
+            llm_model = llm_meta.get("model")
+        except Exception as exc:
+            llm_route = None
+            llm_model = None
+            plan = _fallback_auto_image_plan(title, style, slots)
+            plan["warning"] = f"LLM 规划失败，已使用本地兜底方案: {exc}"
+    else:
+        llm_route = None
+        llm_model = None
+
+    try:
+        image_cfg = _resolve_image_generation_config(args)
+    except Exception as exc:
+        _print_json(
+            {
+                "ok": False,
+                "md_path": str(md_path),
+                "title": title,
+                "style": style,
+                "llm_used": llm_used,
+                "llm_route": llm_route,
+                "llm_model": llm_model,
+                "error": str(exc),
+            }
+        )
+        return 1
+
+    generated = []
+    warnings = []
+    article_root = md_path.parent
+    if article_root == ARTICLES_DIR and md_path.stem:
+        article_root = ARTICLES_DIR / md_path.stem
+    for spec in plan.get("images", []):
+        rel_path = str(spec.get("path") or "").strip()
+        if not rel_path.startswith("images/"):
+            warnings.append(f"跳过无效路径: {rel_path}")
+            continue
+        out_path = article_root / rel_path
+        try:
+            image_prompt = _sanitize_image_prompt(_build_image_prompt(title, style, spec))
+            if not image_prompt:
+                raise RuntimeError("图像提示词为空")
+            image_result = _call_gemini_image_api(
+                image_cfg["api_url"],
+                image_cfg["api_key"],
+                image_cfg["model"],
+                image_prompt,
+            )
+            image_bytes = _extract_generated_image_bytes(image_result)
+            _write_generated_image(image_bytes, out_path)
+            generated.append(
+                {
+                    "path": str(out_path),
+                    "relative_path": rel_path,
+                    "role": spec.get("role"),
+                    "caption": spec.get("caption"),
+                    "prompt": spec.get("prompt"),
+                    "image_model": image_cfg["model"],
+                }
+            )
+        except Exception as exc:
+            warnings.append(f"{rel_path} 生成失败: {exc}")
+
+    ok = bool(generated)
+    _print_json(
+        {
+            "ok": ok,
+            "md_path": str(md_path),
+            "title": title,
+            "style": style,
+            "llm_used": llm_used,
+            "llm_route": llm_route,
+            "llm_model": llm_model,
+            "image_model": image_cfg["model"],
+            "generated": generated,
+            "warnings": warnings,
+            "plan": plan,
+        }
+    )
+    return 0 if ok else 1
 
 
 def _resolve_generate_config(args):
@@ -2391,6 +2902,17 @@ def main():
     p_generate.add_argument("--api-url", help="LLM messages API URL override")
     p_generate.add_argument("--max-tokens", type=int, default=9000, help="LLM max tokens for generation")
     p_generate.set_defaults(func=_cmd_generate)
+
+    p_auto_img = sub.add_parser("auto-img", help="Generate article images for Markdown placeholders")
+    p_auto_img.add_argument("md_path", help="Markdown path")
+    p_auto_img.add_argument("--style", choices=sorted(STYLE_PROMPTS.keys()), help="Prompt style override")
+    p_auto_img.add_argument("--topic", help="Topic override for visual planning")
+    p_auto_img.add_argument("--model", help="LLM model override")
+    p_auto_img.add_argument("--api-url", help="LLM messages API URL override")
+    p_auto_img.add_argument("--image-model", help="Image model override")
+    p_auto_img.add_argument("--image-api-url", help="Image API URL override")
+    p_auto_img.add_argument("--image-api-key", help="Image API key override")
+    p_auto_img.set_defaults(func=_cmd_auto_img)
 
     p_validate = sub.add_parser("validate", help="Validate markdown format")
     p_validate.add_argument("md_path", help="Markdown path")

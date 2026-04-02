@@ -8,6 +8,7 @@
       :style="article.style || 'zara'"
       :step="article.step"
       :status="article.status"
+      :focus-title="article.title === '未命名文章'"
       :is-generating="isGenerating"
       @update:title="handleTitleUpdate"
       @update:style="handleStyleUpdate"
@@ -44,7 +45,11 @@
           </div>
 
           <div class="editor-pane">
-            <MarkdownPreview :content="content" :article-id="article.id" />
+            <MarkdownPreview
+              :content="content"
+              :article-id="article.id"
+              :image-version="article.updated_at || ''"
+            />
           </div>
         </div>
       </div>
@@ -113,6 +118,14 @@ const handleWebSocketUpdate = (data) => {
         step: 'content'
       }
       appStore.notify('全文生成成功，编辑器已同步刷新', 'success')
+      break
+
+    case 'article_images_generated':
+      article.value = {
+        ...article.value,
+        updated_at: data.data.updated_at || article.value.updated_at
+      }
+      appStore.notify('文章图片已生成并刷新预览', 'success')
       break
       
     case 'article_published':

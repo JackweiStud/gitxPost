@@ -234,6 +234,10 @@ export function useWorkflowOrchestrator(articleIdSource, options = {}) {
         pushLog('后端开始扩写正文', 'running')
         break
 
+      case 'article_images_generating':
+        pushLog('正文已完成，正在自动生成配图', 'running')
+        break
+
       case 'article_content_progress': {
         if (currentStep.value !== 'content') break
         const stageText = contentStageText(payloadProgress)
@@ -249,6 +253,21 @@ export function useWorkflowOrchestrator(articleIdSource, options = {}) {
         setGeneratingState('complete', 100)
         canCancel.value = false
         pushLog('正文已生成并同步回编辑器', 'done')
+        break
+
+      case 'article_images_generated': {
+        const generatedCount = Number(data.data?.generated_count || 0)
+        pushLog(
+          generatedCount > 0
+            ? `自动配图完成，已写入 ${generatedCount} 张图片`
+            : '自动配图完成',
+          'done'
+        )
+        break
+      }
+
+      case 'article_images_error':
+        pushLog(`自动配图失败：${data.data?.error || '未知错误'}`, 'error')
         break
 
       case 'article_error':

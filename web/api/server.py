@@ -8,6 +8,7 @@ import asyncio
 import json
 import os
 import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -976,13 +977,128 @@ def _generate_article_id():
     return f"art_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}"
 
 
+def _article_root(article_id: str) -> Path:
+    return ARTICLES_DIR / article_id
+
+
+def _article_images_dir(article_id: str) -> Path:
+    return _article_root(article_id) / "images"
+
+
+def _article_json_path(article_id: str) -> Path:
+    return _article_root(article_id) / "article.json"
+
+
+def _article_md_path(article_id: str) -> Path:
+    return _article_root(article_id) / "article.md"
+
+
+def _legacy_article_json_path(article_id: str) -> Path:
+    return ARTICLES_DIR / f"{article_id}.json"
+
+
+def _legacy_article_md_path(article_id: str) -> Path:
+    return ARTICLES_DIR / f"{article_id}.md"
+
+
+def _legacy_article_backup_paths(article_id: str) -> list[Path]:
+    return sorted(ARTICLES_DIR.glob(f"{article_id}.skeleton.*.md"))
+
+
+def _extract_markdown_image_paths(markdown: str) -> list[str]:
+    return re.findall(r"!\[[^\]]*\]\(([^)]+)\)", markdown or "")
+
+
+def _ensure_article_storage(article_id: str) -> Path:
+    root = _article_root(article_id)
+    root.mkdir(parents=True, exist_ok=True)
+    _article_images_dir(article_id).mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _migrate_legacy_article_storage(article_id: str):
+    """将旧的根目录文章文件迁移到每篇文章独立目录。"""
+    root = _ensure_article_storage(article_id)
+    legacy_json = _legacy_article_json_path(article_id)
+    legacy_md = _legacy_article_md_path(article_id)
+    new_json = _article_json_path(article_id)
+    new_md = _article_md_path(article_id)
+
+    if legacy_json.exists():
+        if not new_json.exists():
+            shutil.move(str(legacy_json), str(new_json))
+        else:
+            legacy_json.unlink()
+
+    if legacy_md.exists():
+        if not new_md.exists():
+            shutil.move(str(legacy_md), str(new_md))
+        else:
+            legacy_md.unlink()
+
+    for legacy_backup in _legacy_article_backup_paths(article_id):
+        target = root / legacy_backup.name
+        if not target.exists():
+            shutil.move(str(legacy_backup), str(target))
+        else:
+            legacy_backup.unlink()
+
+    markdown_source = None
+    if new_md.exists():
+        markdown_source = new_md.read_text("utf-8")
+    elif legacy_md.exists():
+        markdown_source = legacy_md.read_text("utf-8")
+
+    if not markdown_source:
+        return
+
+    shared_images_dir = ARTICLES_DIR / "images"
+    if not shared_images_dir.exists():
+        return
+
+    for rel_path in _extract_markdown_image_paths(markdown_source):
+        normalized = rel_path.strip().lstrip("./")
+        if not normalized.startswith("images/"):
+            continue
+
+        relative_name = normalized[len("images/") :]
+        if not relative_name:
+            continue
+
+        src = shared_images_dir / relative_name
+        dst = root / normalized
+        if src.is_file() and not dst.exists():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+
+
+def _migrate_existing_articles_storage():
+    article_ids: set[str] = set()
+    for json_file in ARTICLES_DIR.glob("*.json"):
+        article_ids.add(json_file.stem)
+    for md_file in ARTICLES_DIR.glob("*.md"):
+        if ".skeleton." in md_file.name:
+            article_ids.add(md_file.name.split(".skeleton.", 1)[0])
+        else:
+            article_ids.add(md_file.stem)
+
+    for article_id in sorted(article_ids):
+        _migrate_legacy_article_storage(article_id)
+
+
 def _read_article(article_id: str) -> Optional[dict]:
     """读取文章 JSON 元数据"""
-    json_path = ARTICLES_DIR / f"{article_id}.json"
+    _migrate_legacy_article_storage(article_id)
+
+    json_path = _article_json_path(article_id)
+    if not json_path.exists():
+        json_path = _legacy_article_json_path(article_id)
     if not json_path.exists():
         return None
     try:
-        return json.loads(json_path.read_text("utf-8"))
+        data = json.loads(json_path.read_text("utf-8"))
+        data["md_path"] = str(_article_md_path(article_id))
+        return data
     except Exception as e:
         print(f"⚠️  读取文章元数据失败 {article_id}: {e}")
         return None
@@ -992,12 +1108,14 @@ def _write_article(article_id: str, data: dict):
     """原子性写入文章 JSON 元数据"""
     from datetime import timezone
     
-    json_path = ARTICLES_DIR / f"{article_id}.json"
+    _ensure_article_storage(article_id)
+    data["md_path"] = str(_article_md_path(article_id))
+    json_path = _article_json_path(article_id)
     temp_path = json_path.with_suffix(".json.tmp")
     
     try:
         # 确保目录存在
-        ARTICLES_DIR.mkdir(parents=True, exist_ok=True)
+        _ensure_article_storage(article_id)
         
         # 写入临时文件
         temp_path.write_text(
@@ -1016,7 +1134,11 @@ def _write_article(article_id: str, data: dict):
 
 def _read_article_content(article_id: str) -> Optional[str]:
     """读取文章 Markdown 内容"""
-    md_path = ARTICLES_DIR / f"{article_id}.md"
+    _migrate_legacy_article_storage(article_id)
+
+    md_path = _article_md_path(article_id)
+    if not md_path.exists():
+        md_path = _legacy_article_md_path(article_id)
     if not md_path.exists():
         return None
     try:
@@ -1028,7 +1150,8 @@ def _read_article_content(article_id: str) -> Optional[str]:
 
 def _write_article_content(article_id: str, content: str):
     """原子性写入文章 Markdown 内容"""
-    md_path = ARTICLES_DIR / f"{article_id}.md"
+    _ensure_article_storage(article_id)
+    md_path = _article_md_path(article_id)
     temp_path = md_path.with_suffix(".md.tmp")
     
     try:
@@ -1053,9 +1176,18 @@ def _list_articles() -> list[dict]:
         return []
     
     articles = []
+    article_ids: set[str] = set()
+    for article_dir in ARTICLES_DIR.iterdir():
+        if article_dir.is_dir() and (article_dir / "article.json").exists():
+            article_ids.add(article_dir.name)
     for json_file in ARTICLES_DIR.glob("*.json"):
+        article_ids.add(json_file.stem)
+
+    for article_id in sorted(article_ids):
         try:
-            data = json.loads(json_file.read_text("utf-8"))
+            data = _read_article(article_id)
+            if not data:
+                continue
             # 只返回基本信息，不包含 content
             articles.append({
                 "id": data.get("id"),
@@ -1067,7 +1199,7 @@ def _list_articles() -> list[dict]:
                 "published_at": data.get("published_at"),
             })
         except Exception as e:
-            print(f"⚠️  读取文章列表时跳过损坏文件 {json_file.name}: {e}")
+            print(f"⚠️  读取文章列表时跳过损坏文件 {article_id}: {e}")
             continue
     
     # 按 updated_at 倒序排列
@@ -1271,6 +1403,8 @@ async def _execute_article_task(task: dict) -> dict:
 @app.on_event("startup")
 async def startup_event():
     """启动时检查是否有待处理任务"""
+    _migrate_existing_articles_storage()
+
     data = _read_publish_queue()
     queue = data.get("queue", [])
     scheduled_tasks = [t for t in queue if t.get("status") == "scheduled"]
@@ -1634,7 +1768,7 @@ async def create_article(req: CreateArticleRequest):
         "published_at": None,
         "outline": "",
         "content": "",
-        "md_path": str(ARTICLES_DIR / f"{article_id}.md"),
+        "md_path": str(_article_md_path(article_id)),
         "publish_result": None
     }
     
@@ -1748,15 +1882,20 @@ async def delete_article(article_id: str):
         raise HTTPException(404, detail=f"文章不存在: {article_id}")
     
     # 删除 JSON 元数据文件
-    json_path = ARTICLES_DIR / f"{article_id}.json"
-    md_path = ARTICLES_DIR / f"{article_id}.md"
+    json_path = _article_json_path(article_id)
+    md_path = _article_md_path(article_id)
+    legacy_json_path = _legacy_article_json_path(article_id)
+    legacy_md_path = _legacy_article_md_path(article_id)
     
     try:
-        if json_path.exists():
-            json_path.unlink()
-        
-        if md_path.exists():
-            md_path.unlink()
+        if _article_root(article_id).exists():
+            shutil.rmtree(_article_root(article_id))
+        for path in [json_path, md_path, legacy_json_path, legacy_md_path]:
+            if path.exists():
+                path.unlink()
+        for backup in _legacy_article_backup_paths(article_id):
+            if backup.exists():
+                backup.unlink()
     except Exception as e:
         raise HTTPException(500, detail=f"删除文章失败: {str(e)}")
     
@@ -1802,7 +1941,7 @@ async def generate_article_outline(article_id: str):
     if not title:
         raise HTTPException(400, detail="文章标题为空，无法生成骨架")
     
-    md_path = ARTICLES_DIR / f"{article_id}.md"
+    md_path = _article_md_path(article_id)
     
     # 立即返回 202 Accepted
     # 启动后台任务
@@ -1882,7 +2021,7 @@ async def generate_article_content(article_id: str):
     # if article.get("step") != "outline":
     #     raise HTTPException(400, detail=f"当前步骤为 {article['step']}，无法生成全文")
     
-    md_path = ARTICLES_DIR / f"{article_id}.md"
+    md_path = _article_md_path(article_id)
     
     # 确保 Markdown 文件存在
     if not md_path.exists():
@@ -1977,7 +2116,7 @@ async def auto_generate_article(article_id: str, style: str = "zara"):
     if not title:
         raise HTTPException(400, detail="文章标题为空，无法生成")
     
-    md_path = ARTICLES_DIR / f"{article_id}.md"
+    md_path = _article_md_path(article_id)
     
     # 立即返回 202 Accepted
     # 启动后台任务
@@ -2021,7 +2160,7 @@ async def upload_article_image(article_id: str, file: UploadFile = File(...)):
         raise HTTPException(400, detail=f"不支持的文件类型: {file.content_type}，仅支持 PNG, JPEG, GIF, WebP")
     
     # 创建图片目录
-    images_dir = ARTICLES_DIR / article_id / "images"
+    images_dir = _article_images_dir(article_id)
     images_dir.mkdir(parents=True, exist_ok=True)
     
     # 生成唯一文件名（使用时间戳）
@@ -2071,14 +2210,17 @@ async def serve_article_image(article_id: str, image_path: str):
     1. 手动上传：/images/articles/<article_id>/<filename>
     2. 生成内容相对路径：/images/articles/<article_id>/images/<filename>
     """
-    article_root = ARTICLES_DIR / article_id
-    if not article_root.exists():
+    article = _read_article(article_id)
+    if article is None:
         raise HTTPException(404, detail=f"文章不存在: {article_id}")
 
     normalized_path = image_path.lstrip("/")
+    article_root = _article_root(article_id)
     candidates = [
         article_root / normalized_path,
         article_root / "images" / normalized_path,
+        ARTICLES_DIR / normalized_path,
+        ARTICLES_DIR / "images" / normalized_path,
     ]
 
     for candidate in candidates:
@@ -2102,7 +2244,7 @@ async def publish_article(article_id: str):
     # if article.get("step") not in ["content", "preview"]:
     #     raise HTTPException(400, detail=f"当前步骤为 {article['step']}，无法发布")
     
-    md_path = ARTICLES_DIR / f"{article_id}.md"
+    md_path = _article_md_path(article_id)
     
     # 确保 Markdown 文件存在
     if not md_path.exists():
@@ -2196,6 +2338,49 @@ async def _auto_generate_background(article_id: str, title: str, md_path: str, s
             _write_article(article_id, article)
         
         # 广播全文生成完成
+        await _broadcast_article_update("article_images_generating", article_id, {
+            "step": "images",
+            "progress": 90
+        })
+
+        image_result = await _run_xpost("auto-img", md_path, "--style", style, "--topic", title, timeout=300)
+        if image_result.get("ok"):
+            image_generated_at = datetime.now(timezone.utc).isoformat()
+            article = _read_article(article_id)
+            if article:
+                article["updated_at"] = image_generated_at
+                generated_images = []
+                for item in image_result.get("generated", []):
+                    rel_path = str(item.get("relative_path") or "").strip()
+                    if not rel_path:
+                        continue
+                    filename = Path(rel_path).name
+                    if filename:
+                        generated_images.append(filename)
+
+                if generated_images:
+                    existing_images = article.get("images", [])
+                    if not isinstance(existing_images, list):
+                        existing_images = []
+                    article["images"] = list(dict.fromkeys([*existing_images, *generated_images]))
+
+                _write_article(article_id, article)
+
+            await _broadcast_article_update("article_images_generated", article_id, {
+                "step": "images",
+                "generated_count": len(image_result.get("generated", [])),
+                "warnings": image_result.get("warnings", []),
+                "progress": 100,
+                "updated_at": image_generated_at,
+                "generated": image_result.get("generated", [])
+            })
+        else:
+            await _broadcast_article_update("article_images_error", article_id, {
+                "error": image_result.get("error", "自动配图失败"),
+                "step": "images",
+                "result": image_result
+            })
+
         await _broadcast_article_update("article_content_generated", article_id, {
             "content": content,
             "step": "content",

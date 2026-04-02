@@ -4,7 +4,7 @@
 
 - Markdown 创作与模板
 - 多风格 Prompt
-- Antigravity 自动配图工作流
+- Gemini Flash Image 自动配图工作流
 - X Articles 长文发布
 - LLM 生成真实文章正文
 - X Post 短帖发布
@@ -18,6 +18,16 @@
 
 - 手工使用 CLI
 - 作为 Agent / Skill / 自动化系统的本地执行后端
+
+## 文章存储结构
+
+文章现在统一存放在 `xinfo/log/articles/<article_id>/` 下，每篇文章独立一个目录，典型结构是：
+
+- `article.json`：文章元数据
+- `article.md`：文章正文
+- `images/`：该文章的配图文件
+
+旧的平铺文件会在服务启动时自动迁移到新结构里。
 
 ## 当前真实状态
 
@@ -85,11 +95,15 @@ XPOST_LLM_API_KEY=your_tokenmax_api_key
 XPOST_LLM_API_URL=https://tokenmax.vip/v1/messages
 XPOST_LLM_MODEL=claude-sonnet-4-6
 XPOST_RADAR_LLM_MODEL=claude-opus-4-6
+XPOST_IMAGE_API_URL=http://127.0.0.1:8045/v1
+XPOST_IMAGE_API_KEY=sk-your-key
+XPOST_IMAGE_MODEL=gemini-3.1-flash-image
 ```
 
 说明：
 
 - `xpost generate` 默认读取 `XPOST_LLM_*`
+- `xpost auto-img` 默认读取 `XPOST_IMAGE_*`；未单独配置时会回退到 `XPOST_LLM_FALLBACK_*`
 - `xpost radar-daily` / `xpost radar-weekly` 默认读取 `XPOST_RADAR_LLM_MODEL`，未设置时回退到 `XPOST_LLM_MODEL`
 - 若你已经手动 `export` 了同名环境变量，显式环境变量优先生效
 - `.env` 已加入 `.gitignore`，不会进入仓库
@@ -237,13 +251,28 @@ Prompt 使用说明见：
 
 - `content/prompt-guide.md`
 
-### 6. 用 Antigravity 自动配图
+### 6. 自动配图
+
+本地自动配图命令：
+
+```bash
+xpost auto-img content/drafts/your_article.md --style zara
+```
+
+说明：
+
+- 该命令会扫描 Markdown 中的 `images/*.png` 占位符
+- `images/cover.png` 会使用横幅封面图模板，强调 wide banner、居中主体、充足留白
+- 其他 `images/*.png` 会使用正文示意图模板，强调 clean modern isometric illustration
+- 会先使用文本 LLM 生成配图 brief，再调用 Gemini Flash Image 生成真实图片
+- 图片会写回文章对应目录下的 `images/`
+- `xpost generate` + `xpost auto-img` 可以组成完整的自动成文闭环
 
 工作流文件：
 
 - `.agent/workflows/auto-imgByMdCn.md`
 
-在 Antigravity 对话中执行：
+如果你还想在 Antigravity 里手工跑这条工作流，也可以继续使用：
 
 ```bash
 /auto-imgByMdCn.md content/drafts/your_article.md
@@ -253,7 +282,7 @@ Prompt 使用说明见：
 
 - 这是 Antigravity 集成能力
 - 依赖 Antigravity 自身的 workflow 运行环境
-- 不属于本仓库内可完全独立自测的脚本能力
+- 仍然可以作为自动配图的人工兜底路径
 
 ### 7. 最小闭环：从主题到发布 Article
 
@@ -273,7 +302,13 @@ xpost generate content/drafts/your_article.md
 
 如果你更想手工写作，也可以改为让 Claude / OpenClaw / Codex 基于顶部 Prompt 生成完整正文，覆盖模板占位内容
 
-1. 在 Antigravity 中执行：
+1. 自动配图：
+
+```bash
+xpost auto-img content/drafts/your_article.md --style zara
+```
+
+或者继续在 Antigravity 中执行：
 
 ```bash
 /auto-imgByMdCn.md content/drafts/your_article.md

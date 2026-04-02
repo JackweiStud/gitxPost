@@ -5,6 +5,7 @@
     </button>
     
     <input 
+      ref="titleInputRef"
       v-model="localTitle" 
       class="title-input" 
       @blur="saveTitle"
@@ -36,7 +37,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 
 const props = defineProps({
@@ -58,22 +59,27 @@ const props = defineProps({
     default: 'title',
     validator: (value) => ['title', 'outline', 'content', 'preview'].includes(value)
   },
-  status: {
-    type: String,
-    default: 'draft',
-    validator: (value) => ['draft', 'published'].includes(value)
-  },
-  isGenerating: {
-    type: Boolean,
-    default: false
-  }
-})
+    status: {
+      type: String,
+      default: 'draft',
+      validator: (value) => ['draft', 'published'].includes(value)
+    },
+    focusTitle: {
+      type: Boolean,
+      default: false
+    },
+    isGenerating: {
+      type: Boolean,
+      default: false
+    }
+  })
 
 const emit = defineEmits(['update:title', 'update:style', 'save'])
 
 const router = useRouter()
 const localTitle = ref(props.title)
 const localStyle = ref(props.style)
+const titleInputRef = ref(null)
 
 // 步骤标签映射
 const stepLabel = computed(() => {
@@ -103,6 +109,25 @@ watch(() => props.title, (newTitle) => {
 
 watch(() => props.style, (newStyle) => {
   localStyle.value = newStyle
+})
+
+const focusTitleInput = async () => {
+  if (!props.focusTitle) return
+
+  await nextTick()
+  const input = titleInputRef.value
+  if (input) {
+    input.focus()
+    if (typeof input.select === 'function') {
+      input.select()
+    }
+  }
+}
+
+watch(() => props.focusTitle, (value) => {
+  if (value) {
+    focusTitleInput()
+  }
 })
 
 // 保存标题
@@ -162,6 +187,8 @@ onMounted(() => {
   if (savedStyle && ['zara', 'tech', 'fun'].includes(savedStyle) && !props.style) {
     localStyle.value = savedStyle
   }
+
+  focusTitleInput()
 })
 </script>
 
