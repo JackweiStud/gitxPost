@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updated_at": "2026-03-29T21:39:05.472814",
+  "updated_at": "2026-04-07T09:08:44.070503",
   "accounts": [
     {
       "handle": "dashen_wang",
@@ -128,8 +128,9 @@
     {
       "handle": "ylecun",
       "note": "Yann LeCun，暂时移除（nitter 持续无法抓取）",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-04-03"
     },
     {
       "handle": "karpathy",
@@ -164,8 +165,9 @@
     {
       "handle": "paulg",
       "note": "Paul Graham，Y Combinator 联合创始人",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-04-03"
     },
     {
       "handle": "naval",
@@ -182,8 +184,9 @@
     {
       "handle": "jack",
       "note": "Jack Dorsey，前 Twitter CEO，现专注于去中心化 AI 协议",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-04-03"
     },
     {
       "handle": "BillGates",
@@ -658,8 +661,9 @@
     {
       "handle": "danese60920",
       "note": "OpenClaw ｜｜ SUPPORT ✪，The Al that does things. Emails, calendar, home automatio...",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-04-03"
     },
     {
       "handle": "searchcloudone",
@@ -676,8 +680,9 @@
     {
       "handle": "steipete",
       "note": "Peter Steinberger，Polyagentmorous ClawFather. Came back from retirement to ...",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-04-03"
     },
     {
       "handle": "moltbook",
@@ -882,8 +887,9 @@
     {
       "handle": "Microsoft",
       "note": "Microsoft，We're on a mission to empower every person and every orga...",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-04-03"
     },
     {
       "handle": "akokoi1",
@@ -1260,8 +1266,9 @@
     {
       "handle": "shesjuliez",
       "note": "Julie Zhu，Design Lead @. Previously Senior Designer @ Alibaba. Poli...",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-04-03"
     },
     {
       "handle": "qin_ue",
@@ -1386,8 +1393,9 @@
     {
       "handle": "atulkumarzz",
       "note": "Atul Kumar，Influencer Marketing biz: atulhx@gmail.com -",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-04-07"
     },
     {
       "handle": "dotey",
@@ -1434,8 +1442,9 @@
     {
       "handle": "minchoi",
       "note": "Min Choi，Building with AI. Sharing what's wild, what's practical, ...",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-04-07"
     },
     {
       "handle": "amasad",
@@ -1476,8 +1485,9 @@
     {
       "handle": "nealtaparia",
       "note": "Neal Taparia，Entrepreneur & Investor ｜ I discuss working less and doin...",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-04-03"
     },
     {
       "handle": "punk2898",
@@ -1586,6 +1596,24 @@
       "note": "推荐人：@miramurati",
       "status": "active",
       "added_at": "2026-01-01"
+    },
+    {
+      "handle": "contextkingceo",
+      "note": "周报推荐关注",
+      "status": "active",
+      "added_at": "2026-04-03"
+    },
+    {
+      "handle": "bcherny",
+      "note": "周报推荐关注",
+      "status": "active",
+      "added_at": "2026-04-03"
+    },
+    {
+      "handle": "joshwoodward",
+      "note": "周报推荐关注",
+      "status": "active",
+      "added_at": "2026-04-03"
     }
   ]
 }

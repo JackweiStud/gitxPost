@@ -2149,26 +2149,28 @@ def _cmd_radar_daily(args):
     status = summary.get("status")
     preview = summary.get("new_ideas_preview", [])
 
-    # ── 过滤非当天推文，减少 LLM token 消耗 ──────────────────────
+    # ── 过滤非近期推文，减少 LLM token 消耗 ──────────────────────
     # RSS pub_date 格式为 RFC 2822: "Wed, 29 Mar 2026 21:29:31 GMT"
-    # 新增账号首次扫描会涌入大量历史推文，这里只保留当天的
+    # 新增账号首次扫描会涌入大量历史推文，这里只保留过去 24 小时的（滑动窗口）
     from email.utils import parsedate_to_datetime as _parse_rfc2822
-    _today_str_val = datetime.now().strftime("%Y-%m-%d")
-    _today_preview = []
+    from datetime import timezone as _tz, timedelta as _td
+    _now_utc = datetime.now(_tz.utc)
+    _cutoff_utc = _now_utc - _td(hours=24)
+    _recent_preview = []
     _skipped_old = 0
     for _item in preview:
         try:
             _dt = _parse_rfc2822(_item.get("time", ""))
-            if _dt.strftime("%Y-%m-%d") == _today_str_val:
-                _today_preview.append(_item)
+            if _dt >= _cutoff_utc:
+                _recent_preview.append(_item)
             else:
                 _skipped_old += 1
         except Exception:
-            _today_preview.append(_item)  # 解析失败的保留，不丢数据
-    if _today_preview:
-        preview = _today_preview
+            _recent_preview.append(_item)  # 解析失败的保留，不丢数据
+    if _recent_preview:
+        preview = _recent_preview
         if _skipped_old:
-            print(f"  📅 日报过滤: 保留当天 {len(preview)} 条, 跳过历史 {_skipped_old} 条")
+            print(f"  📅 日报过滤: 保留近24h {len(preview)} 条, 跳过历史 {_skipped_old} 条")
     # 过滤后为空则保留原始 preview（兜底：首次使用/跨天场景）
     # ── 过滤结束 ──────────────────────────────────────────────
 
