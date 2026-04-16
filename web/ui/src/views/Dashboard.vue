@@ -98,6 +98,17 @@
           <div class="stat-label">粉丝数</div>
         </div>
       </div>
+      <div class="stat-card" @click="$router.push('/followers')" style="cursor: pointer;">
+        <div class="stat-icon stat-icon-orange">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value">{{ followersData.activity }}</div>
+          <div class="stat-label">24h 活动</div>
+        </div>
+      </div>
     </div>
 
     <!-- Pipeline Progress -->
@@ -402,19 +413,20 @@ const lastUpdateText = computed(() => {
 // 计算粉丝数据
 const followersData = computed(() => {
   if (!followers.value?.records || followers.value.records.length === 0) {
-    return { count: '--', change: 0, changeText: '' }
+    return { count: '--', change: 0, changeText: '', activity: '--' }
   }
   
-  const records = followers.value.records
-  const latest = records[0]
+  const records = [...followers.value.records].sort((a, b) => a.date.localeCompare(b.date))
+  const latest = records[records.length - 1]
   const count = latest.followers || 0
+  const activity = latest.activity_24h ?? '--'
   
   // 计算变化（相比前一天）
   let change = 0
   let changeText = ''
   
   if (records.length > 1) {
-    const previous = records[1]
+    const previous = records[records.length - 2]
     change = count - (previous.followers || 0)
     
     if (change > 0) {
@@ -426,7 +438,7 @@ const followersData = computed(() => {
     }
   }
   
-  return { count, change, changeText }
+  return { count, change, changeText, activity }
 })
 
 async function loadData() {
@@ -733,7 +745,7 @@ onUnmounted(stopTimer)
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 14px;
   margin-bottom: 24px;
 }
@@ -766,6 +778,7 @@ onUnmounted(stopTimer)
 .stat-icon-amber { background: var(--accent-amber-dim); color: var(--accent-amber); }
 .stat-icon-purple { background: var(--accent-purple-dim); color: var(--accent-purple); }
 .stat-icon-red { background: var(--accent-red-dim); color: var(--accent-red); }
+.stat-icon-orange { background: rgba(249, 115, 22, 0.12); color: #f97316; }
 
 .stat-value {
   font-size: 18px;
@@ -1027,6 +1040,9 @@ onUnmounted(stopTimer)
   opacity: 0.8;
 }
 
+@media (max-width: 1200px) {
+  .stats-grid { grid-template-columns: repeat(3, 1fr); }
+}
 @media (max-width: 900px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .two-col { grid-template-columns: 1fr; }

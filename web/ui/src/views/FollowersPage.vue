@@ -41,6 +41,18 @@
           <div class="stat-label">Following</div>
         </div>
       </div>
+      <div class="stat-card stat-activity">
+        <div class="stat-icon-wrap activity">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <div class="stat-body">
+          <div class="stat-value">{{ latestRecord.activity_24h ?? '—' }}</div>
+          <div class="stat-label">24h 活动</div>
+        </div>
+        <div class="stat-change" v-if="activityChange !== null" :class="activityChangeClass">
+          {{ activityChange > 0 ? '+' : '' }}{{ activityChange }}
+        </div>
+      </div>
       <div class="stat-card stat-records">
         <div class="stat-icon-wrap records">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
@@ -65,7 +77,21 @@
     <div class="card chart-card" v-if="records.length >= 2">
       <div class="card-header">
         <h3>粉丝趋势</h3>
-        <span class="chart-range">共 {{ records.length }} 天</span>
+        <div class="chart-controls">
+          <div class="range-buttons">
+            <button 
+              v-for="r in rangeOptions" :key="r.value"
+              class="range-btn" 
+              :class="{ active: selectedRange === r.value }"
+              @click="selectedRange = r.value"
+            >{{ r.label }}</button>
+          </div>
+          <div class="chart-legend">
+            <span class="legend-item legend-followers"><span class="legend-dot"></span>粉丝</span>
+            <span class="legend-item legend-activity"><span class="legend-dot"></span>24h活动</span>
+          </div>
+        </div>
+        <span class="chart-range">共 {{ filteredRecords.length }} 天</span>
       </div>
       <div class="chart-container">
         <svg :viewBox="`0 0 ${chartWidth} ${chartHeight}`" class="trend-chart">
@@ -73,30 +99,49 @@
           <line v-for="y in gridLinesY" :key="'g'+y.val"
             :x1="chartPadLeft" :y1="y.y" :x2="chartWidth - chartPadRight" :y2="y.y"
             class="grid-line" />
-          <!-- Y axis labels -->
+          <!-- Left Y axis labels (Followers) -->
           <text v-for="y in gridLinesY" :key="'l'+y.val"
-            :x="chartPadLeft - 8" :y="y.y + 4" class="axis-label" text-anchor="end">{{ y.val }}</text>
+            :x="chartPadLeft - 8" :y="y.y + 4" class="axis-label axis-left" text-anchor="end">{{ y.val }}</text>
+          <!-- Right Y axis labels (Activity) -->
+          <text v-for="y in gridLinesYActivity" :key="'r'+y.val"
+            :x="chartWidth - chartPadRight + 8" :y="y.y + 4" class="axis-label axis-right" text-anchor="start">{{ y.val }}</text>
           <!-- X axis labels -->
           <text v-for="(label, i) in xLabels" :key="'x'+i"
             :x="label.x" :y="chartHeight - 4" class="axis-label" text-anchor="middle">{{ label.text }}</text>
-          <!-- Area fill -->
+          <!-- Followers area fill -->
           <path :d="areaPath" class="chart-area" />
-          <!-- Line -->
+          <!-- Followers line -->
           <path :d="linePath" class="chart-line" />
-          <!-- Data points -->
+          <!-- Activity line -->
+          <path :d="activityLinePath" class="chart-line-activity" />
+          <!-- Followers data points -->
           <circle v-for="(pt, i) in chartPoints" :key="'p'+i"
             :cx="pt.x" :cy="pt.y" r="3.5" class="chart-dot"
+            @mouseenter="hoverPoint = pt" @mouseleave="hoverPoint = null" />
+          <!-- Activity data points -->
+          <circle v-for="(pt, i) in activityChartPoints" :key="'a'+i"
+            :cx="pt.x" :cy="pt.y" r="3.5" class="chart-dot-activity"
             @mouseenter="hoverPoint = pt" @mouseleave="hoverPoint = null" />
         </svg>
         <!-- Tooltip -->
         <div class="chart-tooltip" v-if="hoverPoint"
           :style="{ left: tooltipLeft + 'px', top: tooltipTop + 'px' }">
           <div class="tooltip-date">{{ hoverPoint.date }}</div>
-          <div class="tooltip-value">👥 {{ hoverPoint.value }} followers</div>
+          <div class="tooltip-value" v-if="hoverPoint.type === 'followers'">👥 {{ hoverPoint.value }} followers</div>
+          <div class="tooltip-value" v-if="hoverPoint.type === 'activity'">💬 {{ hoverPoint.value }} 条活动</div>
           <div class="tooltip-change" v-if="hoverPoint.change !== undefined" :class="hoverPoint.change > 0 ? 'up' : hoverPoint.change < 0 ? 'down' : ''">
             {{ hoverPoint.change > 0 ? '+' : '' }}{{ hoverPoint.change }}
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Insights Card -->
+    <div class="card insight-card" v-if="insight">
+      <div class="insight-icon">💡</div>
+      <div class="insight-content">
+        <span class="insight-label">洞察</span>
+        <span class="insight-text">{{ insight }}</span>
       </div>
     </div>
 
@@ -113,10 +158,12 @@
               <th class="num">Followers</th>
               <th class="num">变化</th>
               <th class="num">Following</th>
+              <th class="num">24h活动</th>
+              <th class="num">活动变化</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(row, i) in tableRows" :key="row.date">
+            <tr v-for="(row, i) in tableRows" :key="row.date" :class="{ 'high-activity': row.activity_24h >= 5 }">
               <td class="date-cell">{{ row.date }}</td>
               <td class="num">{{ row.followers }}</td>
               <td class="num">
@@ -126,6 +173,16 @@
                 <span v-else class="text-muted">—</span>
               </td>
               <td class="num">{{ row.following }}</td>
+              <td class="num">
+                <span v-if="row.activity_24h != null" class="activity-badge">{{ row.activity_24h }}</span>
+                <span v-else class="text-muted">—</span>
+              </td>
+              <td class="num">
+                <span v-if="row.activityDiff !== null" :class="activityDiffClass(row.activityDiff)">
+                  {{ row.activityDiff > 0 ? '+' : '' }}{{ row.activityDiff }}
+                </span>
+                <span v-else class="text-muted">—</span>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -148,7 +205,7 @@
 
     <!-- Loading skeleton -->
     <div class="stats-grid" v-if="loading && !records.length">
-      <div class="stat-card skeleton" v-for="i in 4" :key="i">
+      <div class="stat-card skeleton" v-for="i in 5" :key="i">
         <div class="skeleton-bar" style="width: 60%; height: 20px"></div>
         <div class="skeleton-bar" style="width: 40%; height: 14px; margin-top: 8px"></div>
       </div>
@@ -167,12 +224,19 @@ const fetching = ref(false)
 const username = ref('')
 const records = ref([])
 const hoverPoint = ref(null)
+const selectedRange = ref('all')
+
+const rangeOptions = [
+  { value: '7', label: '7天' },
+  { value: '30', label: '30天' },
+  { value: 'all', label: '全部' },
+]
 
 // Chart dimensions
-const chartWidth = 720
-const chartHeight = 280
+const chartWidth = 900
+const chartHeight = 300
 const chartPadLeft = 50
-const chartPadRight = 20
+const chartPadRight = 45
 const chartPadTop = 20
 const chartPadBottom = 30
 
@@ -208,7 +272,43 @@ async function fetchNow() {
 }
 
 // Computed
+const filteredRecords = computed(() => {
+  if (selectedRange.value === 'all') return records.value
+  const days = parseInt(selectedRange.value)
+  return records.value.slice(-days)
+})
+
 const latestRecord = computed(() => records.value.length ? records.value[records.value.length - 1] : null)
+
+const insight = computed(() => {
+  if (filteredRecords.value.length < 3) return null
+  
+  const data = filteredRecords.value
+  const avgActivity = data.reduce((sum, r) => sum + (r.activity_24h ?? 0), 0) / data.length
+  const totalFollowerChange = data.length >= 2 
+    ? (data[data.length - 1].followers || 0) - (data[0].followers || 0)
+    : 0
+  
+  const highActivityDays = data.filter(r => (r.activity_24h ?? 0) >= 5)
+  const lowActivityDays = data.filter(r => (r.activity_24h ?? 0) === 0)
+  
+  const parts = []
+  parts.push(`过去 ${data.length} 天平均活动 ${avgActivity.toFixed(1)} 条/天`)
+  
+  if (totalFollowerChange > 0) {
+    parts.push(`粉丝增长 +${totalFollowerChange}`)
+  } else if (totalFollowerChange < 0) {
+    parts.push(`粉丝减少 ${totalFollowerChange}`)
+  } else {
+    parts.push('粉丝持平')
+  }
+  
+  if (highActivityDays.length > 0) {
+    parts.push(`高活动日（≥5条）${highActivityDays.length} 天`)
+  }
+  
+  return parts.join('，') + '。'
+})
 
 const followerChange = computed(() => {
   if (records.value.length < 2) return null
@@ -224,15 +324,33 @@ const changeClass = computed(() => {
   return c > 0 ? 'change-up' : c < 0 ? 'change-down' : 'change-same'
 })
 
+const activityChange = computed(() => {
+  if (records.value.length < 2) return null
+  const curr = records.value[records.value.length - 1]
+  const prev = records.value[records.value.length - 2]
+  const currAct = curr.activity_24h ?? 0
+  const prevAct = prev.activity_24h ?? 0
+  return currAct - prevAct
+})
+
+const activityChangeClass = computed(() => {
+  const c = activityChange.value
+  if (c === null) return ''
+  return c > 0 ? 'change-up' : c < 0 ? 'change-down' : 'change-same'
+})
+
 const tableRows = computed(() => {
   const rows = []
   const sorted = [...records.value].reverse()
   for (let i = 0; i < sorted.length; i++) {
     const r = sorted[i]
     const prev = sorted[i + 1]
+    const currAct = r.activity_24h ?? null
+    const prevAct = prev?.activity_24h ?? null
     rows.push({
       ...r,
       diff: prev && r.followers >= 0 && prev.followers >= 0 ? r.followers - prev.followers : null,
+      activityDiff: currAct !== null && prevAct !== null ? currAct - prevAct : null,
     })
   }
   return rows
@@ -244,9 +362,15 @@ function diffClass(diff) {
   return 'diff-same'
 }
 
+function activityDiffClass(diff) {
+  if (diff > 0) return 'activity-diff-up'
+  if (diff < 0) return 'activity-diff-down'
+  return 'activity-diff-same'
+}
+
 // Chart computations
 const chartPoints = computed(() => {
-  const data = records.value.filter(r => r.followers >= 0)
+  const data = filteredRecords.value.filter(r => r.followers >= 0)
   if (data.length < 2) return []
 
   const vals = data.map(r => r.followers)
@@ -267,8 +391,42 @@ const chartPoints = computed(() => {
       date: r.date,
       value: r.followers,
       change: prev !== undefined ? r.followers - prev : undefined,
+      type: 'followers',
     }
   })
+})
+
+const activityChartPoints = computed(() => {
+  const data = filteredRecords.value.filter(r => r.followers >= 0)
+  if (data.length < 2) return []
+
+  const actVals = data.map(r => r.activity_24h ?? 0)
+  const minVal = 0
+  const maxVal = Math.max(...actVals, 1)
+  const range = maxVal - minVal || 1
+  const yPad = range * 0.1
+
+  const plotW = chartWidth - chartPadLeft - chartPadRight
+  const plotH = chartHeight - chartPadTop - chartPadBottom
+
+  return data.map((r, i) => {
+    const actVal = r.activity_24h ?? 0
+    const x = chartPadLeft + (i / (data.length - 1)) * plotW
+    const y = chartPadTop + plotH - ((actVal - minVal + yPad) / (range + yPad * 2)) * plotH
+    const prev = i > 0 ? (data[i - 1].activity_24h ?? 0) : undefined
+    return {
+      x, y,
+      date: r.date,
+      value: actVal,
+      change: prev !== undefined ? actVal - prev : undefined,
+      type: 'activity',
+    }
+  })
+})
+
+const activityLinePath = computed(() => {
+  if (activityChartPoints.value.length < 2) return ''
+  return activityChartPoints.value.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
 })
 
 const linePath = computed(() => {
@@ -286,7 +444,7 @@ const areaPath = computed(() => {
 })
 
 const gridLinesY = computed(() => {
-  const data = records.value.filter(r => r.followers >= 0)
+  const data = filteredRecords.value.filter(r => r.followers >= 0)
   if (data.length < 2) return []
   const vals = data.map(r => r.followers)
   const minVal = Math.min(...vals)
@@ -306,8 +464,28 @@ const gridLinesY = computed(() => {
   return lines
 })
 
+const gridLinesYActivity = computed(() => {
+  const data = filteredRecords.value.filter(r => r.followers >= 0)
+  if (data.length < 2) return []
+  const actVals = data.map(r => r.activity_24h ?? 0)
+  const minVal = 0
+  const maxVal = Math.max(...actVals, 1)
+  const range = maxVal - minVal || 1
+  const yPad = range * 0.1
+  const plotH = chartHeight - chartPadTop - chartPadBottom
+  const lines = []
+  const step = Math.max(1, Math.ceil(range / 4))
+  for (let v = 0; v <= maxVal + step; v += step) {
+    const y = chartPadTop + plotH - ((v - minVal + yPad) / (range + yPad * 2)) * plotH
+    if (y >= chartPadTop && y <= chartHeight - chartPadBottom) {
+      lines.push({ y, val: v })
+    }
+  }
+  return lines
+})
+
 const xLabels = computed(() => {
-  const data = records.value.filter(r => r.followers >= 0)
+  const data = filteredRecords.value.filter(r => r.followers >= 0)
   if (data.length < 2) return []
   const plotW = chartWidth - chartPadLeft - chartPadRight
   const maxLabels = Math.min(data.length, 7)
@@ -350,7 +528,7 @@ onActivated(loadData)
 <style scoped>
 .page {
   padding: 32px 40px;
-  max-width: 1000px;
+  max-width: 1400px;
 }
 .page-header {
   display: flex;
@@ -375,7 +553,7 @@ onActivated(loadData)
 /* Stats Grid */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 14px;
   margin-bottom: 24px;
 }
@@ -415,6 +593,10 @@ onActivated(loadData)
 .stat-icon-wrap.date {
   background: var(--accent-amber-dim);
   color: var(--accent-amber);
+}
+.stat-icon-wrap.activity {
+  background: rgba(249, 115, 22, 0.12);
+  color: #f97316;
 }
 .stat-value {
   font-size: 20px;
@@ -468,6 +650,57 @@ onActivated(loadData)
   font-size: 12px;
   color: var(--text-tertiary);
 }
+.chart-controls {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.range-buttons {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-tertiary);
+  padding: 3px;
+  border-radius: var(--radius-sm);
+}
+.range-btn {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  background: transparent;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+.range-btn:hover {
+  color: var(--text-primary);
+}
+.range-btn.active {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+.chart-legend {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.legend-followers .legend-dot {
+  background: var(--accent-blue);
+}
+.legend-activity .legend-dot {
+  background: #f97316;
+}
 .chart-container {
   position: relative;
   width: 100%;
@@ -509,6 +742,31 @@ onActivated(loadData)
 .chart-dot:hover {
   r: 5.5;
   fill: var(--accent-blue);
+}
+.chart-line-activity {
+  fill: none;
+  stroke: #f97316;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 6 3;
+}
+.chart-dot-activity {
+  fill: var(--bg-secondary);
+  stroke: #f97316;
+  stroke-width: 2;
+  cursor: pointer;
+  transition: r 0.15s;
+}
+.chart-dot-activity:hover {
+  r: 5.5;
+  fill: #f97316;
+}
+.axis-left {
+  fill: var(--accent-blue);
+}
+.axis-right {
+  fill: #f97316;
 }
 .chart-tooltip {
   position: absolute;
@@ -579,6 +837,60 @@ onActivated(loadData)
 .text-muted {
   color: var(--text-tertiary);
 }
+.activity-badge {
+  display: inline-block;
+  min-width: 24px;
+  padding: 2px 8px;
+  background: rgba(249, 115, 22, 0.1);
+  color: #f97316;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+.activity-diff-up {
+  color: #f97316;
+  font-weight: 600;
+}
+.activity-diff-down {
+  color: var(--text-tertiary);
+  font-weight: 500;
+}
+.activity-diff-same {
+  color: var(--text-tertiary);
+}
+.high-activity {
+  background: rgba(249, 115, 22, 0.04);
+}
+
+/* Insight Card */
+.insight-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.06), rgba(59, 130, 246, 0.06));
+  border: 1px solid rgba(249, 115, 22, 0.15);
+}
+.insight-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+.insight-content {
+  flex: 1;
+}
+.insight-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #f97316;
+  margin-right: 8px;
+}
+.insight-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
 
 /* Empty state */
 .empty-state {
@@ -631,11 +943,17 @@ onActivated(loadData)
   50% { opacity: 0.5; }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
+  .stats-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 768px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  .chart-legend { gap: 10px; font-size: 11px; }
+  .chart-controls { flex-direction: column; align-items: flex-start; gap: 10px; }
 }
 @media (max-width: 500px) {
   .stats-grid { grid-template-columns: 1fr; }
   .page { padding: 20px 16px; }
+  .chart-legend { flex-wrap: wrap; }
 }
 </style>
