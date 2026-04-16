@@ -37,76 +37,87 @@
       </button>
     </div>
 
-    <!-- Stats Grid -->
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-icon stat-icon-blue">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-        </div>
-        <div class="stat-body">
-          <div class="stat-value">{{ status?.scan?.last_scan_time || '--' }}</div>
-          <div class="stat-label">最近扫描</div>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon stat-icon-green">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        </div>
-        <div class="stat-body">
-          <div class="stat-value">{{ status?.scan?.total_accounts || 0 }}</div>
-          <div class="stat-label">监控账号</div>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon stat-icon-amber">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        </div>
-        <div class="stat-body">
-          <div class="stat-value">{{ status?.scan?.new_tweets || 0 }}</div>
-          <div class="stat-label">新推文</div>
-        </div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-icon stat-icon-purple">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-        </div>
-        <div class="stat-body">
-          <div class="stat-value">{{ status?.scan?.new_originals || 0 }}</div>
-          <div class="stat-label">原创帖</div>
-        </div>
-      </div>
-      <div class="stat-card" @click="$router.push('/followers')" style="cursor: pointer;">
-        <div class="stat-icon stat-icon-red">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-            <circle cx="9" cy="7" r="4"/>
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-          </svg>
-        </div>
-        <div class="stat-body">
-          <div class="stat-value">
-            {{ followersData.count }}
-            <span v-if="followersData.changeText" class="stat-change" :class="{
-              'change-positive': followersData.change > 0,
-              'change-negative': followersData.change < 0,
-              'change-neutral': followersData.change === 0
-            }">
-              {{ followersData.changeText }}
-            </span>
+    <!-- Stats Grid - 3 Group Cards -->
+    <div class="stats-grid-grouped">
+      <!-- 雷达状态 -->
+      <div class="stat-group-card">
+        <div class="group-header">
+          <div class="group-icon group-icon-blue">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
           </div>
-          <div class="stat-label">粉丝数</div>
+          <span class="group-title">雷达状态</span>
+        </div>
+        <div class="group-main">
+          <div class="group-value">{{ status?.scan?.last_scan_time || '--' }}</div>
+          <div class="group-label">最近扫描</div>
+        </div>
+        <div class="group-stats">
+          <div class="group-stat">
+            <span class="stat-num">{{ status?.scan?.total_accounts || 0 }}</span>
+            <span class="stat-text">监控</span>
+          </div>
+          <div class="group-stat-divider"></div>
+          <div class="group-stat">
+            <span class="stat-num">{{ status?.scan?.new_tweets || 0 }}</span>
+            <span class="stat-text">新推</span>
+          </div>
+          <div class="group-stat-divider"></div>
+          <div class="group-stat">
+            <span class="stat-num">{{ status?.scan?.new_originals || 0 }}</span>
+            <span class="stat-text">原创</span>
+          </div>
         </div>
       </div>
-      <div class="stat-card" @click="$router.push('/followers')" style="cursor: pointer;">
-        <div class="stat-icon stat-icon-orange">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
+
+      <!-- 粉丝增长 -->
+      <div class="stat-group-card clickable" @click="$router.push('/followers')">
+        <div class="group-header">
+          <div class="group-icon group-icon-red">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </div>
+          <span class="group-title">粉丝增长</span>
+          <span v-if="followersData.changeText" class="group-badge" :class="{
+            'badge-positive': followersData.change > 0,
+            'badge-negative': followersData.change < 0,
+            'badge-neutral': followersData.change === 0
+          }">
+            {{ followersData.changeText }}
+          </span>
         </div>
-        <div class="stat-body">
-          <div class="stat-value">{{ followersData.activity }}</div>
-          <div class="stat-label">24h 活动</div>
+        <div class="group-main">
+          <div class="group-value large">{{ followersData.count }}</div>
+          <div class="group-label">当前粉丝</div>
+        </div>
+        <div class="group-hint">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+          点击查看详情
+        </div>
+      </div>
+
+      <!-- 内容生产 -->
+      <div class="stat-group-card clickable" @click="$router.push('/followers')">
+        <div class="group-header">
+          <div class="group-icon group-icon-orange">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+          </div>
+          <span class="group-title">内容生产</span>
+        </div>
+        <div class="group-main">
+          <div class="group-value large">{{ followersData.activity }}</div>
+          <div class="group-label">24h 活动</div>
+        </div>
+        <div class="group-stats">
+          <div class="group-stat">
+            <span class="stat-num">{{ status?.scan?.new_originals || 0 }}</span>
+            <span class="stat-text">原创帖</span>
+          </div>
         </div>
       </div>
     </div>
@@ -201,13 +212,18 @@
             </div>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
           </button>
-          <button class="action-item" @click="runScanOnly">
-            <div class="action-icon action-icon-amber">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          <button class="action-item" @click="$router.push('/followers')">
+            <div class="action-icon action-icon-red">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
             </div>
             <div class="action-body">
-              <div class="action-name">仅扫描</div>
-              <div class="action-desc">只运行雷达扫描，不生成日报</div>
+              <div class="action-name">粉丝统计</div>
+              <div class="action-desc">查看粉丝增长与活动趋势</div>
             </div>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
           </button>
@@ -247,75 +263,51 @@
       </div>
     </div>
 
-    <!-- Scheduler Card -->
-    <div class="card scheduler-card">
-      <div class="card-header">
-        <h3>定时任务</h3>
-        <span
-          class="badge"
-          :class="schedulerStatus?.installed ? 'badge-green' : 'badge-gray'"
-        >
-          {{ schedulerStatus?.installed ? '🟢 已启用' : '🔴 未安装' }}
+    <!-- Scheduler: Compact status bar when installed, full card when not -->
+    <div v-if="schedulerStatus?.installed" class="scheduler-bar">
+      <div class="scheduler-bar-info">
+        <span class="scheduler-status-dot"></span>
+        <span class="scheduler-bar-text">
+          定时任务运行中 · 每天 {{ schedulerStatus.scheduled_time || '—' }}
+          <span v-if="schedulerStatus.last_run" class="scheduler-last-run"> · 上次 {{ formatLastRun(schedulerStatus.last_run) }}</span>
         </span>
       </div>
-      
-      <div v-if="schedulerStatus?.installed" class="scheduler-info">
-        <div class="info-row">
-          <span class="info-label">执行时间</span>
-          <span class="info-value">每天 {{ schedulerStatus.scheduled_time }}</span>
-        </div>
-        <div class="info-row" v-if="schedulerStatus.last_run">
-          <span class="info-label">上次执行</span>
-          <span class="info-value">{{ schedulerStatus.last_run }}</span>
-        </div>
-        <div class="info-row" v-if="schedulerStatus.next_run">
-          <span class="info-label">下次执行</span>
-          <span class="info-value">{{ schedulerStatus.next_run }}</span>
-        </div>
+      <div class="scheduler-bar-actions">
+        <button class="btn-link primary" type="button" @click="runSchedulerNow" :disabled="schedulerRunning">
+          {{ schedulerRunning ? '执行中…' : '立即执行' }}
+        </button>
+        <button class="btn-link" @click="toggleLogs">{{ showLogs ? '隐藏日志' : '查看日志' }}</button>
+        <button class="btn-link" @click="showInstallModal = true">修改时间</button>
+        <button class="btn-link danger" @click="uninstallScheduler">卸载</button>
       </div>
+    </div>
 
-      <div v-else class="scheduler-empty">
+    <!-- Full scheduler card when not installed -->
+    <div class="card scheduler-card" v-else>
+      <div class="card-header">
+        <h3>定时任务</h3>
+        <span class="badge badge-gray">🔴 未安装</span>
+      </div>
+      <div class="scheduler-empty">
         <p>定时任务未安装，安装后将每天自动执行扫描、日报和粉丝统计。</p>
       </div>
-
       <div class="scheduler-actions">
-        <button
-          v-if="!schedulerStatus?.installed"
-          class="btn btn-primary"
-          @click="showInstallModal = true"
-        >
+        <button class="btn btn-primary" @click="showInstallModal = true">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
           安装调度器
         </button>
-        <template v-else>
-          <button class="btn btn-primary" @click="runSchedulerNow" :disabled="schedulerRunning">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            {{ schedulerRunning ? '执行中...' : '立即执行' }}
-          </button>
-          <button class="btn btn-ghost" @click="toggleLogs">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-            {{ showLogs ? '隐藏日志' : '查看日志' }}
-          </button>
-          <button class="btn btn-ghost" @click="showInstallModal = true">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            修改时间
-          </button>
-          <button class="btn btn-danger" @click="uninstallScheduler">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            卸载
-          </button>
-        </template>
       </div>
+    </div>
 
-      <div v-if="showLogs && schedulerLogs" class="scheduler-logs">
-        <div class="logs-header">
-          <span class="logs-title">最近日志 ({{ schedulerLogs.log_file }})</span>
-          <button class="btn-icon" @click="loadSchedulerLogs">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
-          </button>
-        </div>
-        <pre class="logs-content">{{ schedulerLogs.logs.join('\n') }}</pre>
+    <!-- Scheduler logs (shown below bar when expanded) -->
+    <div v-if="schedulerStatus?.installed && showLogs && schedulerLogs" class="scheduler-logs-standalone">
+      <div class="logs-header">
+        <span class="logs-title">最近日志 ({{ schedulerLogs.log_file }})</span>
+        <button class="btn-icon" @click="loadSchedulerLogs">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+        </button>
       </div>
+      <pre class="logs-content">{{ schedulerLogs.logs.join('\n') }}</pre>
     </div>
 
     <!-- Install Scheduler Modal -->
@@ -633,6 +625,15 @@ async function toggleLogs() {
   }
 }
 
+function formatLastRun(dateStr) {
+  if (!dateStr) return ''
+  const parts = dateStr.split(' ')
+  if (parts.length >= 4) {
+    return `${parts[0]} ${parts[1]} ${parts[2]} ${parts[3]}`
+  }
+  return dateStr
+}
+
 import { onUnmounted, onDeactivated } from 'vue'
 
 function startTimer() {
@@ -743,73 +744,134 @@ onUnmounted(stopTimer)
   animation: spin 1s linear infinite;
 }
 
-.stats-grid {
+/* Grouped Stats Cards */
+.stats-grid-grouped {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 14px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
   margin-bottom: 24px;
 }
 
-.stat-card {
+.stat-group-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  padding: 18px;
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  transition: border-color var(--transition-fast);
+  padding: 20px;
+  transition: all var(--transition-fast);
 }
-.stat-card:hover {
+.stat-group-card:hover {
   border-color: var(--border-default);
 }
+.stat-group-card.clickable {
+  cursor: pointer;
+}
+.stat-group-card.clickable:hover {
+  border-color: var(--accent-blue);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
+}
 
-.stat-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-md);
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.group-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
-.stat-icon-blue { background: rgba(59, 130, 246, 0.12); color: var(--accent-blue); }
-.stat-icon-green { background: var(--accent-green-dim); color: var(--accent-green); }
-.stat-icon-amber { background: var(--accent-amber-dim); color: var(--accent-amber); }
-.stat-icon-purple { background: var(--accent-purple-dim); color: var(--accent-purple); }
-.stat-icon-red { background: var(--accent-red-dim); color: var(--accent-red); }
-.stat-icon-orange { background: rgba(249, 115, 22, 0.12); color: #f97316; }
+.group-icon-blue { background: rgba(59, 130, 246, 0.12); color: var(--accent-blue); }
+.group-icon-red { background: var(--accent-red-dim); color: var(--accent-red); }
+.group-icon-orange { background: rgba(249, 115, 22, 0.12); color: #f97316; }
 
-.stat-value {
+.group-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.group-badge {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+.group-badge.badge-positive {
+  color: var(--accent-green);
+  background: var(--accent-green-dim);
+}
+.group-badge.badge-negative {
+  color: var(--accent-red);
+  background: var(--accent-red-dim);
+}
+.group-badge.badge-neutral {
+  color: var(--text-tertiary);
+  background: var(--bg-tertiary);
+}
+
+.group-main {
+  margin-bottom: 12px;
+}
+.group-value {
   font-size: 18px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
+  color: var(--text-primary);
 }
-.stat-change {
-  font-size: 12px;
-  font-weight: 600;
-  margin-left: 8px;
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
+.group-value.large {
+  font-size: 28px;
 }
-.stat-change.change-positive {
-  color: var(--accent-green);
-  background: var(--accent-green-dim);
-}
-.stat-change.change-negative {
-  color: var(--accent-red);
-  background: var(--accent-red-dim);
-}
-.stat-change.change-neutral {
-  color: var(--text-tertiary);
-  background: var(--bg-tertiary);
-}
-.stat-label {
+.group-label {
   font-size: 12px;
   color: var(--text-tertiary);
   margin-top: 2px;
 }
+
+.group-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.group-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.group-stat .stat-num {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.group-stat .stat-text {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.group-stat-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border-subtle);
+}
+
+.group-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 8px;
+}
+
+/* Action icon colors */
+.action-icon-red { background: var(--accent-red-dim); color: var(--accent-red); }
 
 .pipeline-card {
   margin-bottom: 24px;
@@ -1040,12 +1102,81 @@ onUnmounted(stopTimer)
   opacity: 0.8;
 }
 
-@media (max-width: 1200px) {
-  .stats-grid { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 1100px) {
+  .stats-grid-grouped { grid-template-columns: 1fr 1fr; }
 }
-@media (max-width: 900px) {
-  .stats-grid { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 700px) {
+  .stats-grid-grouped { grid-template-columns: 1fr; }
   .two-col { grid-template-columns: 1fr; }
+  .scheduler-bar { flex-direction: column; align-items: flex-start; gap: 10px; }
+}
+
+/* Scheduler Bar (compact mode when installed) */
+.scheduler-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-top: 24px;
+}
+.scheduler-bar-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.scheduler-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-green);
+  box-shadow: 0 0 6px var(--accent-green);
+}
+.scheduler-bar-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.scheduler-last-run {
+  color: var(--text-tertiary);
+}
+.scheduler-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.btn-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+.btn-link:hover {
+  color: var(--accent-blue);
+}
+.btn-link.primary {
+  color: var(--accent-blue);
+  font-weight: 600;
+}
+.btn-link.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-link.danger:hover {
+  color: var(--accent-red);
+}
+
+.scheduler-logs-standalone {
+  margin-top: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 16px;
 }
 
 .scheduler-card {
