@@ -12,6 +12,37 @@
 
 日期：2026-04-16
 
+## 修复：粉丝活动统计改为 `activity_24h` 并修正 `with_replies` 采集
+
+范围：`fetch_follower_stats.py`、`docs/activity-stats-implementation-plan.md`
+
+### 问题
+
+- 旧版活动统计混用 `posts/replies/articles` 三分类与“今日”口径，字段语义不稳定。
+- `with_replies` 正式采集阶段采用大步滚动，虚拟列表会跳过最近 24 小时所在区域，导致 `activity_24h` 明显低估。
+
+### 变更
+
+- 将活动统计统一为单字段 `activity_24h`，表示采集时刻往前 24 小时内的本人内容总数。
+- 保存前自动将历史 `posts/replies/articles` 迁移为 `activity_24h`。
+- `with_replies` 卡片抽取改为优先识别本人作者区域与本人 tweet 链接。
+- 正式采集滚动从 `scrollTo(body.scrollHeight)` 改为小步 `scrollBy(0, 900)`，避免跳过最近内容区。
+- 同步更新活动统计实现文档，明确 24 小时口径和数据结构。
+
+### 验证
+
+- `python3 -m py_compile fetch_follower_stats.py` 通过。
+- 真实采集验证：`python3 fetch_follower_stats.py jackaiwison --json-only` 返回 `activity_24h = 10`，与页面可见近 24 小时内容数量级一致。
+- `xinfo/log/followers.json` 当天记录成功写入 `activity_24h`，且不再包含 `posts/replies/articles`。
+
+### 风险
+
+- 统计仍依赖 X 虚拟列表页面结构；若平台后续调整 DOM，可能需要再次校准卡片识别规则。
+
+---
+
+日期：2026-04-16
+
 ## 优化：雷达日报改为「过去 24 小时」滑动窗口过滤
 
 范围：`xpost.py` (`_cmd_radar_daily`)
