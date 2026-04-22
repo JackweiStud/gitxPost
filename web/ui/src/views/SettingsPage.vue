@@ -355,8 +355,8 @@ onBeforeUnmount(() => {
 }
 
 .interests-editor {
-  max-width: 900px;
-  margin: 0 auto;
+  width: 100%;
+  min-width: 0;
 }
 
 .card-header {
@@ -425,46 +425,55 @@ onBeforeUnmount(() => {
 }
 
 .tag-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  align-items: stretch;
 }
 
 .tag-item {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  background: var(--bg-secondary);
+  align-items: stretch;
+  gap: 10px;
+  min-height: 42px;
+  background: linear-gradient(180deg, var(--bg-secondary), var(--bg-tertiary));
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  padding: 6px 8px 6px 12px;
-  transition: all var(--transition-fast);
-  max-width: 100%;
+  border-radius: 14px;
+  padding: 6px 10px 6px 12px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+  min-width: 0;
+  box-shadow: var(--shadow-sm);
 }
 
 .tag-item:hover {
   border-color: var(--accent-blue);
-  background: var(--bg-tertiary);
+  background: rgba(26, 115, 232, 0.08);
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1);
+  transform: translateY(-1px);
 }
 
 .tag-item-danger {
   border-color: rgba(239, 68, 68, 0.3);
+  background: linear-gradient(180deg, var(--bg-secondary), rgba(217, 48, 37, 0.04));
 }
 
 .tag-item-danger:hover {
   border-color: #ef4444;
+  background: rgba(217, 48, 37, 0.08);
+  box-shadow: 0 0 0 3px rgba(217, 48, 37, 0.1);
 }
 
 .tag-input {
   border: none;
   background: transparent;
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.5;
   color: var(--text-primary);
   padding: 0;
   outline: none;
-  min-width: 120px;
   flex: 1;
+  min-width: 0;
+  width: 100%;
 }
 
 .tag-input:focus {
@@ -478,35 +487,48 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
+  align-self: center;
+  background: var(--bg-secondary);
   color: var(--text-tertiary);
-  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  border-radius: 999px;
   transition: all var(--transition-fast);
   padding: 0;
 }
 
 .tag-remove:hover {
   background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.18);
   color: #ef4444;
 }
 
 .tag-add {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 6px 12px;
+  min-height: 42px;
+  padding: 8px 14px;
   font-size: 13px;
+  font-weight: 600;
   color: var(--text-secondary);
-  background: var(--bg-secondary);
+  background: linear-gradient(180deg, var(--bg-secondary), var(--bg-tertiary));
   border: 1px dashed var(--border-default);
-  border-radius: var(--radius-md);
-  transition: all var(--transition-fast);
+  border-radius: 14px;
+  transition: border-color var(--transition-fast), color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
 }
 
 .tag-add:hover {
   border-color: var(--accent-blue);
   color: var(--accent-blue);
-  background: rgba(59, 130, 246, 0.05);
+  background: rgba(26, 115, 232, 0.02);
   border-style: solid;
+  transform: translateY(-1px);
+}
+
+@media (max-width: 960px) {
+  .tag-list {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
