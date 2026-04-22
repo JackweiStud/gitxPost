@@ -60,35 +60,47 @@
       </div>
 
       <!-- 粉丝增长 -->
-      <div class="stat-group-card clickable" @click="$router.push('/followers')">
-        <div class="group-header">
-          <div class="group-icon group-icon-red">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-            </svg>
+      <div class="stat-group-card stat-group-card-horizontal clickable" @click="$router.push('/followers')">
+        <div class="group-left">
+          <div class="group-header">
+            <div class="group-icon group-icon-red">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+            </div>
+            <span class="group-title">粉丝增长</span>
+            <span v-if="followersData.changeText" class="group-badge" :class="{
+              'badge-positive': followersData.change > 0,
+              'badge-negative': followersData.change < 0,
+              'badge-neutral': followersData.change === 0
+            }">
+              {{ followersData.changeText }}
+            </span>
           </div>
-          <span class="group-title">粉丝增长</span>
-          <span v-if="followersData.changeText" class="group-badge" :class="{
-            'badge-positive': followersData.change > 0,
-            'badge-negative': followersData.change < 0,
-            'badge-neutral': followersData.change === 0
-          }">
-            {{ followersData.changeText }}
-          </span>
+          <div class="group-main">
+            <div class="group-value large">{{ followersData.count }}</div>
+            <div class="group-label">当前粉丝</div>
+          </div>
+          <div class="group-hint">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+            点击查看详情
+          </div>
         </div>
-        <div class="group-main">
-          <div class="group-value large">{{ followersData.count }}</div>
-          <div class="group-label">当前粉丝</div>
-        </div>
-        <div v-if="followersSparkline.path" class="group-trend">
+        <div v-if="followersSparkline.path" class="group-trend group-trend-right">
           <div class="group-trend-meta">
             <span class="group-trend-label">趋势</span>
             <span class="group-trend-range">共 {{ followersSparkline.days }} 天</span>
           </div>
           <svg :viewBox="`0 0 ${sparklineWidth} ${sparklineHeight}`" class="group-trend-chart" aria-hidden="true">
+            <defs>
+              <linearGradient id="gradient-followers" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" style="stop-color:var(--accent-blue);stop-opacity:0.2" />
+                <stop offset="100%" style="stop-color:var(--accent-blue);stop-opacity:0" />
+              </linearGradient>
+            </defs>
             <line
               x1="0"
               :y1="sparklineHeight - 3"
@@ -96,6 +108,7 @@
               :y2="sparklineHeight - 3"
               class="group-trend-baseline"
             />
+            <path v-if="followersSparkline.fillPath" :d="followersSparkline.fillPath" fill="url(#gradient-followers)" />
             <path :d="followersSparkline.path" class="group-trend-line group-trend-line-followers" />
             <circle
               v-if="followersSparkline.lastPoint"
@@ -106,32 +119,40 @@
             />
           </svg>
         </div>
-        <div class="group-hint">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
-          点击查看详情
-        </div>
       </div>
 
       <!-- 内容生产 -->
-      <div class="stat-group-card clickable" @click="$router.push('/followers')">
-        <div class="group-header">
-          <div class="group-icon group-icon-orange">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-            </svg>
+      <div class="stat-group-card stat-group-card-horizontal clickable" @click="$router.push('/followers')">
+        <div class="group-left">
+          <div class="group-header">
+            <div class="group-icon group-icon-orange">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+            <span class="group-title">内容生产</span>
           </div>
-          <span class="group-title">内容生产</span>
+          <div class="group-main">
+            <div class="group-value large">{{ followersData.activity }}</div>
+            <div class="group-label">24h 活动</div>
+          </div>
+          <div class="group-hint">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+            点击查看详情
+          </div>
         </div>
-        <div class="group-main">
-          <div class="group-value large">{{ followersData.activity }}</div>
-          <div class="group-label">24h 活动</div>
-        </div>
-        <div v-if="activitySparkline.path" class="group-trend">
+        <div v-if="activitySparkline.path" class="group-trend group-trend-right">
           <div class="group-trend-meta">
             <span class="group-trend-label">趋势</span>
             <span class="group-trend-range">共 {{ activitySparkline.days }} 天</span>
           </div>
           <svg :viewBox="`0 0 ${sparklineWidth} ${sparklineHeight}`" class="group-trend-chart" aria-hidden="true">
+            <defs>
+              <linearGradient id="gradient-activity" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" style="stop-color:#f97316;stop-opacity:0.2" />
+                <stop offset="100%" style="stop-color:#f97316;stop-opacity:0" />
+              </linearGradient>
+            </defs>
             <line
               x1="0"
               :y1="sparklineHeight - 3"
@@ -139,6 +160,7 @@
               :y2="sparklineHeight - 3"
               class="group-trend-baseline"
             />
+            <path v-if="activitySparkline.fillPath" :d="activitySparkline.fillPath" fill="url(#gradient-activity)" />
             <path :d="activitySparkline.path" class="group-trend-line group-trend-line-activity" />
             <circle
               v-if="activitySparkline.lastPoint"
@@ -477,12 +499,12 @@ const activePipelineStep = computed(() => pipelineSteps.value.find((step) => ste
 
 function buildSparklineModel(records, getValue, { minZero = false } = {}) {
   if (records.length < 2) {
-    return { path: '', lastPoint: null, days: records.length }
+    return { path: '', fillPath: '', lastPoint: null, days: records.length }
   }
 
   const values = records.map(getValue).filter((value) => Number.isFinite(value))
   if (values.length < 2) {
-    return { path: '', lastPoint: null, days: values.length }
+    return { path: '', fillPath: '', lastPoint: null, days: values.length }
   }
 
   const minVal = minZero ? 0 : Math.min(...values)
@@ -501,8 +523,19 @@ function buildSparklineModel(records, getValue, { minZero = false } = {}) {
     }
   })
 
+  const linePath = points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
+
+  // 创建填充路径：从第一个点开始，沿着线条，然后沿底部返回
+  const baselineY = sparklineHeight - 3
+  const fillPath = points.length > 0
+    ? `M ${points[0].x} ${baselineY} L ${points[0].x} ${points[0].y} ` +
+      points.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ') +
+      ` L ${points[points.length - 1].x} ${baselineY} Z`
+    : ''
+
   return {
-    path: points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' '),
+    path: linePath,
+    fillPath,
     lastPoint: points.at(-1) || null,
     days: values.length
   }
@@ -1308,6 +1341,18 @@ onUnmounted(stopTimer)
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.1);
 }
 
+.stat-group-card-horizontal {
+  flex-direction: row;
+  gap: 20px;
+}
+
+.group-left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .group-header {
   display: flex;
   align-items: center;
@@ -1377,6 +1422,19 @@ onUnmounted(stopTimer)
   border-top: 1px solid var(--border-subtle);
 }
 
+.group-trend-right {
+  margin-top: 0;
+  padding-top: 0;
+  padding-left: 20px;
+  border-top: none;
+  border-left: 1px solid var(--border-subtle);
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
 .group-trend-meta {
   display: flex;
   align-items: center;
@@ -1395,20 +1453,30 @@ onUnmounted(stopTimer)
 .group-trend-chart {
   display: block;
   width: 100%;
-  height: 38px;
+  height: 60px;
+  transition: opacity var(--transition-fast);
+}
+
+.group-trend-chart:hover {
+  opacity: 0.9;
 }
 
 .group-trend-baseline {
   stroke: var(--border-subtle);
   stroke-width: 1;
-  opacity: 0.7;
+  opacity: 0.5;
 }
 
 .group-trend-line {
   fill: none;
-  stroke-width: 2;
+  stroke-width: 2.5;
   stroke-linecap: round;
   stroke-linejoin: round;
+  transition: stroke-width var(--transition-fast);
+}
+
+.stat-group-card:hover .group-trend-line {
+  stroke-width: 3;
 }
 
 .group-trend-line-followers {
@@ -1417,12 +1485,16 @@ onUnmounted(stopTimer)
 
 .group-trend-line-activity {
   stroke: #f97316;
-  stroke-dasharray: 5 3;
 }
 
 .group-trend-dot {
   fill: var(--bg-secondary);
-  stroke-width: 2;
+  stroke-width: 2.5;
+  transition: r var(--transition-fast);
+}
+
+.stat-group-card:hover .group-trend-dot {
+  r: 3.5;
 }
 
 .group-trend-dot-followers {
@@ -1592,6 +1664,16 @@ onUnmounted(stopTimer)
   .stats-grid-grouped { grid-template-columns: 1fr; }
   .timeline-action { width: 100%; justify-content: center; }
   .scheduler-bar { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .stat-group-card-horizontal {
+    flex-direction: column;
+  }
+  .group-trend-right {
+    padding-left: 0;
+    padding-top: 12px;
+    border-left: none;
+    border-top: 1px solid var(--border-subtle);
+    min-width: auto;
+  }
 }
 
 /* Scheduler Bar (compact mode when installed) */
