@@ -5,22 +5,17 @@
         <h1 class="page-title">概览</h1>
         <p class="page-subtitle">gitxPost 工作台</p>
       </div>
-      <div class="header-actions">
-        <p v-if="pipelineRunning" class="pipeline-hint">
+      <div v-if="pipelineRunning" class="header-actions">
+        <p class="pipeline-hint">
           全流程约 5–15 分钟（视网络与账号量）。重复点击不会并行执行；可随时点「停止」。
         </p>
         <button
-          v-if="pipelineRunning"
           type="button"
           class="btn btn-danger btn-lg"
           @click="stopPipeline"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
           停止
-        </button>
-        <button class="btn btn-primary btn-lg" @click="runFullPipeline" :disabled="pipelineRunning">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          {{ pipelineRunning ? '执行中...' : '一键跑日报' }}
         </button>
       </div>
     </header>
@@ -88,6 +83,29 @@
           <div class="group-value large">{{ followersData.count }}</div>
           <div class="group-label">当前粉丝</div>
         </div>
+        <div v-if="followersSparkline.path" class="group-trend">
+          <div class="group-trend-meta">
+            <span class="group-trend-label">趋势</span>
+            <span class="group-trend-range">共 {{ followersSparkline.days }} 天</span>
+          </div>
+          <svg :viewBox="`0 0 ${sparklineWidth} ${sparklineHeight}`" class="group-trend-chart" aria-hidden="true">
+            <line
+              x1="0"
+              :y1="sparklineHeight - 3"
+              :x2="sparklineWidth"
+              :y2="sparklineHeight - 3"
+              class="group-trend-baseline"
+            />
+            <path :d="followersSparkline.path" class="group-trend-line group-trend-line-followers" />
+            <circle
+              v-if="followersSparkline.lastPoint"
+              :cx="followersSparkline.lastPoint.x"
+              :cy="followersSparkline.lastPoint.y"
+              r="2.5"
+              class="group-trend-dot group-trend-dot-followers"
+            />
+          </svg>
+        </div>
         <div class="group-hint">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
           点击查看详情
@@ -107,6 +125,29 @@
         <div class="group-main">
           <div class="group-value large">{{ followersData.activity }}</div>
           <div class="group-label">24h 活动</div>
+        </div>
+        <div v-if="activitySparkline.path" class="group-trend">
+          <div class="group-trend-meta">
+            <span class="group-trend-label">趋势</span>
+            <span class="group-trend-range">共 {{ activitySparkline.days }} 天</span>
+          </div>
+          <svg :viewBox="`0 0 ${sparklineWidth} ${sparklineHeight}`" class="group-trend-chart" aria-hidden="true">
+            <line
+              x1="0"
+              :y1="sparklineHeight - 3"
+              :x2="sparklineWidth"
+              :y2="sparklineHeight - 3"
+              class="group-trend-baseline"
+            />
+            <path :d="activitySparkline.path" class="group-trend-line group-trend-line-activity" />
+            <circle
+              v-if="activitySparkline.lastPoint"
+              :cx="activitySparkline.lastPoint.x"
+              :cy="activitySparkline.lastPoint.y"
+              r="2.5"
+              class="group-trend-dot group-trend-dot-activity"
+            />
+          </svg>
         </div>
       </div>
     </div>
@@ -338,6 +379,8 @@ const lastUpdateTime = ref(null)
 const isRefreshing = ref(false)
 const now = ref(Date.now())
 let timer = null
+const sparklineWidth = 160
+const sparklineHeight = 38
 
 // Scheduler state
 const schedulerStatus = ref(null)
@@ -385,12 +428,21 @@ const lastUpdateText = computed(() => {
 })
 
 // 计算粉丝数据
+const sortedFollowerRecords = computed(() => {
+  if (!followers.value?.records?.length) return []
+  return [...followers.value.records].sort((a, b) => a.date.localeCompare(b.date))
+})
+
+const validFollowerTrendRecords = computed(() =>
+  sortedFollowerRecords.value.filter((record) => record.followers >= 0)
+)
+
 const followersData = computed(() => {
-  if (!followers.value?.records || followers.value.records.length === 0) {
+  if (!sortedFollowerRecords.value.length) {
     return { count: '--', change: 0, changeText: '', activity: '--' }
   }
   
-  const records = [...followers.value.records].sort((a, b) => a.date.localeCompare(b.date))
+  const records = sortedFollowerRecords.value
   const latest = records[records.length - 1]
   const count = latest.followers || 0
   const activity = latest.activity_24h ?? '--'
@@ -418,10 +470,51 @@ const followersData = computed(() => {
 const scanData = computed(() => status.value?.scan || {})
 const latestReport = computed(() => reports.value[0] || null)
 const latestFollowerRecord = computed(() => {
-  if (!followers.value?.records?.length) return null
-  return [...followers.value.records].sort((a, b) => a.date.localeCompare(b.date)).at(-1) || null
+  if (!sortedFollowerRecords.value.length) return null
+  return sortedFollowerRecords.value.at(-1) || null
 })
 const activePipelineStep = computed(() => pipelineSteps.value.find((step) => step.status === 'running') || null)
+
+function buildSparklineModel(records, getValue, { minZero = false } = {}) {
+  if (records.length < 2) {
+    return { path: '', lastPoint: null, days: records.length }
+  }
+
+  const values = records.map(getValue).filter((value) => Number.isFinite(value))
+  if (values.length < 2) {
+    return { path: '', lastPoint: null, days: values.length }
+  }
+
+  const minVal = minZero ? 0 : Math.min(...values)
+  const maxVal = minZero ? Math.max(...values, 1) : Math.max(...values)
+  const range = maxVal - minVal || 1
+  const yPad = range * 0.1
+  const plotW = sparklineWidth - 6
+  const plotH = sparklineHeight - 8
+
+  const points = values.map((value, index) => {
+    const x = 3 + (index / (values.length - 1)) * plotW
+    const y = 4 + plotH - ((value - minVal + yPad) / (range + yPad * 2)) * plotH
+    return {
+      x: Number(x.toFixed(2)),
+      y: Number(y.toFixed(2))
+    }
+  })
+
+  return {
+    path: points.map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' '),
+    lastPoint: points.at(-1) || null,
+    days: values.length
+  }
+}
+
+const followersSparkline = computed(() =>
+  buildSparklineModel(validFollowerTrendRecords.value, (record) => record.followers)
+)
+
+const activitySparkline = computed(() =>
+  buildSparklineModel(validFollowerTrendRecords.value, (record) => record.activity_24h ?? 0, { minZero: true })
+)
 
 const focusActions = computed(() => {
   const actions = []
@@ -434,14 +527,18 @@ const focusActions = computed(() => {
       desc: '如果本轮执行方向不对，可以立刻终止，避免继续占用时间。',
       cta: '停止'
     })
-  } else if (!latestReportDate) {
+  } else {
     actions.push({
       id: 'run-pipeline',
-      title: '生成今日内容',
-      desc: '一键执行扫描和日报生成，先把今天的内容池建立起来。',
-      cta: '一键跑日报'
+      title: latestReportDate ? '重新生成今日日报' : '生成今日日报',
+      desc: latestReportDate
+        ? '重新执行扫描和日报生成，刷新今天的话题池与精选内容。'
+        : '执行扫描和日报生成，先把今天的内容池建立起来。',
+      cta: latestReportDate ? '重新生成' : '开始生成'
     })
-  } else {
+  }
+
+  if (latestReportDate) {
     actions.push({
       id: 'open-radar',
       title: '查看今日日报',
@@ -948,12 +1045,13 @@ onUnmounted(stopTimer)
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--accent-blue);
+}
+
 .focus-actions-card .card-header h3 {
   margin: 0;
   font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.02em;
-}
 }
 
 .focus-actions {
@@ -1195,6 +1293,8 @@ onUnmounted(stopTimer)
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   padding: 20px;
+  display: flex;
+  flex-direction: column;
   transition: all var(--transition-fast);
 }
 .stat-group-card:hover {
@@ -1269,6 +1369,68 @@ onUnmounted(stopTimer)
   font-size: 12px;
   color: var(--text-tertiary);
   margin-top: 2px;
+}
+
+.group-trend {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.group-trend-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.group-trend-label,
+.group-trend-range {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.group-trend-chart {
+  display: block;
+  width: 100%;
+  height: 38px;
+}
+
+.group-trend-baseline {
+  stroke: var(--border-subtle);
+  stroke-width: 1;
+  opacity: 0.7;
+}
+
+.group-trend-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.group-trend-line-followers {
+  stroke: var(--accent-blue);
+}
+
+.group-trend-line-activity {
+  stroke: #f97316;
+  stroke-dasharray: 5 3;
+}
+
+.group-trend-dot {
+  fill: var(--bg-secondary);
+  stroke-width: 2;
+}
+
+.group-trend-dot-followers {
+  stroke: var(--accent-blue);
+}
+
+.group-trend-dot-activity {
+  stroke: #f97316;
 }
 
 .group-stats {
