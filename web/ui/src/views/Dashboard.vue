@@ -111,6 +111,75 @@
       </div>
     </div>
 
+    <div class="focus-grid">
+      <div class="card activity-card">
+        <div class="card-header activity-card-header">
+          <div>
+            <p class="card-eyebrow">最近动作</p>
+            <h3>把扫描、日报、调度串起来看</h3>
+          </div>
+          <span v-if="lastUpdateText" class="activity-refresh">最近刷新 {{ lastUpdateText }}</span>
+        </div>
+        <div class="timeline-list">
+          <div
+            v-for="item in activityTimeline"
+            :key="item.id"
+            class="timeline-item"
+          >
+            <div class="timeline-rail">
+              <div class="timeline-marker" :class="'timeline-marker-' + item.tone">
+                <span></span>
+              </div>
+              <div class="timeline-line"></div>
+            </div>
+            <div class="timeline-body">
+              <div class="timeline-meta">
+                <span class="timeline-kicker">{{ item.kicker }}</span>
+                <span class="timeline-time">{{ item.time }}</span>
+              </div>
+              <div class="timeline-main">
+                <div class="timeline-copy">
+                  <div class="timeline-title">{{ item.title }}</div>
+                  <div class="timeline-detail">{{ item.detail }}</div>
+                </div>
+                <button
+                  type="button"
+                  class="timeline-action"
+                  @click="handleTimelineAction(item.action)"
+                >
+                  {{ item.cta }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card focus-actions-card">
+        <div class="card-header">
+          <div>
+            <p class="card-eyebrow">下一步建议</p>
+            <h3>现在可以这样继续</h3>
+          </div>
+        </div>
+        <div class="focus-actions">
+          <button
+            v-for="action in focusActions"
+            :key="action.id"
+            type="button"
+            class="focus-action"
+            @click="handleFocusAction(action.id)"
+          >
+            <div class="focus-action-body">
+              <span class="focus-action-title">{{ action.title }}</span>
+              <span class="focus-action-desc">{{ action.desc }}</span>
+            </div>
+            <span class="focus-action-cta">{{ action.cta }}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Pipeline Progress -->
     <div class="card pipeline-card" v-if="pipelineRunning || pipelineResult">
       <div class="card-header">
@@ -170,84 +239,6 @@
             </div>
             <div class="step-desc">{{ step.desc }} <span class="step-estimate">· 预计 {{ step.estimate }}</span></div>
           </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Quick Actions + Latest Report -->
-    <div class="two-col">
-      <div class="card">
-        <div class="card-header">
-          <h3>快捷操作</h3>
-        </div>
-        <div class="action-list">
-          <button class="action-item" @click="$router.push('/radar')">
-            <div class="action-icon action-icon-blue">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
-            </div>
-            <div class="action-body">
-              <div class="action-name">查看日报</div>
-              <div class="action-desc">浏览 AI 生成的每日推文精选</div>
-            </div>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
-          </button>
-          <button class="action-item" @click="$router.push('/reply')">
-            <div class="action-icon action-icon-green">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            </div>
-            <div class="action-body">
-              <div class="action-name">回帖工作台</div>
-              <div class="action-desc">AI 辅助回复感兴趣的推文</div>
-            </div>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
-          </button>
-          <button class="action-item" @click="$router.push('/followers')">
-            <div class="action-icon action-icon-red">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                <circle cx="9" cy="7" r="4"/>
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-              </svg>
-            </div>
-            <div class="action-body">
-              <div class="action-name">粉丝统计</div>
-              <div class="action-desc">查看粉丝增长与活动趋势</div>
-            </div>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
-          </button>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <h3>最近日报</h3>
-          <router-link to="/radar" class="card-link">查看全部</router-link>
-        </div>
-        <div class="report-list" v-if="reports.length">
-          <router-link
-            v-for="r in reports.slice(0, 5)"
-            :key="r.date"
-            :to="'/radar?date=' + r.date"
-            class="report-item"
-          >
-            <div class="report-date">{{ r.date }}</div>
-            <div class="report-size">{{ (r.size / 1024).toFixed(1) }}KB</div>
-          </router-link>
-        </div>
-        <div class="empty-state" v-else>
-          <svg class="empty-icon" width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="40" cy="40" r="38" stroke="currentColor" stroke-width="2" stroke-dasharray="4 4" opacity="0.2"/>
-            <path d="M25 40h30M40 25v30" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" opacity="0.3"/>
-            <circle cx="40" cy="40" r="12" stroke="currentColor" stroke-width="2" opacity="0.4"/>
-            <path d="M40 34v6l3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"/>
-          </svg>
-          <p class="empty-title">还没有日报</p>
-          <p class="empty-hint">点击下方按钮开始生成第一份日报</p>
-          <button class="btn btn-primary btn-sm" @click="runFullPipeline" style="margin-top: 12px;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            一键跑日报
-          </button>
         </div>
       </div>
     </div>
@@ -330,10 +321,12 @@
 
 <script setup>
 import { ref, onMounted, onActivated, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import * as api from '../api/xpost.js'
 
 const appStore = useAppStore()
+const router = useRouter()
 const status = ref(null)
 const reports = ref([])
 const followers = ref(null)
@@ -421,6 +414,198 @@ const followersData = computed(() => {
   
   return { count, change, changeText, activity }
 })
+
+const scanData = computed(() => status.value?.scan || {})
+const latestReport = computed(() => reports.value[0] || null)
+const latestFollowerRecord = computed(() => {
+  if (!followers.value?.records?.length) return null
+  return [...followers.value.records].sort((a, b) => a.date.localeCompare(b.date)).at(-1) || null
+})
+const activePipelineStep = computed(() => pipelineSteps.value.find((step) => step.status === 'running') || null)
+
+const focusActions = computed(() => {
+  const actions = []
+  const latestReportDate = latestReport.value?.date
+
+  if (pipelineRunning.value) {
+    actions.push({
+      id: 'stop-pipeline',
+      title: '停止当前流水线',
+      desc: '如果本轮执行方向不对，可以立刻终止，避免继续占用时间。',
+      cta: '停止'
+    })
+  } else if (!latestReportDate) {
+    actions.push({
+      id: 'run-pipeline',
+      title: '生成今日内容',
+      desc: '一键执行扫描和日报生成，先把今天的内容池建立起来。',
+      cta: '一键跑日报'
+    })
+  } else {
+    actions.push({
+      id: 'open-radar',
+      title: '查看今日日报',
+      desc: `最新日报 ${latestReportDate} 已可查看，先快速判断今天哪些话题值得跟进。`,
+      cta: '打开日报'
+    })
+  }
+
+  actions.push({
+    id: 'open-reply',
+    title: '进入回帖工作台',
+    desc: '把感兴趣的推文带去生成回复，尽快把内容转成互动。',
+    cta: '去回帖'
+  })
+
+  if (!schedulerStatus.value?.installed) {
+    actions.push({
+      id: 'open-scheduler',
+      title: '开启自动执行',
+      desc: '装上调度器后，每天会自动扫描、生成日报并更新粉丝统计。',
+      cta: '安装调度器'
+    })
+  } else {
+    actions.push({
+      id: 'open-followers',
+      title: '查看粉丝变化',
+      desc: followersData.value.changeText
+        ? `当前粉丝 ${followersData.value.count}，较上一天 ${followersData.value.changeText}。`
+        : '看看粉丝增长与活跃度，判断内容产出有没有带来反馈。',
+      cta: '看趋势'
+    })
+  }
+
+  return actions.slice(0, 3)
+})
+
+const activityTimeline = computed(() => {
+  const items = []
+
+  if (pipelineRunning.value) {
+    items.push({
+      id: 'pipeline',
+      kicker: '当前进行中',
+      time: activePipelineStep.value?.startTime ? `已运行 ${getElapsedTime(activePipelineStep.value.startTime)}` : '正在执行',
+      title: activePipelineStep.value?.label || '日报流水线',
+      detail: activePipelineStep.value?.desc || '扫描与日报生成正在推进中，完成后首页会自动刷新。',
+      cta: '看执行区',
+      action: 'scroll-pipeline',
+      tone: 'running'
+    })
+  }
+
+  items.push({
+    id: 'scan',
+    kicker: '雷达扫描',
+    time: scanData.value.last_scan_time || '暂无扫描记录',
+    title: scanData.value.last_scan_time ? '最近扫描已完成' : '还没有扫描记录',
+    detail: `当前监控 ${scanData.value.total_accounts || 0} 个账号，最近新发现 ${scanData.value.new_tweets || 0} 条推文。`,
+    cta: pipelineRunning.value ? '执行中' : '重跑扫描',
+    action: pipelineRunning.value ? 'noop' : 'scan',
+    tone: scanData.value.last_scan_time ? ((scanData.value.new_tweets || 0) > 0 ? 'attention' : 'done') : 'pending'
+  })
+
+  items.push({
+    id: 'daily',
+    kicker: '日报生成',
+    time: latestReport.value?.date || '暂无日报',
+    title: latestReport.value ? `最新日报 ${latestReport.value.date}` : '今天还没有日报',
+    detail: latestReport.value
+      ? `最近一份日报大小 ${(latestReport.value.size / 1024).toFixed(1)}KB，可以直接进入日报页查看精选内容。`
+      : '建议先跑一次完整流水线，把今天的话题池和精选内容先生成出来。',
+    cta: latestReport.value ? '查看日报' : '生成日报',
+    action: latestReport.value ? 'open-radar' : 'run-pipeline',
+    tone: latestReport.value ? 'done' : 'pending'
+  })
+
+  items.push({
+    id: 'scheduler',
+    kicker: '自动调度',
+    time: schedulerStatus.value?.installed
+      ? (schedulerStatus.value.last_run ? formatLastRun(schedulerStatus.value.last_run) : `每天 ${schedulerStatus.value.scheduled_time || '—'}`)
+      : '未安装',
+    title: schedulerStatus.value?.installed ? '调度器已启用' : '还没有自动调度',
+    detail: schedulerStatus.value?.installed
+      ? `当前设定为每天 ${schedulerStatus.value.scheduled_time || '—'} 自动执行${schedulerStatus.value.last_run ? '，最近一次已执行完成。' : '，等待首次执行。'}`
+      : '安装后可以把扫描、日报和粉丝统计变成自动流程，不需要每天手动点一次。',
+    cta: schedulerStatus.value?.installed ? '查看日志' : '安装',
+    action: schedulerStatus.value?.installed ? 'toggle-logs' : 'open-scheduler',
+    tone: schedulerStatus.value?.installed ? 'done' : 'pending'
+  })
+
+  items.push({
+    id: 'followers',
+    kicker: '粉丝快照',
+    time: latestFollowerRecord.value?.date || '暂无记录',
+    title: latestFollowerRecord.value ? '粉丝趋势已更新' : '还没有粉丝快照',
+    detail: latestFollowerRecord.value
+      ? `当前粉丝 ${followersData.value.count}，24h 活动 ${followersData.value.activity ?? '--'}${followersData.value.changeText ? `，较上一天 ${followersData.value.changeText}。` : '。'}`
+      : '建议打开粉丝页采集一次，首页就能更完整地反映增长和活跃变化。',
+    cta: '看趋势',
+    action: 'open-followers',
+    tone: followersData.value.change > 0 ? 'positive' : (latestFollowerRecord.value ? 'done' : 'pending')
+  })
+
+  return items
+})
+
+function handleFocusAction(actionId) {
+  switch (actionId) {
+    case 'run-pipeline':
+      runFullPipeline()
+      break
+    case 'stop-pipeline':
+      stopPipeline()
+      break
+    case 'open-radar':
+      router.push('/radar')
+      break
+    case 'open-reply':
+      router.push('/reply')
+      break
+    case 'open-followers':
+      router.push('/followers')
+      break
+    case 'open-scheduler':
+      showInstallModal.value = true
+      break
+  }
+}
+
+async function handleTimelineAction(actionId) {
+  switch (actionId) {
+    case 'scan':
+      await runScanOnly()
+      break
+    case 'run-pipeline':
+      await runFullPipeline()
+      break
+    case 'open-radar':
+      router.push('/radar')
+      break
+    case 'open-followers':
+      router.push('/followers')
+      break
+    case 'open-scheduler':
+      showInstallModal.value = true
+      break
+    case 'toggle-logs':
+      if (!showLogs.value) {
+        showLogs.value = true
+        if (!schedulerLogs.value) {
+          await loadSchedulerLogs()
+        }
+      } else {
+        showLogs.value = false
+      }
+      break
+    case 'scroll-pipeline':
+      document.querySelector('.pipeline-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      break
+    case 'noop':
+      break
+  }
+}
 
 async function loadData() {
   if (isRefreshing.value) return
@@ -653,8 +838,12 @@ onUnmounted(stopTimer)
 
 <style scoped>
 .page {
+  width: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
   padding: 32px 40px;
-  max-width: 1200px;
+  display: flex;
+  flex-direction: column;
 }
 
 .page-header {
@@ -739,6 +928,266 @@ onUnmounted(stopTimer)
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
   margin-bottom: 24px;
+}
+
+.focus-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.focus-grid > .card {
+  height: 100%;
+}
+
+.card-eyebrow {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-blue);
+.focus-actions-card .card-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+}
+
+.focus-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.focus-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-primary);
+  text-align: left;
+  transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
+}
+
+.focus-action:hover {
+  border-color: rgba(59, 130, 246, 0.28);
+  background: rgba(59, 130, 246, 0.05);
+  transform: translateY(-1px);
+}
+
+.focus-action-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.focus-action-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.focus-action-desc {
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-tertiary);
+}
+
+.focus-action-cta {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-blue);
+}
+
+.activity-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.activity-card-header {
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.activity-card-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.activity-refresh {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.timeline-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.timeline-item {
+  display: flex;
+  gap: 14px;
+}
+
+.timeline-item:last-child .timeline-line {
+  opacity: 0;
+}
+
+.timeline-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 20px;
+  flex-shrink: 0;
+}
+
+.timeline-marker {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+  background: var(--bg-tertiary);
+  border: 2px solid var(--border-default);
+}
+
+.timeline-marker span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.9;
+}
+
+.timeline-marker-done {
+  color: var(--accent-green);
+  border-color: rgba(52, 199, 89, 0.35);
+  background: rgba(52, 199, 89, 0.1);
+}
+
+.timeline-marker-pending {
+  color: var(--text-tertiary);
+  border-color: var(--border-default);
+  background: var(--bg-tertiary);
+}
+
+.timeline-marker-running {
+  color: var(--accent-blue);
+  border-color: rgba(59, 130, 246, 0.36);
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.timeline-marker-attention {
+  color: var(--accent-amber);
+  border-color: rgba(245, 158, 11, 0.36);
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.timeline-marker-positive {
+  color: var(--accent-green);
+  border-color: rgba(52, 199, 89, 0.36);
+  background: rgba(52, 199, 89, 0.12);
+}
+
+.timeline-line {
+  width: 2px;
+  flex: 1;
+  margin: 6px 0;
+  background: linear-gradient(180deg, var(--border-default), transparent);
+}
+
+.timeline-body {
+  flex: 1;
+  min-width: 0;
+  padding: 0 0 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.timeline-item:last-child .timeline-body {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.timeline-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.timeline-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.timeline-time {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.timeline-copy {
+  min-width: 0;
+}
+
+.timeline-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.timeline-detail {
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+
+.timeline-action {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 700;
+  transition: border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+}
+
+.timeline-action:hover {
+  border-color: rgba(59, 130, 246, 0.28);
+  background: rgba(59, 130, 246, 0.06);
+  color: var(--accent-blue);
+  transform: translateY(-1px);
 }
 
 .stat-group-card {
@@ -859,9 +1308,6 @@ onUnmounted(stopTimer)
   margin-top: 8px;
 }
 
-/* Action icon colors */
-.action-icon-red { background: var(--accent-red-dim); color: var(--accent-red); }
-
 .pipeline-card {
   margin-bottom: 24px;
 }
@@ -875,15 +1321,6 @@ onUnmounted(stopTimer)
   font-size: 15px;
   font-weight: 600;
 }
-.card-link {
-  font-size: 12px;
-  color: var(--text-tertiary);
-}
-.card-link:hover {
-  color: var(--accent-blue);
-  text-decoration: none;
-}
-
 .pipeline-steps {
   display: flex;
   flex-direction: column;
@@ -984,119 +1421,14 @@ onUnmounted(stopTimer)
   font-size: 11px;
 }
 
-.two-col {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-.action-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.action-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-primary);
-  text-align: left;
-  width: 100%;
-  transition: background var(--transition-fast);
-}
-.action-item:hover {
-  background: var(--bg-hover);
-}
-.action-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.action-icon-blue { background: rgba(59, 130, 246, 0.1); color: var(--accent-blue); }
-.action-icon-green { background: var(--accent-green-dim); color: var(--accent-green); }
-.action-icon-amber { background: var(--accent-amber-dim); color: var(--accent-amber); }
-
-.action-body { flex: 1; }
-.action-name {
-  font-size: 13px;
-  font-weight: 600;
-}
-.action-desc {
-  font-size: 11.5px;
-  color: var(--text-tertiary);
-  margin-top: 1px;
-}
-.action-item > svg {
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-}
-
-.report-list {
-  display: flex;
-  flex-direction: column;
-}
-.report-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  text-decoration: none;
-  transition: background var(--transition-fast);
-}
-.report-item:hover {
-  background: var(--bg-hover);
-  text-decoration: none;
-}
-.report-date {
-  font-size: 13px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-.report-size {
-  font-size: 11px;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-}
-
-.empty-state {
-  text-align: center;
-  padding: 40px 16px;
-  color: var(--text-tertiary);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.empty-icon {
-  color: var(--text-tertiary);
-  margin-bottom: 16px;
-}
-.empty-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin: 0 0 4px 0;
-}
-.empty-hint {
-  font-size: 12px;
-  margin: 0;
-  opacity: 0.8;
-}
-
 @media (max-width: 1100px) {
   .stats-grid-grouped { grid-template-columns: 1fr 1fr; }
+  .focus-grid { grid-template-columns: 1fr; }
+  .timeline-main { flex-direction: column; }
 }
 @media (max-width: 700px) {
   .stats-grid-grouped { grid-template-columns: 1fr; }
-  .two-col { grid-template-columns: 1fr; }
+  .timeline-action { width: 100%; justify-content: center; }
   .scheduler-bar { flex-direction: column; align-items: flex-start; gap: 10px; }
 }
 

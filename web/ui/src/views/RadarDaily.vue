@@ -1077,6 +1077,9 @@ onMounted(async () => {
   justify-content: space-between;
   margin-bottom: 14px;
 }
+.report-content .section-bar {
+  margin-bottom: 6px;
+}
 .section-bar h3 {
   font-size: 15px;
   font-weight: 600;
@@ -1210,19 +1213,19 @@ onMounted(async () => {
 
 .report-content {
   margin-bottom: 40px;
-  padding: 18px 14px 22px;
+  padding: 10px 12px 20px;
 }
 .report-prose {
-  margin-top: 14px;
+  margin-top: 10px;
   border-top: 1px solid var(--border-subtle);
-  padding-top: 18px;
+  padding-top: 0px;
 }
 
 .report-prose .markdown-body {
   width: 100%;
   max-width: min(100%, 1024px);
   margin-inline: auto;
-  padding-inline: 2px;
+  padding-inline: 0;
   font-size: 15px;
   line-height: 1.9;
   color: var(--text-primary);
@@ -1333,14 +1336,14 @@ onMounted(async () => {
 .report-prose .markdown-body :deep(ul) {
   list-style: none;
   padding: 0;
-  margin: 0.55em 0 1.35em;
+  margin: 0.4em 0 1.05em;
 }
 .report-prose .markdown-body :deep(li) {
-  padding: 10px 0 10px 1.3em;
-  text-indent: -1.3em;
+  padding: 4px 0 4px 1.2em;
+  text-indent: -1.2em;
   border-bottom: 1px dashed var(--border-subtle);
-  line-height: 1.82;
-  font-size: 14.5px;
+  line-height: 1.5;
+  font-size: 14px;
   color: var(--text-primary);
 }
 .report-prose .markdown-body :deep(li:last-child) {
@@ -1349,10 +1352,10 @@ onMounted(async () => {
 .report-prose .markdown-body :deep(li)::before {
   content: '·';
   color: var(--accent-blue);
-  font-size: 20px;
+  font-size: 15px;
   font-weight: 700;
-  margin-right: 0.45em;
-  vertical-align: middle;
+  margin-right: 0.35em;
+  vertical-align: 0.05em;
 }
 .report-prose .markdown-body :deep(li > *) {
   text-indent: 0;
