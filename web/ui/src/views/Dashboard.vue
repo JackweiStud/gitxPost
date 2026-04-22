@@ -61,11 +61,6 @@
             <span class="stat-num">{{ status?.scan?.new_tweets || 0 }}</span>
             <span class="stat-text">新推</span>
           </div>
-          <div class="group-stat-divider"></div>
-          <div class="group-stat">
-            <span class="stat-num">{{ status?.scan?.new_originals || 0 }}</span>
-            <span class="stat-text">原创</span>
-          </div>
         </div>
       </div>
 
@@ -112,12 +107,6 @@
         <div class="group-main">
           <div class="group-value large">{{ followersData.activity }}</div>
           <div class="group-label">24h 活动</div>
-        </div>
-        <div class="group-stats">
-          <div class="group-stat">
-            <span class="stat-num">{{ status?.scan?.new_originals || 0 }}</span>
-            <span class="stat-text">原创帖</span>
-          </div>
         </div>
       </div>
     </div>
