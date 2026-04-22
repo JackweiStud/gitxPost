@@ -159,7 +159,7 @@
           </div>
 
           <!-- Full markdown report -->
-          <div class="report-content card">
+          <div class="report-content report-content--daily card">
             <div class="section-bar">
               <h3>完整日报</h3>
               <span class="report-meta" v-if="reportData.frontmatter">
@@ -264,7 +264,7 @@
           </div>
 
           <template v-else>
-            <div class="report-content card">
+            <div class="report-content report-content--weekly card">
               <div class="section-bar">
                 <h3>周报详情</h3>
                 <span class="report-meta" v-if="weeklyReport.frontmatter">
@@ -1210,26 +1210,27 @@ onMounted(async () => {
 
 .report-content {
   margin-bottom: 40px;
-  padding: 24px 28px;
+  padding: 18px 14px 22px;
 }
 .report-prose {
-  margin-top: 16px;
+  margin-top: 14px;
   border-top: 1px solid var(--border-subtle);
-  padding-top: 20px;
+  padding-top: 18px;
 }
 
-/* 报告正文容器：限制阅读宽度 + 居中 */
 .report-prose .markdown-body {
-  max-width: 680px;
+  width: 100%;
+  max-width: min(100%, 1024px);
   margin-inline: auto;
-  font-size: 14.5px;
-  line-height: 1.8;
+  padding-inline: 2px;
+  font-size: 15px;
+  line-height: 1.9;
   color: var(--text-primary);
+  letter-spacing: 0.002em;
 }
 
-/* 周报需要更宽的容器以容纳表格 */
-.report-prose .markdown-body {
-  max-width: 880px;
+.report-content--weekly .report-prose .markdown-body {
+  max-width: min(100%, 1120px);
 }
 
 /* @username 高亮 */
@@ -1240,23 +1241,26 @@ onMounted(async () => {
 
 /* ———— H1 标题（周报主标题）———— */
 .report-prose .markdown-body :deep(h1) {
-  font-size: 22px;
-  font-weight: 700;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.24;
   color: var(--text-primary);
-  margin: 0 0 0.8em 0;
-  padding-bottom: 12px;
-  border-bottom: 2px solid var(--accent-blue);
+  margin: 0 0 0.9em 0;
+  padding-bottom: 14px;
+  letter-spacing: -0.03em;
+  border-bottom: 2px solid color-mix(in srgb, var(--accent-blue) 68%, transparent);
 }
 
 /* ———— 引用块（周报元数据）———— */
 .report-prose .markdown-body :deep(blockquote) {
-  margin: 1em 0;
-  padding: 12px 16px;
-  background: var(--bg-tertiary);
+  margin: 1.15em 0 1.35em;
+  padding: 14px 16px;
+  background: color-mix(in srgb, var(--bg-tertiary) 92%, var(--accent-blue) 4%);
   border-left: 3px solid var(--accent-blue);
-  border-radius: var(--radius-sm);
+  border-radius: 12px;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.75;
 }
 .report-prose .markdown-body :deep(blockquote p) {
   margin: 0;
@@ -1264,28 +1268,31 @@ onMounted(async () => {
 
 /* ———— 正文 p（含日期 / 统计行） ———— */
 .report-prose .markdown-body :deep(p) {
-  margin: 0.55em 0;
+  margin: 0.82em 0;
   color: var(--text-secondary);
-  font-size: 13.5px;
+  font-size: 15px;
+  line-height: 1.9;
 }
 
 /* ———— 分区二级标题（## emoji 文字） ———— */
 .report-prose .markdown-body :deep(h2) {
-  margin-top: 2em;
-  margin-bottom: 0.6em;
-  font-size: 15px;
+  margin-top: 2.2em;
+  margin-bottom: 0.78em;
+  font-size: 18px;
   font-weight: 700;
   color: var(--text-primary);
-  letter-spacing: -0.015em;
-  padding-bottom: 8px;
-  border-bottom: 2px solid var(--accent-blue);
-  display: inline-block;
+  line-height: 1.35;
+  letter-spacing: -0.016em;
+  padding-bottom: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent-blue) 44%, var(--border-subtle));
+  display: block;
 }
 .report-prose .markdown-body :deep(h3) {
-  margin-top: 1.5em;
-  margin-bottom: 0.5em;
-  font-size: 14px;
+  margin-top: 1.7em;
+  margin-bottom: 0.55em;
+  font-size: 16px;
   font-weight: 700;
+  line-height: 1.45;
   color: var(--text-primary);
 }
 
@@ -1293,26 +1300,27 @@ onMounted(async () => {
 .report-prose .markdown-body :deep(table) {
   width: 100%;
   border-collapse: collapse;
-  margin: 1.2em 0;
-  font-size: 13px;
+  margin: 1.3em 0;
+  font-size: 13.5px;
   background: var(--bg-secondary);
-  border-radius: var(--radius-md);
+  border-radius: 12px;
   overflow: hidden;
 }
 .report-prose .markdown-body :deep(thead) {
   background: var(--bg-tertiary);
 }
 .report-prose .markdown-body :deep(th) {
-  padding: 10px 12px;
+  padding: 11px 12px;
   text-align: left;
   font-weight: 600;
   color: var(--text-primary);
   border-bottom: 2px solid var(--border-default);
 }
 .report-prose .markdown-body :deep(td) {
-  padding: 10px 12px;
+  padding: 11px 12px;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-primary);
+  line-height: 1.65;
 }
 .report-prose .markdown-body :deep(tbody tr:last-child td) {
   border-bottom: none;
@@ -1325,14 +1333,14 @@ onMounted(async () => {
 .report-prose .markdown-body :deep(ul) {
   list-style: none;
   padding: 0;
-  margin: 0.4em 0 1.2em;
+  margin: 0.55em 0 1.35em;
 }
 .report-prose .markdown-body :deep(li) {
-  padding: 8px 0 8px 1.2em;
-  text-indent: -1.2em;
+  padding: 10px 0 10px 1.3em;
+  text-indent: -1.3em;
   border-bottom: 1px dashed var(--border-subtle);
-  line-height: 1.7;
-  font-size: 14px;
+  line-height: 1.82;
+  font-size: 14.5px;
   color: var(--text-primary);
 }
 .report-prose .markdown-body :deep(li:last-child) {
@@ -1343,7 +1351,7 @@ onMounted(async () => {
   color: var(--accent-blue);
   font-size: 20px;
   font-weight: 700;
-  margin-right: 0.35em;
+  margin-right: 0.45em;
   vertical-align: middle;
 }
 .report-prose .markdown-body :deep(li > *) {
@@ -1358,8 +1366,8 @@ onMounted(async () => {
 .report-prose .markdown-body :deep(a) {
   display: inline;
   color: var(--accent-blue);
-  font-weight: 500;
-  font-size: 0.88em;
+  font-weight: 600;
+  font-size: 0.94em;
   text-decoration: none;
   border-bottom: 1px solid rgba(26, 115, 232, 0.35);
   transition: border-color var(--transition-fast), color var(--transition-fast);
@@ -1379,18 +1387,18 @@ onMounted(async () => {
 /* ———— 代码块 ———— */
 .report-prose .markdown-body :deep(code) {
   font-family: var(--font-mono);
-  font-size: 0.9em;
-  padding: 2px 6px;
-  background: var(--bg-tertiary);
+  font-size: 0.88em;
+  padding: 3px 7px;
+  background: color-mix(in srgb, var(--bg-tertiary) 92%, var(--accent-blue) 4%);
   border-radius: var(--radius-sm);
   color: var(--accent-blue);
 }
 .report-prose .markdown-body :deep(pre) {
-  background: var(--bg-tertiary);
-  padding: 12px 16px;
-  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-tertiary) 96%, black 4%);
+  padding: 14px 16px;
+  border-radius: 12px;
   overflow-x: auto;
-  margin: 1em 0;
+  margin: 1.15em 0;
 }
 .report-prose .markdown-body :deep(pre code) {
   background: none;
@@ -1427,12 +1435,12 @@ onMounted(async () => {
 /* ———— 账号列表段落（包含多个账号的段落）———— */
 .report-prose .markdown-body :deep(p:has(code)) {
   line-height: 2.4;
-  margin: 1em 0;
+  margin: 1.05em 0;
 }
 
 /* ———— 普通段落 ———— */
 .report-prose .markdown-body :deep(p:not(:has(code))) {
-  line-height: 1.8;
+  line-height: 1.9;
 }
 
 /* ———— 表格中的 code 不需要特殊间距 ———— */
