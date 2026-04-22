@@ -57,6 +57,7 @@
     </aside>
 
     <main class="main-content">
+      <AgentationBridge :key="$route.fullPath" />
       <router-view v-slot="{ Component }">
         <transition name="fade" mode="out-in">
           <keep-alive>
@@ -87,6 +88,7 @@
 </template>
 
 <script setup>
+import AgentationBridge from './components/AgentationBridge.vue'
 import { useAppStore } from './stores/app.js'
 
 const appStore = useAppStore()
