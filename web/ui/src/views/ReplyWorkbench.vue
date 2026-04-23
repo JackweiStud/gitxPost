@@ -169,7 +169,7 @@
 
     <!-- Step 3: Confirm & Send -->
     <div class="step-panel" v-if="currentStep === 3">
-      <div class="confirm-card card">
+      <div class="confirm-card card" v-if="!publishSucceeded">
         <div class="confirm-header">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <span>即将回复 @{{ tweetData?.handle }}</span>
@@ -195,7 +195,7 @@
           <svg v-if="sendResult.ok" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
           <svg v-else width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </div>
-        <div class="result-text">{{ sendResult.ok ? '回复发送成功' : '发送失败' }}</div>
+        <div class="result-text">{{ resultTitle }}</div>
         <div class="result-detail" v-if="!sendResult.ok">{{ sendResult.error || sendResult.stderr }}</div>
         
         <!-- 批量模式：显示进度和下一条按钮 -->
@@ -269,6 +269,12 @@ const finalReplyText = computed(() => {
     return replies.value[selectedReply.value]
   }
   return ''
+})
+
+const publishSucceeded = computed(() => sendResult.value?.ok === true && sendResult.value?.mode === 'publish')
+const resultTitle = computed(() => {
+  if (!sendResult.value?.ok) return '发送失败'
+  return sendResult.value?.mode === 'draft' ? '草稿已填入浏览器' : '回复发送成功'
 })
 
 function replyTypeLabel(key) {
@@ -346,10 +352,11 @@ function confirmReply() {
 }
 
 async function sendDraft() {
+  sendResult.value = null
   sending.value = true
   try {
     const data = await api.sendReply(tweetUrl.value, finalReplyText.value, false)
-    sendResult.value = { ok: data.ok !== false }
+    sendResult.value = { ok: data.ok !== false, mode: 'draft', ...data }
     if (data.ok !== false) appStore.notify('草稿已填入浏览器', 'success')
   } catch (e) {
     sendResult.value = { ok: false, error: e.message }
@@ -359,10 +366,11 @@ async function sendDraft() {
 }
 
 async function sendPublish() {
+  sendResult.value = null
   sending.value = true
   try {
     const data = await api.sendReply(tweetUrl.value, finalReplyText.value, true)
-    sendResult.value = { ok: data.ok !== false, ...data }
+    sendResult.value = { ok: data.ok !== false, mode: 'publish', ...data }
     if (data.ok !== false) appStore.notify('回复发送成功', 'success')
     else appStore.notify('发送失败', 'error')
   } catch (e) {
