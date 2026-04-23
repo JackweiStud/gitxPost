@@ -1473,6 +1473,16 @@ def _append_actions(actions_path: Path, new_actions):
     items = payload.setdefault("actions", [])
     added = []
     today = _today_str()
+
+    def _dedupe_key(item):
+        source_link = (item.get("source_link") or "").strip()
+        action = " ".join((item.get("action") or "").split())
+        date = item.get("date") or today
+        if source_link:
+            return ("source_link", source_link)
+        return ("action", date, action)
+
+    existing_keys = {_dedupe_key(item) for item in items if isinstance(item, dict)}
     for item in new_actions or []:
         action = (item.get("action") or "").strip()
         if not action:
@@ -1484,7 +1494,11 @@ def _append_actions(actions_path: Path, new_actions):
             "source_link": item.get("source_link") or "",
             "source_account": item.get("source_account") or "",
         }
+        key = _dedupe_key(normalized)
+        if key in existing_keys:
+            continue
         items.append(normalized)
+        existing_keys.add(key)
         added.append(normalized)
     _write_json_file(actions_path, payload)
     return added
@@ -1955,6 +1969,12 @@ def _cmd_reply(args):
             step_pause_ms=args.observe_ms,
         )
         total_ms = int((time.time() - start_ts) * 1000)
+        error = None
+        if not success:
+            error = (
+                "回复发送失败：X 发送按钮未激活或浏览器自动化未完成，"
+                "可查看 /tmp/xpost_reply_debug.png 和 /tmp/xpost_reply_debug.html"
+            )
         _print_json(
             {
                 "ok": success,
@@ -1962,6 +1982,7 @@ def _cmd_reply(args):
                 "url": args.url,
                 "text_length": len(args.text),
                 "timings": {"total_ms": total_ms},
+                **({"error": error} if error else {}),
             }
         )
         return 0 if success else 1

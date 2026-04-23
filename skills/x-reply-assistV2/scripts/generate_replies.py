@@ -33,8 +33,7 @@ def _strip_markdown_fences(text: str) -> str:
 
 def _infer_llm_kind(api_url: str) -> str:
     u = (api_url or "").lower()
-    # 检查是否是 Anthropic API
-    if "/messages" in u or "anthropic" in u or "cc-vibe.com" in u:
+    if "/messages" in u or "anthropic" in u:
         return "anthropic"
     return "openai"
 
@@ -159,8 +158,9 @@ def _call_llm_once(spec: dict, prompt: str) -> str:
 
     if kind == "anthropic":
         url = spec["api_url"].rstrip("/")
-        # 自动补全 Anthropic API 路径
-        if not url.endswith("/messages"):
+        if url.endswith("/v1"):
+            url = url + "/messages"
+        elif not url.endswith("/messages"):
             url = url + "/v1/messages"
     else:
         url = _openai_chat_completions_url(spec["api_url"])

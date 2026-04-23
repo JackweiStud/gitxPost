@@ -196,7 +196,7 @@
           <svg v-else width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </div>
         <div class="result-text">{{ resultTitle }}</div>
-        <div class="result-detail" v-if="!sendResult.ok">{{ sendResult.error || sendResult.stderr }}</div>
+        <div class="result-detail" v-if="resultDetail">{{ resultDetail }}</div>
         
         <!-- 批量模式：显示进度和下一条按钮 -->
         <div class="batch-next-section" v-if="isBatchMode && sendResult.ok">
@@ -275,6 +275,11 @@ const publishSucceeded = computed(() => sendResult.value?.ok === true && sendRes
 const resultTitle = computed(() => {
   if (!sendResult.value?.ok) return '发送失败'
   return sendResult.value?.mode === 'draft' ? '草稿已填入浏览器' : '回复发送成功'
+})
+const resultDetail = computed(() => {
+  if (!sendResult.value || sendResult.value.ok) return ''
+  const detail = sendResult.value.error || sendResult.value.stderr || sendResult.value.stdout || ''
+  return String(detail).trim()
 })
 
 function replyTypeLabel(key) {

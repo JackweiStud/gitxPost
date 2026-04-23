@@ -327,6 +327,75 @@ def _find_reply_editable(page: Page):
     return None, None, False
 
 
+def _collect_send_button_candidates(page: Page) -> list[dict]:
+    """收集当前页面中可见的 Reply 发送按钮候选。"""
+    candidates = []
+    state_js = """
+    (el) => {
+      const button = el.closest('button') || el;
+      const style = window.getComputedStyle(button);
+      const rect = button.getBoundingClientRect();
+      const visible = style.display !== 'none' &&
+                      style.visibility !== 'hidden' &&
+                      style.opacity !== '0' &&
+                      rect.width > 0 && rect.height > 0;
+      const ariaDisabled = (
+        button.getAttribute('aria-disabled') ||
+        el.getAttribute('aria-disabled') ||
+        ''
+      ).toLowerCase();
+      const disabled = ariaDisabled === 'true' || !!button.disabled || !!el.disabled;
+      const text = (button.innerText || button.textContent || '').trim();
+      const inDialog = !!button.closest('div[role="dialog"]');
+      return { visible, disabled, text, inDialog, top: rect.top, left: rect.left };
+    }
+    """
+
+    for selector in REPLY_SELECTORS["send_reply_button"]:
+        try:
+            handles = page.query_selector_all(selector)
+        except Exception:
+            continue
+
+        for handle in handles:
+            try:
+                state = handle.evaluate(state_js)
+            except Exception:
+                continue
+
+            if not state.get("visible"):
+                continue
+
+            candidates.append({"handle": handle, "selector": selector, "state": state})
+
+    return candidates
+
+
+def _nudge_reply_editor(page: Page) -> bool:
+    """触发一次编辑器输入状态刷新，避免文本已显示但发送按钮未激活。"""
+    handle, _, _ = _find_reply_editable(page)
+    if handle is None:
+        return False
+
+    try:
+        handle.evaluate("""
+        (el) => {
+          el.focus();
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          range.collapse(false);
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+        """)
+        page.keyboard.type(" ", delay=random.randint(30, 80))
+        page.keyboard.press("Backspace")
+        return True
+    except Exception:
+        return False
+
+
 def input_reply_text(page: Page, text: str, step_pause_ms: int = STEP_PAUSE_MS) -> bool:
     """逐字输入回复文本（模拟人类打字）"""
     print("✍️  输入回复文本...")
@@ -404,30 +473,45 @@ def click_reply_send(page: Page, step_pause_ms: int = STEP_PAUSE_MS) -> bool:
     """查找并点击 Reply 发送按钮"""
     print("   🚀 发送回复...")
 
-    for selector in REPLY_SELECTORS["send_reply_button"]:
-        try:
-            handle = page.query_selector(selector)
-            if not handle:
-                continue
+    deadline = time.time() + 12
+    last_wait_log = 0.0
+    last_candidates: list[dict] = []
+    nudged_editor = False
 
-            disabled = handle.evaluate("""
-            (el) => {
-              const ariaDisabled = (el.getAttribute('aria-disabled') || '').toLowerCase();
-              return ariaDisabled === 'true' || !!el.disabled;
-            }
-            """)
+    while time.time() < deadline:
+        candidates = _collect_send_button_candidates(page)
+        if candidates:
+            last_candidates = candidates
 
-            if disabled:
-                print(f"   ⚠️  发送按钮未激活: {selector}")
-                continue
+        enabled = [
+            c for c in candidates
+            if not c["state"].get("disabled")
+        ]
 
+        if enabled:
+            enabled.sort(
+                key=lambda c: (
+                    not bool(c["state"].get("inDialog")),
+                    float(c["state"].get("top") or 9999),
+                )
+            )
+            candidate = enabled[0]
+            handle = candidate["handle"]
+            selector = candidate["selector"]
+            state = candidate["state"]
+
+            print(
+                f"   ✅ 发送按钮已激活: {selector}"
+                f"{' (dialog)' if state.get('inDialog') else ''}"
+            )
             _pause_for_observation("准备点击发送", step_pause_ms)
 
             try:
                 handle.evaluate("""
                 (el) => {
-                  el.scrollIntoView({ block: 'center', inline: 'nearest' });
-                  el.click();
+                  const button = el.closest('button') || el;
+                  button.scrollIntoView({ block: 'center', inline: 'nearest' });
+                  button.click();
                 }
                 """)
             except Exception:
@@ -453,14 +537,26 @@ def click_reply_send(page: Page, step_pause_ms: int = STEP_PAUSE_MS) -> bool:
                 _pause_for_observation("发送按钮已点击", step_pause_ms)
                 return True
 
-        except PlaywrightTimeoutError:
-            continue
-        except Exception as exc:
-            print(f"   ⚠️  点击发送按钮失败 {selector}: {exc}")
-            continue
+        now = time.time()
+        if candidates and now - last_wait_log >= 2:
+            disabled_count = sum(1 for c in candidates if c["state"].get("disabled"))
+            print(f"   ⏳ 等待发送按钮激活... 可见候选 {len(candidates)} 个，未激活 {disabled_count} 个")
+            last_wait_log = now
+
+            if disabled_count == len(candidates) and not nudged_editor:
+                nudged_editor = True
+                if _nudge_reply_editor(page):
+                    print("   🔁 已触发回复框状态刷新，继续等待发送按钮激活")
+
+        page.wait_for_timeout(400)
 
     _save_debug_artifacts(page)
-    print("   ❌ 未找到可用的发送按钮")
+    if last_candidates:
+        disabled_count = sum(1 for c in last_candidates if c["state"].get("disabled"))
+        print(f"   ❌ 发送按钮在等待后仍未激活（可见候选 {len(last_candidates)} 个，未激活 {disabled_count} 个）")
+    else:
+        print("   ❌ 未找到可见的发送按钮")
+    print("   🧩 已保存调试文件: /tmp/xpost_reply_debug.html /tmp/xpost_reply_debug.png")
     return False
 
 

@@ -8,7 +8,7 @@
       <div class="header-actions">
         <button class="btn btn-ghost" @click="refreshReport" :disabled="generating">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-          {{ generating ? '生成中...' : (activeTab === 'daily' ? '重新生成日报' : '生成周报') }}
+          {{ generating ? '生成中...' : (activeTab === 'daily' ? '基于雷达结果重生成今日报' : '生成周报') }}
         </button>
       </div>
     </header>
@@ -583,8 +583,10 @@ async function refreshDaily() {
     await api.runDaily()
     appStore.notify('日报生成完成', 'success')
     await loadReports()
-    if (reports.value.length) {
-      selectedDate.value = reports.value[0].date
+    const latestDate = reports.value[0]?.date
+    if (latestDate) {
+      selectedDate.value = latestDate
+      await loadReport(latestDate)
     }
   } catch (e) {
     appStore.notify('日报生成失败: ' + e.message, 'error')

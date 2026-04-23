@@ -1,8 +1,11 @@
 import axios from 'axios'
 
+const DEFAULT_API_TIMEOUT_MS = 10 * 60 * 1000
+const RADAR_SCAN_TIMEOUT_MS = 15 * 60 * 1000
+
 const api = axios.create({
   baseURL: '/api',
-  timeout: 600000,
+  timeout: DEFAULT_API_TIMEOUT_MS,
 })
 
 api.interceptors.response.use(
@@ -22,7 +25,8 @@ export const getInterests = () => api.get('/radar/interests')
 export const updateInterests = (data) => api.put('/radar/interests', data)
 
 /** @param {import('axios').AxiosRequestConfig} [config] 可传 { signal } 用于中止请求 */
-export const runScan = (config = {}) => api.post('/radar/scan', null, config)
+export const runScan = (config = {}) =>
+  api.post('/radar/scan', null, { ...config, timeout: config.timeout ?? RADAR_SCAN_TIMEOUT_MS })
 export const runAnalyze = (days = 7, config = {}) =>
   api.post('/radar/analyze', null, { params: { days }, ...config })
 export const runDaily = (config = {}) => api.post('/radar/daily', null, config)
