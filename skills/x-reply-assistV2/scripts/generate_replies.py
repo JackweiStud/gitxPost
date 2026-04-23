@@ -33,7 +33,8 @@ def _strip_markdown_fences(text: str) -> str:
 
 def _infer_llm_kind(api_url: str) -> str:
     u = (api_url or "").lower()
-    if "/messages" in u:
+    # 检查是否是 Anthropic API
+    if "/messages" in u or "anthropic" in u or "cc-vibe.com" in u:
         return "anthropic"
     return "openai"
 
@@ -157,16 +158,25 @@ def _call_llm_once(spec: dict, prompt: str) -> str:
     }
 
     if kind == "anthropic":
-        url = spec["api_url"]
+        url = spec["api_url"].rstrip("/")
+        # 自动补全 Anthropic API 路径
+        if not url.endswith("/messages"):
+            url = url + "/v1/messages"
     else:
         url = _openai_chat_completions_url(spec["api_url"])
 
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     req = urllib.request.Request(url, data=body, method="POST")
-    req.add_header("Authorization", f"Bearer {spec['api_key']}")
     req.add_header("Content-Type", "application/json")
+    req.add_header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36")
+
     if kind == "anthropic":
-        req.add_header("Anthropic-Version", "2023-06-01")
+        # Anthropic API 使用 x-api-key header
+        req.add_header("x-api-key", spec['api_key'])
+        req.add_header("anthropic-version", "2023-06-01")
+    else:
+        # OpenAI 兼容 API 使用 Authorization Bearer
+        req.add_header("Authorization", f"Bearer {spec['api_key']}")
 
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
