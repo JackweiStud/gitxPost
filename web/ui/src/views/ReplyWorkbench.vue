@@ -225,7 +225,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app.js'
 import * as api from '../api/xpost.js'
@@ -445,20 +445,33 @@ function loadCurrentQueueItem() {
   }
 }
 
-onMounted(() => {
+function firstQueryValue(value) {
+  return Array.isArray(value) ? value[0] : value
+}
+
+function handleReplyRoute() {
+  if (route.path !== '/reply') return
+
   // 批量模式：从队列加载
   if (route.query.batch === 'true' && appStore.queueTotal > 0) {
     loadCurrentQueueItem()
     return
   }
-  
+
   // 单条模式：从 URL 参数加载
-  const urlParam = route.query.url
+  const urlParam = firstQueryValue(route.query.url)
   if (urlParam) {
+    reset()
     tweetUrl.value = urlParam
     extractTweet()
   }
-})
+}
+
+watch(
+  () => [route.path, route.query.url, route.query.batch],
+  handleReplyRoute,
+  { immediate: true }
+)
 
 onUnmounted(() => {
   // 如果离开页面且批量队列未完成，保留队列状态供用户返回
