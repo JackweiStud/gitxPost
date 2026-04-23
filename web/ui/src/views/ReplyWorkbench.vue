@@ -32,12 +32,12 @@
         class="step-item"
         :class="{ 
           active: currentStep === idx, 
-          done: idx < currentStep,
-          clickable: idx < currentStep
+          done: isStepDone(idx),
+          clickable: canGoToStep(idx)
         }"
-        @click="idx < currentStep && goToStep(idx)"
+        @click="goToStep(idx)"
       >
-        <div class="step-badge">{{ idx < currentStep ? '✓' : idx + 1 }}</div>
+        <div class="step-badge">{{ stepBadge(idx) }}</div>
         <span class="step-label">{{ s.label }}</span>
       </div>
     </div>
@@ -160,7 +160,7 @@
       </div>
 
       <div class="action-bar">
-        <button class="btn btn-ghost" @click="currentStep = 1">返回</button>
+        <button class="btn btn-ghost" @click="goToStep(1)">返回</button>
         <button class="btn btn-primary btn-lg" @click="confirmReply" :disabled="!finalReplyText">
           确认回复内容
         </button>
@@ -180,7 +180,7 @@
         </div>
 
         <div class="confirm-actions">
-          <button class="btn btn-ghost" @click="currentStep = 2">修改</button>
+          <button class="btn btn-ghost" @click="goToStep(2)">修改</button>
           <button class="btn btn-ghost" @click="sendDraft" :disabled="sending">
             仅填入（草稿）
           </button>
@@ -245,6 +245,7 @@ const steps = [
 ]
 
 const currentStep = ref(0)
+const maxReachedStep = ref(0)
 const tweetUrl = ref('')
 const tweetData = ref(null)
 const extracting = ref(false)
@@ -287,11 +288,28 @@ function replyTypeLabel(key) {
   return labels[key] || ''
 }
 
+function setCurrentStep(step) {
+  currentStep.value = step
+  maxReachedStep.value = Math.max(maxReachedStep.value, step)
+}
+
+function canGoToStep(step) {
+  if (step === currentStep.value) return false
+  if (extracting.value || generatingReplies.value || sending.value) return false
+  return step <= maxReachedStep.value
+}
+
+function isStepDone(step) {
+  return step !== currentStep.value && step < maxReachedStep.value
+}
+
+function stepBadge(step) {
+  return isStepDone(step) ? '✓' : step + 1
+}
+
 function goToStep(step) {
-  // 只允许回退到已完成的步骤
-  if (step < currentStep.value) {
-    currentStep.value = step
-  }
+  if (!canGoToStep(step)) return
+  currentStep.value = step
 }
 
 function truncateUrl(url) {
@@ -321,7 +339,7 @@ async function extractTweet() {
     }
     tweetData.value = data
     addRecentUrl(tweetUrl.value.trim())
-    currentStep.value = 1
+    setCurrentStep(1)
     appStore.notify('推文正文提取成功', 'success')
   } catch (e) {
     appStore.notify('提取推文失败: ' + e.message, 'error')
@@ -342,7 +360,7 @@ async function generateReplies() {
     replies.value = data
     selectedReply.value = null
     customReply.value = ''
-    currentStep.value = 2
+    setCurrentStep(2)
   } catch (e) {
     appStore.notify('生成回复失败: ' + e.message, 'error')
   } finally {
@@ -353,7 +371,7 @@ async function generateReplies() {
 function confirmReply() {
   if (!finalReplyText.value) return
   sendResult.value = null
-  currentStep.value = 3
+  setCurrentStep(3)
 }
 
 async function sendDraft() {
@@ -388,6 +406,7 @@ async function sendPublish() {
 
 function reset() {
   currentStep.value = 0
+  maxReachedStep.value = 0
   tweetData.value = null
   replies.value = {}
   selectedReply.value = null
