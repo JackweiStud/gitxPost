@@ -1533,10 +1533,6 @@ class PublishPostRequest(BaseModel):
 @app.post("/api/publish/post")
 async def publish_post(req: PublishPostRequest):
     """发布 Post（立即或定时）"""
-    # 验证文本长度
-    if len(req.text) > 280:
-        raise HTTPException(400, detail="文本长度不能超过 280 字符")
-    
     if not req.text.strip():
         raise HTTPException(400, detail="文本不能为空")
     

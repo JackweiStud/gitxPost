@@ -33,8 +33,8 @@
               class="char-circle-progress"
             />
           </svg>
-          <div class="char-count-text" :class="{ 'over-limit': charCount > 280 }">
-            {{ charCount }}/280
+          <div class="char-count-text">
+            {{ charCount }} 字
           </div>
         </div>
 
@@ -164,18 +164,17 @@ let wsConnection = null
 const circumference = 2 * Math.PI * 25
 
 const dashOffset = computed(() => {
-  const ratio = charCount.value / 280
+  const ratio = Math.min(charCount.value / 280, 1)
   return circumference * (1 - ratio)
 })
 
 const charCountColor = computed(() => {
-  if (charCount.value > 280) return 'var(--accent-red)'
   if (charCount.value > 250) return 'var(--accent-amber)'
   return 'var(--accent-green)'
 })
 
 const canPublish = computed(() => {
-  return postText.value.trim().length > 0 && charCount.value <= 280
+  return postText.value.trim().length > 0
 })
 
 const minDateTime = computed(() => {
@@ -481,10 +480,6 @@ onUnmounted(() => {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--text-secondary);
-}
-
-.char-count-text.over-limit {
-  color: var(--accent-red);
 }
 
 .upload-zone {
