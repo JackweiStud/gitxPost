@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updated_at": "2026-04-22T10:38:37.836054",
+  "updated_at": "2026-05-11T09:16:22.503438",
   "accounts": [
     {
       "handle": "dashen_wang",
@@ -582,8 +582,9 @@
     {
       "handle": "ElevenLabs",
       "note": "ElevenLabs，AI research and products that transform how we interact w...",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-05-11"
     },
     {
       "handle": "pirroh",
@@ -863,8 +864,9 @@
     {
       "handle": "pmndrs",
       "note": "Poimandres，A developer collective building open tools for the creati...",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-05-11"
     },
     {
       "handle": "OpenAIDevs",
@@ -1195,8 +1197,9 @@
     {
       "handle": "hrswatigupta",
       "note": "Swati Gupta，350K+ Audience on LinkedIn ｜ AI Content Creator ｜ Resume ...",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-05-11"
     },
     {
       "handle": "craftian_keskin",
@@ -1590,8 +1593,9 @@
     {
       "handle": "METR_Evals",
       "note": "AI 评估研究",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-05-11"
     },
     {
       "handle": "tinkerapi",
@@ -1602,8 +1606,9 @@
     {
       "handle": "contextkingceo",
       "note": "周报推荐关注",
-      "status": "active",
-      "added_at": "2026-04-03"
+      "status": "removed",
+      "added_at": "2026-04-03",
+      "removed_at": "2026-05-11"
     },
     {
       "handle": "bcherny",
@@ -1665,6 +1670,42 @@
       "note": "周报推荐关注",
       "status": "active",
       "added_at": "2026-04-22"
+    },
+    {
+      "handle": "davidsenra",
+      "note": "被 @elonmusk、@pmarca 转推",
+      "status": "active",
+      "added_at": "2026-05-11"
+    },
+    {
+      "handle": "patrick_oshag",
+      "note": "被 @garrytan 转推 4 次",
+      "status": "active",
+      "added_at": "2026-05-11"
+    },
+    {
+      "handle": "imagine",
+      "note": "被 @grok 转推 5 次",
+      "status": "active",
+      "added_at": "2026-05-11"
+    },
+    {
+      "handle": "XFreeze",
+      "note": "被 @elonmusk 转推 6 次",
+      "status": "active",
+      "added_at": "2026-05-11"
+    },
+    {
+      "handle": "thinkymachines",
+      "note": "被 @johnschulman2、@miramurati 转推",
+      "status": "active",
+      "added_at": "2026-05-11"
+    },
+    {
+      "handle": "yuyy614893671",
+      "note": "被 @PandaTalk8、@dotey 转推",
+      "status": "active",
+      "added_at": "2026-05-11"
     }
   ]
 }
