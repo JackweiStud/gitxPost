@@ -38,6 +38,12 @@
           <div class="section-header">
             <h2>活跃账号</h2>
             <span class="count-badge">{{ filteredActive.length }}</span>
+            <span
+              class="language-summary-badge"
+              :title="languageSummaryTitle"
+            >
+              CN {{ activeChinesePercentText }}
+            </span>
           </div>
           <div class="accounts-table">
             <div v-if="!filteredActive.length" class="empty-state">
@@ -54,6 +60,13 @@
               >
                 <div class="account-info">
                   <span class="account-handle">@{{ account.handle }}</span>
+                  <span
+                    class="language-badge"
+                    :class="languageBadgeClass(account)"
+                    :title="languageBadgeTitle(account)"
+                  >
+                    {{ account.language_label || '--' }}
+                  </span>
                   <span class="account-status status-active">活跃</span>
                 </div>
                 <button 
@@ -89,6 +102,13 @@
               >
                 <div class="account-info">
                   <span class="account-handle">@{{ account.handle }}</span>
+                  <span
+                    class="language-badge"
+                    :class="languageBadgeClass(account)"
+                    :title="languageBadgeTitle(account)"
+                  >
+                    {{ account.language_label || '--' }}
+                  </span>
                   <span class="account-status status-removed">已移除</span>
                 </div>
                 <button 
@@ -169,6 +189,7 @@ import * as api from '../api/xpost.js'
 const appStore = useAppStore()
 
 const accounts = ref([])
+const languageSummary = ref(null)
 const loading = ref(false)
 const searchQuery = ref('')
 const removing = ref(null)
@@ -207,11 +228,38 @@ const canSubmitAdd = computed(() => {
   return addForm.handle.trim() && addForm.note.trim()
 })
 
+const activeChinesePercentText = computed(() => {
+  const value = languageSummary.value?.chinese_percent
+  return typeof value === 'number' ? `${value.toFixed(1)}%` : '--'
+})
+
+const languageSummaryTitle = computed(() => {
+  const summary = languageSummary.value
+  if (!summary) return '尚未计算'
+  const time = summary.latest_scan_time || '暂无扫描时间'
+  return `基于最新 3 条去重帖子计算；页面打开/刷新时更新，不触发扫描。最新扫描：${time}`
+})
+
+function languageBadgeClass(account) {
+  return {
+    'language-badge-en': account.language === 'en',
+    'language-badge-cn': account.language === 'zh',
+    'language-badge-unknown': !['en', 'zh'].includes(account.language),
+  }
+}
+
+function languageBadgeTitle(account) {
+  const counts = account.language_post_counts || {}
+  const sampleCount = account.language_sample_count ?? 0
+  return `最新 ${sampleCount} 条：EN ${counts.en || 0} / CN ${counts.zh || 0} / Other ${counts.other || 0} / Unknown ${counts.unknown || 0}`
+}
+
 async function loadAccounts() {
   loading.value = true
   try {
     const data = await api.getRadarAccounts()
     accounts.value = data.accounts || []
+    languageSummary.value = data.language_summary || null
   } catch (e) {
     appStore.notify('加载账号列表失败: ' + e.message, 'error')
   } finally {
@@ -454,6 +502,15 @@ export default {
   border-radius: var(--radius-sm);
 }
 
+.language-summary-badge {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.1);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
 .accounts-table {
   flex: 1;
   overflow-y: auto;
@@ -517,6 +574,32 @@ export default {
   font-weight: 500;
   color: var(--text-primary);
   font-family: var(--font-mono);
+}
+
+.language-badge {
+  width: 30px;
+  min-width: 30px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+}
+
+.language-badge-en {
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.language-badge-cn {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.14);
+}
+
+.language-badge-unknown {
+  color: var(--text-tertiary);
+  background: var(--bg-tertiary);
 }
 
 .account-status {

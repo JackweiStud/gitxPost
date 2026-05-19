@@ -137,6 +137,13 @@
                   <div class="tweet-author">
                     <div class="author-avatar" :style="{ background: getAvatarColor(tweet.author) }">{{ tweet.author[0]?.toUpperCase() }}</div>
                     <span class="author-handle">@{{ tweet.author }}</span>
+                    <span
+                      class="tweet-language-badge"
+                      :class="languageBadgeClass(tweet.language)"
+                      :title="languageBadgeTitle(tweet)"
+                    >
+                      {{ tweet.language_label || '--' }}
+                    </span>
                   </div>
                   <div class="tweet-check">
                     <svg v-if="selectedTweets.includes(idx)" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
@@ -446,8 +453,11 @@ function preprocessMarkdown(raw) {
 const renderedMarkdown = computed(() => {
   if (!reportData.value?.markdown) return ''
   let html = marked.parse(preprocessMarkdown(reportData.value.markdown))
-  // 高亮 @username
-  html = html.replace(/@(\w+)/g, '<span class="mention">@$1</span>')
+  // 高亮 @username，并按账号语言画像补 EN/CN/--。
+  html = html.replace(/@(\w+)/g, (_, handle) => {
+    const language = getReportAccountLanguage(handle)
+    return `<span class="mention">@${handle}</span><span class="tweet-language-badge ${languageBadgeClass(language.language)}" title="${languageBadgeTitle(language)}">${language.language_label || '--'}</span>`
+  })
   return html
 })
 
@@ -489,6 +499,28 @@ function getAvatarColor(author) {
     hash += author.charCodeAt(i)
   }
   return colors[hash % colors.length]
+}
+
+function getReportAccountLanguage(handle) {
+  const accountLanguages = reportData.value?.account_languages || {}
+  return accountLanguages[handle.toLowerCase()] || {
+    language: 'unknown',
+    language_label: '--',
+    language_sample_count: 0,
+    language_post_counts: {},
+  }
+}
+
+function languageBadgeClass(language) {
+  if (language === 'en') return 'tweet-language-badge-en'
+  if (language === 'zh') return 'tweet-language-badge-cn'
+  return 'tweet-language-badge-unknown'
+}
+
+function languageBadgeTitle(item) {
+  const counts = item.language_post_counts || {}
+  const sampleCount = item.language_sample_count ?? 0
+  return `最新 ${sampleCount} 条：EN ${counts.en || 0} / CN ${counts.zh || 0} / Other ${counts.other || 0} / Unknown ${counts.unknown || 0}`
 }
 
 function toggleTweet(tweetIdx) {
@@ -1149,6 +1181,58 @@ onMounted(async () => {
   font-size: 12px;
   color: var(--text-secondary);
   font-weight: 500;
+}
+
+.tweet-language-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  font-family: var(--font-mono);
+}
+
+.tweet-language-badge-en {
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.tweet-language-badge-cn {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.14);
+}
+
+.tweet-language-badge-unknown {
+  color: var(--text-tertiary);
+  background: var(--bg-tertiary);
+}
+
+.report-prose .markdown-body :deep(.tweet-language-badge) {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 5px;
+  margin-right: 3px;
+  transform: translateY(-1px);
+}
+
+.report-prose .markdown-body :deep(.tweet-language-badge-en) {
+  color: #1d4ed8;
+  background: rgba(37, 99, 235, 0.1);
+}
+
+.report-prose .markdown-body :deep(.tweet-language-badge-cn) {
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.14);
+}
+
+.report-prose .markdown-body :deep(.tweet-language-badge-unknown) {
+  color: var(--text-tertiary);
+  background: var(--bg-tertiary);
 }
 .tweet-check {
   width: 20px;

@@ -9,7 +9,7 @@ import json
 import os
 import re
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -245,6 +245,167 @@ def _read_text(path: Path) -> Optional[str]:
     if not path.exists():
         return None
     return path.read_text("utf-8")
+
+
+def _parse_radar_post_time(value: str) -> datetime:
+    if not value:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    try:
+        from email.utils import parsedate_to_datetime
+
+        parsed = parsedate_to_datetime(value)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except Exception:
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _normalize_radar_post_url(url: str) -> str:
+    return re.sub(r"#.*$", "", url or "").strip()
+
+
+def _classify_radar_text_language(text: str) -> str:
+    """Classify a post's content language using visible script evidence only."""
+    cleaned = re.sub(r"https?://\S+|x\.com/\S+|[@#]\w+", " ", text or "")
+    cjk = len(re.findall(r"[\u4e00-\u9fff]", cleaned))
+    latin = len(re.findall(r"[A-Za-z]", cleaned))
+    japanese = len(re.findall(r"[\u3040-\u30ff]", cleaned))
+    korean = len(re.findall(r"[\uac00-\ud7af]", cleaned))
+    total = cjk + latin + japanese + korean
+
+    if total < 8:
+        return "unknown"
+    if cjk >= 6 or (cjk >= 3 and cjk / max(1, total) >= 0.18):
+        return "zh"
+    if latin >= 12 and cjk <= 2 and japanese + korean == 0:
+        return "en"
+    return "other"
+
+
+def _load_account_language_profile() -> tuple[dict[str, dict], dict]:
+    """Build account language labels from the latest 3 deduped radar post samples."""
+    posts_by_account: dict[str, dict[str, dict]] = {}
+    latest_scan_time = ""
+    latest_snapshot = ""
+
+    for result_path in sorted(XINFO_DAY.glob("*_result.json")):
+        data = _read_json(result_path, {})
+        if not isinstance(data, dict):
+            continue
+        summary = data.get("summary") or {}
+        scan_time = summary.get("scan_time") or ""
+        if scan_time and scan_time > latest_scan_time:
+            latest_scan_time = scan_time
+            latest_snapshot = str(result_path)
+
+        for item in summary.get("new_ideas_preview") or []:
+            account = (item.get("account") or "").strip()
+            url = _normalize_radar_post_url(item.get("link") or "")
+            if not account or not url:
+                continue
+
+            text = f"{item.get('title') or ''} {item.get('summary') or ''}"
+            post = {
+                "time": _parse_radar_post_time(item.get("time") or ""),
+                "language": _classify_radar_text_language(text),
+            }
+            bucket = posts_by_account.setdefault(account.lower(), {})
+            old = bucket.get(url)
+            if old is None or post["time"] >= old["time"]:
+                bucket[url] = post
+
+    profile: dict[str, dict] = {}
+    for account_key, deduped_posts in posts_by_account.items():
+        latest_posts = sorted(deduped_posts.values(), key=lambda row: row["time"], reverse=True)[:3]
+        counts = {"en": 0, "zh": 0, "other": 0, "unknown": 0}
+        for post in latest_posts:
+            lang = post.get("language") or "unknown"
+            counts[lang if lang in counts else "other"] += 1
+
+        if len(latest_posts) >= 3 and counts["en"] >= 2:
+            language = "en"
+            label = "EN"
+        elif len(latest_posts) >= 3 and counts["zh"] >= 2:
+            language = "zh"
+            label = "CN"
+        elif len(latest_posts) >= 3 and counts["other"] >= 2:
+            language = "other"
+            label = "--"
+        else:
+            language = "unknown"
+            label = "--"
+
+        profile[account_key] = {
+            "language": language,
+            "language_label": label,
+            "language_sample_count": len(latest_posts),
+            "language_post_counts": counts,
+        }
+
+    meta = {
+        "latest_scan_time": latest_scan_time,
+        "latest_snapshot": latest_snapshot,
+        "update_mode": "computed_on_accounts_request",
+        "update_note": "打开或刷新账号页时读取本地最新雷达扫描快照计算；不触发新扫描。",
+        "rule": "latest_3_deduped_posts_majority",
+    }
+    return profile, meta
+
+
+def _build_language_summary(active: list[dict], language_meta: dict) -> dict:
+    total = len(active)
+    english_count = sum(1 for acc in active if acc.get("language") == "en")
+    chinese_count = sum(1 for acc in active if acc.get("language") == "zh")
+    other_count = sum(1 for acc in active if acc.get("language") == "other")
+    unknown_count = total - english_count - chinese_count - other_count
+    classified_total = english_count + chinese_count + other_count
+
+    def pct(count: int) -> float:
+        return round(count / total * 100, 1) if total else 0.0
+
+    return {
+        "active_total": total,
+        "classified_total": classified_total,
+        "english_count": english_count,
+        "chinese_count": chinese_count,
+        "other_count": other_count,
+        "unknown_count": unknown_count,
+        "english_percent": pct(english_count),
+        "chinese_percent": pct(chinese_count),
+        "other_percent": pct(other_count),
+        "unknown_percent": pct(unknown_count),
+        **language_meta,
+    }
+
+
+def _attach_language_to_report_tweets(report: dict) -> dict:
+    language_profile, _ = _load_account_language_profile()
+    account_languages = {
+        handle: {
+            "language": row.get("language", "unknown"),
+            "language_label": row.get("language_label", "--"),
+            "language_sample_count": row.get("language_sample_count", 0),
+            "language_post_counts": row.get(
+                "language_post_counts",
+                {"en": 0, "zh": 0, "other": 0, "unknown": 0},
+            ),
+        }
+        for handle, row in language_profile.items()
+    }
+
+    for tweet in report.get("tweets", []):
+        language = account_languages.get((tweet.get("author") or "").lower(), {})
+        tweet["language"] = language.get("language", "unknown")
+        tweet["language_label"] = language.get("language_label", "--")
+        tweet["language_sample_count"] = language.get("language_sample_count", 0)
+        tweet["language_post_counts"] = language.get(
+            "language_post_counts",
+            {"en": 0, "zh": 0, "other": 0, "unknown": 0},
+        )
+
+    report["account_languages"] = account_languages
+    return report
 
 
 def _list_daily_reports() -> list[dict]:
@@ -624,6 +785,7 @@ async def get_report(date: str):
     if raw is None:
         raise HTTPException(404, detail=f"日报不存在: {date}")
     parsed = _parse_daily_report(raw)
+    parsed = _attach_language_to_report_tweets(parsed)
     return {"ok": True, "date": date, **parsed}
 
 
@@ -815,9 +977,10 @@ def _read_accounts_from_file() -> dict:
     """直接从 accounts.json 读取账号列表（不依赖 xpost 子进程）"""
     active = []
     removed = []
+    language_profile, language_meta = _load_account_language_profile()
 
     if not ACCOUNTS_JSON.exists():
-        return {"active": active, "removed": removed}
+        return {"active": active, "removed": removed, "language_summary": _build_language_summary(active, language_meta)}
 
     try:
         data = json.loads(ACCOUNTS_JSON.read_text("utf-8"))
@@ -830,16 +993,34 @@ def _read_accounts_from_file() -> dict:
             if not handle:
                 continue
 
-            if status == "active":
-                active.append({"handle": handle, "status": "active"})
-            elif status == "removed":
-                removed.append({"handle": handle, "status": "removed"})
+            language = language_profile.get(handle.lower(), {})
+            row = {
+                "handle": handle,
+                "status": status,
+                "note": acc.get("note", ""),
+                "language": language.get("language", "unknown"),
+                "language_label": language.get("language_label", "--"),
+                "language_sample_count": language.get("language_sample_count", 0),
+                "language_post_counts": language.get(
+                    "language_post_counts",
+                    {"en": 0, "zh": 0, "other": 0, "unknown": 0},
+                ),
+            }
 
-        return {"active": active, "removed": removed}
+            if status == "active":
+                active.append(row)
+            elif status == "removed":
+                removed.append(row)
+
+        return {
+            "active": active,
+            "removed": removed,
+            "language_summary": _build_language_summary(active, language_meta),
+        }
 
     except Exception as e:
         print(f"读取账号文件失败: {e}")
-        return {"active": active, "removed": removed}
+        return {"active": active, "removed": removed, "language_summary": _build_language_summary(active, language_meta)}
 
 
 
@@ -858,6 +1039,7 @@ async def list_radar_accounts():
         "accounts": parsed["active"] + parsed["removed"],
         "active_count": len(parsed["active"]),
         "removed_count": len(parsed["removed"]),
+        "language_summary": parsed["language_summary"],
     }
 
 
