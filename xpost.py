@@ -27,14 +27,13 @@ import hashlib
 import json
 import os
 import re
-import random
 import shutil
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -69,6 +68,10 @@ PLACEHOLDER_HINTS = [
 
 # radar-daily 默认上限（低于旧版 100k，避免与部分备用网关不兼容；可用 CLI 调大）
 DEFAULT_RADAR_DAILY_MAX_TOKENS = 16384
+DEFAULT_RADAR_DAILY_MAX_PREVIEW = 800
+RADAR_DAILY_EN_MIN_PERCENT = 65
+RADAR_DAILY_CN_MAX_PERCENT = 30
+RADAR_DAILY_UNKNOWN_MAX_PERCENT = 5
 
 
 class RadarReportGenerationError(RuntimeError):
@@ -1513,6 +1516,236 @@ def _wrap_report_markdown(body: str, metadata: dict):
     return "\n".join(frontmatter) + body.strip() + "\n"
 
 
+def _normalize_radar_post_url(url: str) -> str:
+    return re.sub(r"#.*$", "", url or "").strip()
+
+
+def _parse_radar_post_time(value: str) -> datetime:
+    if not value:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    try:
+        from email.utils import parsedate_to_datetime
+
+        parsed = parsedate_to_datetime(value)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except Exception:
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _classify_radar_text_language(text: str) -> str:
+    cleaned = re.sub(r"https?://\S+|x\.com/\S+|[@#]\w+", " ", text or "")
+    cjk = len(re.findall(r"[\u4e00-\u9fff]", cleaned))
+    latin = len(re.findall(r"[A-Za-z]", cleaned))
+    japanese = len(re.findall(r"[\u3040-\u30ff]", cleaned))
+    korean = len(re.findall(r"[\uac00-\ud7af]", cleaned))
+    total = cjk + latin + japanese + korean
+
+    if total < 8:
+        return "unknown"
+    if cjk >= 6 or (cjk >= 3 and cjk / max(1, total) >= 0.18):
+        return "zh"
+    if latin >= 12 and cjk <= 2 and japanese + korean == 0:
+        return "en"
+    return "unknown"
+
+
+def _load_radar_account_language_profile() -> dict[str, str]:
+    posts_by_account: dict[str, dict[str, dict]] = {}
+
+    for result_path in sorted(XINFO_DAY_DIR.glob("*_result.json")):
+        data = _read_json_file(result_path, default={})
+        if not isinstance(data, dict):
+            continue
+        summary = data.get("summary") or {}
+        for item in summary.get("new_ideas_preview") or []:
+            account = (item.get("account") or "").strip().lower()
+            url = _normalize_radar_post_url(item.get("link") or "")
+            if not account or not url:
+                continue
+            text = f"{item.get('title') or ''} {item.get('summary') or ''}"
+            post = {
+                "time": _parse_radar_post_time(item.get("time") or ""),
+                "language": _classify_radar_text_language(text),
+            }
+            bucket = posts_by_account.setdefault(account, {})
+            old = bucket.get(url)
+            if old is None or post["time"] >= old["time"]:
+                bucket[url] = post
+
+    profile: dict[str, str] = {}
+    for account, deduped_posts in posts_by_account.items():
+        latest_posts = sorted(deduped_posts.values(), key=lambda row: row["time"], reverse=True)[:3]
+        counts = {"en": 0, "zh": 0, "unknown": 0}
+        for post in latest_posts:
+            lang = post.get("language") or "unknown"
+            counts[lang if lang in counts else "unknown"] += 1
+
+        if len(latest_posts) >= 3 and counts["en"] >= 2:
+            profile[account] = "en"
+        elif len(latest_posts) >= 3 and counts["zh"] >= 2:
+            profile[account] = "zh"
+        else:
+            profile[account] = "unknown"
+
+    return profile
+
+
+def _coerce_account_language(value) -> str:
+    if isinstance(value, dict):
+        value = value.get("language")
+    value = (value or "unknown").strip().lower()
+    if value == "cn":
+        value = "zh"
+    return value if value in {"en", "zh"} else "unknown"
+
+
+def _radar_language_label(language: str) -> str:
+    if language == "en":
+        return "EN"
+    if language == "zh":
+        return "CN"
+    return "--"
+
+
+def _sample_radar_daily_preview_by_language(
+    preview: list[dict],
+    max_preview: int,
+    account_language_profile: Optional[dict[str, object]] = None,
+) -> tuple[list[dict], dict]:
+    max_preview = max(0, int(max_preview or 0))
+    account_language_profile = account_language_profile or {}
+    tagged = []
+    input_counts = {"en": 0, "zh": 0, "unknown": 0}
+
+    for idx, item in enumerate(preview):
+        handle = (item.get("account") or "").strip().lower()
+        profile_language = account_language_profile.get(handle)
+        if profile_language is None:
+            language = _classify_radar_text_language(f"{item.get('title') or ''} {item.get('summary') or ''}")
+        else:
+            language = _coerce_account_language(profile_language)
+        row = dict(item)
+        row["source_account_language"] = language
+        row["source_account_language_label"] = _radar_language_label(language)
+        tagged.append((idx, row))
+        input_counts[language] += 1
+
+    def _count_selected(rows: list[dict]) -> dict[str, int]:
+        return {
+            "en": sum(1 for item in rows if item.get("source_account_language") == "en"),
+            "zh": sum(1 for item in rows if item.get("source_account_language") == "zh"),
+            "unknown": sum(1 for item in rows if item.get("source_account_language") == "unknown"),
+        }
+
+    target_percent = {
+        "en_min": RADAR_DAILY_EN_MIN_PERCENT,
+        "zh_max": RADAR_DAILY_CN_MAX_PERCENT,
+        "unknown_max": RADAR_DAILY_UNKNOWN_MAX_PERCENT,
+    }
+    def _within_language_targets(counts: dict[str, int], total: int) -> bool:
+        if total <= 0:
+            return True
+        return (
+            counts["en"] * 100 >= total * RADAR_DAILY_EN_MIN_PERCENT
+            and counts["zh"] * 100 <= total * RADAR_DAILY_CN_MAX_PERCENT
+            and counts["unknown"] * 100 <= total * RADAR_DAILY_UNKNOWN_MAX_PERCENT
+        )
+
+    if len(tagged) <= max_preview and _within_language_targets(input_counts, len(tagged)):
+        sampled = [row for _, row in tagged]
+        return sampled, {
+            "strategy": "all_preview_with_language_labels",
+            "target_percent": target_percent,
+            "max_preview": max_preview,
+            "input_total": len(preview),
+            "input_counts": input_counts,
+            "selected_total": len(sampled),
+            "selected_counts": _count_selected(sampled),
+        }
+
+    selection_limit = min(max_preview, len(tagged))
+    quotas = {
+        "en": (selection_limit * RADAR_DAILY_EN_MIN_PERCENT + 99) // 100,
+        "zh": selection_limit * RADAR_DAILY_CN_MAX_PERCENT // 100,
+        "unknown": selection_limit * RADAR_DAILY_UNKNOWN_MAX_PERCENT // 100,
+    }
+    quotas["en"] += selection_limit - sum(quotas.values())
+
+    buckets = {"en": [], "zh": [], "unknown": []}
+    for idx, row in tagged:
+        buckets[row["source_account_language"]].append((idx, row))
+
+    def _round_robin_by_account(rows: list[tuple[int, dict]]) -> list[tuple[int, dict]]:
+        account_order = []
+        grouped = {}
+        for idx, row in rows:
+            account = (row.get("account") or "").strip().lower()
+            if account not in grouped:
+                grouped[account] = []
+                account_order.append(account)
+            grouped[account].append((idx, row))
+
+        ordered = []
+        offset = 0
+        while True:
+            added = False
+            for account in account_order:
+                items = grouped[account]
+                if offset < len(items):
+                    ordered.append(items[offset])
+                    added = True
+            if not added:
+                break
+            offset += 1
+        return ordered
+
+    ordered_buckets = {lang: _round_robin_by_account(rows) for lang, rows in buckets.items()}
+
+    selected_en_count = min(len(ordered_buckets["en"]), quotas["en"])
+    if selected_en_count >= quotas["en"]:
+        selected_unknown_count = min(len(ordered_buckets["unknown"]), quotas["unknown"])
+        selected_zh_count = min(len(ordered_buckets["zh"]), quotas["zh"])
+    else:
+        max_non_en = selected_en_count * (100 - RADAR_DAILY_EN_MIN_PERCENT) // RADAR_DAILY_EN_MIN_PERCENT
+        selected_unknown_count = min(
+            len(ordered_buckets["unknown"]),
+            quotas["unknown"],
+            max_non_en,
+            selected_en_count * RADAR_DAILY_UNKNOWN_MAX_PERCENT // (100 - RADAR_DAILY_UNKNOWN_MAX_PERCENT),
+        )
+        remaining_non_en = max(0, max_non_en - selected_unknown_count)
+        selected_zh_count = min(
+            len(ordered_buckets["zh"]),
+            quotas["zh"],
+            remaining_non_en,
+            (selected_en_count + selected_unknown_count) * RADAR_DAILY_CN_MAX_PERCENT
+            // (100 - RADAR_DAILY_CN_MAX_PERCENT),
+        )
+
+    selected = []
+    selected.extend(ordered_buckets["en"][:selected_en_count])
+    selected.extend(ordered_buckets["zh"][:selected_zh_count])
+    selected.extend(ordered_buckets["unknown"][:selected_unknown_count])
+
+    if len(selected) < selection_limit:
+        selected.extend(ordered_buckets["en"][selected_en_count : selected_en_count + (selection_limit - len(selected))])
+
+    selected.sort(key=lambda pair: pair[0])
+    sampled = [row for _, row in selected]
+    meta = {
+        "strategy": "account_language_stratified_sampling",
+        "target_percent": target_percent,
+        "max_preview": max_preview,
+        "input_total": len(preview),
+        "input_counts": input_counts,
+        "selected_total": len(sampled),
+        "selected_counts": _count_selected(sampled),
+    }
+    return sampled, meta
+
+
 def _build_radar_daily_prompt(result_payload: dict, interests_payload: dict):
     summary = result_payload.get("summary", {})
     preview = summary.get("new_ideas_preview", [])
@@ -1523,6 +1756,7 @@ def _build_radar_daily_prompt(result_payload: dict, interests_payload: dict):
         "new_originals_count": summary.get("new_originals_count"),
         "sampled_preview_count": summary.get("sampled_preview_count", len(preview)),
         "status": summary.get("status"),
+        "language_sampling": summary.get("language_sampling"),
     }
     return "\n".join(
         [
@@ -1545,10 +1779,11 @@ def _build_radar_daily_prompt(result_payload: dict, interests_payload: dict):
             "4. 必须完整阅读 `new_ideas_preview` 全部条目后再聚类，不要只取前几条，不要只围绕单一账号下结论。",
             "5. 再按需要输出这些中文分类：`🔧 值得试用的新工具/产品`、`🧠 有价值的行业洞察或趋势`、`💰 商业机会或变现思路`、`📌 可这周实践的具体行动`、`✍️ 今日最值得写的选题`；各分类条数上限分别为：工具最多 8 条，洞察最多 5 条，商机最多 4 条，行动最多 3 条，选题最多 2 条；没有合适内容就省略该类。",
             "6. 严格依据兴趣画像 focus / recent_context 筛选；ignore 中相关内容一律跳过。",
-            "7. `actions` 数组只保留来自 `📌 可这周实践的具体行动` 的条目。",
-            "8. 除 `🌐 今日热议话题` 外，其余分类中的每条内容格式固定为单行：`• 名称/要点：一句话说明。— @来源账号 · [原文↗](url)`，不要换行，不要加粗，不要在正文中裸露显示具体 URL 文本。**重要：同一 URL 只能在最相关的一个分类中出现一次，禁止跨分类重复引用同一推文。**",
-            "9. `✍️ 今日最值得写的选题` 需要输出 2-3 个适合转成 Article 或 Post 的具体题目，每条格式同样保持单行，明确写出建议角度。",
-            "10. 语言风格保持简洁、可信、可执行，避免空泛形容词和重复表述。",
+            f"7. 选材目标是更多发现英文账号的帖子：最终日报引用来源尽量满足 EN >= {RADAR_DAILY_EN_MIN_PERCENT}%、CN <= {RADAR_DAILY_CN_MAX_PERCENT}%、unknown <= {RADAR_DAILY_UNKNOWN_MAX_PERCENT}%；优先引用 `source_account_language` 为 `en` 的条目，`zh` 账号只作为少量高价值补充，禁止让中文账号主导日报。",
+            "8. `actions` 数组只保留来自 `📌 可这周实践的具体行动` 的条目。",
+            "9. 除 `🌐 今日热议话题` 外，其余分类中的每条内容格式固定为单行：`• 名称/要点：一句话说明。— @来源账号 · [原文↗](url)`，不要换行，不要加粗，不要在正文中裸露显示具体 URL 文本。**重要：同一 URL 只能在最相关的一个分类中出现一次，禁止跨分类重复引用同一推文。**",
+            "10. `✍️ 今日最值得写的选题` 需要输出 2-3 个适合转成 Article 或 Post 的具体题目，每条格式同样保持单行，明确写出建议角度。",
+            "11. 语言风格保持简洁、可信、可执行，避免空泛形容词和重复表述。",
             "",
             "兴趣画像 JSON：",
             json.dumps(interests_payload, ensure_ascii=False, indent=2),
@@ -2195,16 +2430,23 @@ def _cmd_radar_daily(args):
     # 过滤后为空则保留原始 preview（兜底：首次使用/跨天场景）
     # ── 过滤结束 ──────────────────────────────────────────────
 
-    # 限制 preview 条数，避免 prompt 超出 LLM 输出 token 上限
+    # 限制 preview 条数，避免 prompt 超出 LLM 输出 token 上限。
+    # 同时按账号语言做硬配额：EN 优先，CN/unknown 控制上限，别把日报喂成中文账号精选。
     max_preview = getattr(args, 'max_preview', 300)
-    if len(preview) > max_preview:
-        import random
-        preview = random.sample(preview, max_preview)
+    language_profile = _load_radar_account_language_profile()
+    preview, language_sampling = _sample_radar_daily_preview_by_language(
+        preview,
+        max_preview=max_preview,
+        account_language_profile=language_profile,
+    )
+
     # 将过滤/采样后的 preview 写回 result_payload，确保 prompt 使用干净数据
     result_payload = dict(result_payload)
     result_payload["summary"] = dict(summary)
     result_payload["summary"]["new_ideas_preview"] = preview
     result_payload["summary"]["sampled_preview_count"] = len(preview)
+    result_payload["summary"]["language_sampling"] = language_sampling
+    runtime_context["language_sampling"] = language_sampling
     if status == "no_new" or not preview:
         body = "\n".join(
             [
@@ -2290,6 +2532,7 @@ def _cmd_radar_daily(args):
             "llm_route": eff_route,
             "created_support_files": created_support,
             "log_path": log_path,
+            "language_sampling": language_sampling,
         }
     )
     return 0
@@ -3006,7 +3249,12 @@ def main():
         default=DEFAULT_RADAR_DAILY_MAX_TOKENS,
         help=f"LLM max tokens for daily report (default: {DEFAULT_RADAR_DAILY_MAX_TOKENS}; fallback 链路另受 XPOST_LLM_FALLBACK_MAX_TOKENS 上限)",
     )
-    p_radar_daily.add_argument("--max-preview", type=int, default=200, help="Max preview tweets to include in prompt (default: 100)")
+    p_radar_daily.add_argument(
+        "--max-preview",
+        type=int,
+        default=DEFAULT_RADAR_DAILY_MAX_PREVIEW,
+        help=f"Max preview tweets to include in prompt (default: {DEFAULT_RADAR_DAILY_MAX_PREVIEW})",
+    )
     p_radar_daily.set_defaults(func=_cmd_radar_daily)
 
     p_radar_weekly = sub.add_parser("radar-weekly", help="Generate X radar weekly markdown report")
