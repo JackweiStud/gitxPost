@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updated_at": "2026-05-20T09:54:39.708047",
+  "updated_at": "2026-05-20T12:16:37.452427",
   "accounts": [
     {
       "handle": "dashen_wang",
@@ -682,9 +682,8 @@
     {
       "handle": "steipete",
       "note": "Peter Steinberger，Polyagentmorous ClawFather. Came back from retirement to ...",
-      "status": "removed",
-      "added_at": "2026-01-01",
-      "removed_at": "2026-04-03"
+      "status": "active",
+      "added_at": "2026-01-01"
     },
     {
       "handle": "moltbook",
@@ -1707,6 +1706,12 @@
       "note": "被 @PandaTalk8、@dotey 转推",
       "status": "active",
       "added_at": "2026-05-11"
+    },
+    {
+      "handle": "FuSheng_0306",
+      "note": "FuSheng_0306",
+      "status": "active",
+      "added_at": "2026-05-20"
     }
   ]
 }
