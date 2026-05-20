@@ -51,6 +51,8 @@ export const removeRadarAccount = (handle) =>
   api.delete(`/radar/accounts/${handle}`)
 export const restoreRadarAccount = (handle) =>
   api.put(`/radar/accounts/${handle}/restore`)
+export const syncFollowingWithRadar = () =>
+  api.post('/radar/following-sync', null, { timeout: RADAR_SCAN_TIMEOUT_MS })
 
 export const runPipeline = (steps) => api.post('/pipeline/run', { steps })
 

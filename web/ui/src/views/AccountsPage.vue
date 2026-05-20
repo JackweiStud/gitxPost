@@ -6,6 +6,29 @@
         <p class="page-subtitle">管理 X 雷达监控账号</p>
       </div>
       <div class="header-actions">
+        <button
+          class="btn btn-ghost"
+          @click="handleFollowingSync"
+          :disabled="syncingFollowing"
+          title=".venv/bin/python xpost.py following-sync jackaiwison --timeout 45 --idle-rounds 20"
+        >
+          <svg
+            v-if="!syncingFollowing"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+            <path d="M3 21v-5h5"/>
+            <path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+            <path d="M21 3v5h-5"/>
+          </svg>
+          <span v-else class="btn-spinner"></span>
+          {{ syncingFollowing ? '同步中...' : '同步 Following' }}
+        </button>
         <button class="btn btn-primary" @click="showAddDialog = true">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
           添加账号
@@ -194,6 +217,7 @@ const loading = ref(false)
 const searchQuery = ref('')
 const removing = ref(null)
 const restoring = ref(null)
+const syncingFollowing = ref(false)
 
 const showAddDialog = ref(false)
 const addForm = reactive({ handle: '', note: '' })
@@ -317,6 +341,37 @@ async function handleRestore(handle) {
   }
 }
 
+async function handleFollowingSync() {
+  if (syncingFollowing.value) return
+
+  syncingFollowing.value = true
+  try {
+    const result = await api.syncFollowingWithRadar()
+    if (!result.ok) {
+      appStore.notify('Following 同步失败: ' + (result.error || result.stderr || '未知错误'), 'error', 10000)
+      return
+    }
+
+    const summary = result.summary || {}
+    const xlsxPath = result.xlsx_report || summary.xlsx_report || 'xinfo/log/myfollowing.xlsx'
+    const jsonPath = result.json_snapshot || summary.json_snapshot || ''
+    const status = summary.completion_status || (summary.complete ? 'complete' : 'unknown')
+    const countText = summary.expected_following_count
+      ? `${summary.collected_following_count || 0}/${summary.expected_following_count}`
+      : `${summary.collected_following_count || 0}`
+    const suffix = jsonPath ? `；JSON: ${jsonPath}` : ''
+    appStore.notify(
+      `Following 同步完成(${status}, ${countText})：${xlsxPath}${suffix}`,
+      status === 'complete' ? 'success' : 'info',
+      15000,
+    )
+  } catch (e) {
+    appStore.notify('Following 同步失败: ' + e.message, 'error', 10000)
+  } finally {
+    syncingFollowing.value = false
+  }
+}
+
 async function handleAdd() {
   if (!canSubmitAdd.value || addSubmitting.value) return
   
@@ -394,6 +449,14 @@ export default {
   flex-shrink: 0;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .page-title {
   font-size: 24px;
   font-weight: 700;
@@ -464,6 +527,15 @@ export default {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.btn-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
 .accounts-layout {

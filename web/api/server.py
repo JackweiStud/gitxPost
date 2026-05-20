@@ -1077,6 +1077,20 @@ async def restore_radar_account(handle: str):
     return await _run_xpost("radar-accounts", "restore", handle)
 
 
+@app.post("/api/radar/following-sync")
+async def sync_following_with_radar():
+    """同步 @jackaiwison Following，并生成 Radar 差异报表。"""
+    return await _run_xpost(
+        "following-sync",
+        "jackaiwison",
+        "--timeout",
+        "45",
+        "--idle-rounds",
+        "20",
+        timeout=900,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Routes: Pipeline (简易版)
 # ---------------------------------------------------------------------------
