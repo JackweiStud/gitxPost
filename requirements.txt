@@ -5,3 +5,4 @@ setuptools
 # macOS 剪贴板与图片处理
 pyobjc-framework-Cocoa>=10.0
 Pillow>=10.0.0
+openpyxl>=3.1.0

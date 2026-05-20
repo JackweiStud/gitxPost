@@ -10,6 +10,39 @@
   - 仍未解决的边界或风险
 - 如果改动影响验收方式或测试结论，需要同步更新 `CI/` 目录下的文档。
 
+日期：2026-05-20
+
+## 新增：Following 与 Radar 差异同步报表
+
+范围：`following_sync.py`、`xpost.py`、`requirements.txt`、`README.md`、`xinfo/README.md`
+
+### 问题
+
+- 仅看 Radar 账号清单无法判断哪些 X Following 尚未纳入监控、哪些 Radar active 账号已经不在当前 Following 中。
+- CSV 无法承载多标签页视图，且缺少可追溯的原始快照。
+
+### 变更
+
+- 新增 `python xpost.py following-sync jackaiwison`。
+- 复用 `chrome_data_mirror` 登录态，通过 DOM 与 Following GraphQL 响应双通道抓取 Following。
+- 写入 `xinfo/log/following/YYYY-MM-DD.json` 与 `xinfo/log/following/myfollowing_latest.json`。
+- 生成 `xinfo/log/myfollowing.xlsx`，包含 `Summary`、`Following`、`Radar`、`GAP1_Following_Not_Radar`、`GAP2_Radar_Not_Following` 五个标签页。
+- 新增 `completion_status`，区分 `complete`、`partial`、`partial_limited`、`unknown`，避免预期总数未知时误判已抓全。
+- GraphQL 解析仅接受 `user_results.result.legacy` 路径，避免把当前用户、推荐位或相关账号误收录为 Following。
+
+### 验证
+
+- `.venv/bin/python -m pytest test_following_sync.py test_radar_daily_language_sampling.py -q` 通过。
+- `.venv/bin/python -m py_compile following_sync.py xpost.py fetch_follower_stats.py browser_cdp_session.py` 通过。
+- 真实运行 `python xpost.py following-sync jackaiwison --timeout 45 --idle-rounds 20`，采集 `546/546`，`completion_status=complete`。
+
+### 风险
+
+- 仍依赖 X 页面和 GraphQL 响应结构；平台改版后需要重新校验。
+- GAP2 只表示 Radar active 不在本次 Following 快照中，不等价于必须移除。
+
+---
+
 日期：2026-04-25
 
 ## 修复：发布页字数仅统计、不因超长禁用发布

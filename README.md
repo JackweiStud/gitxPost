@@ -406,6 +406,24 @@ xpost radar-accounts remove NewAccount
 xpost radar-accounts restore NewAccount
 ```
 
+Following 与 Radar 差异报表：
+
+```bash
+python xpost.py following-sync jackaiwison
+```
+
+默认输出：
+
+- `xinfo/log/following/YYYY-MM-DD.json`
+- `xinfo/log/following/myfollowing_latest.json`
+- `xinfo/log/myfollowing.xlsx`（Summary / Following / Radar / GAP1 / GAP2）
+
+完整性判断：
+
+- `completion_status=complete` 表示采集数达到 X profile 上显示的 Following 数量。
+- `completion_status=partial` 或 `partial_limited` 表示结果可看但不应用来直接批量增删。
+- `completion_status=unknown` 表示未能读取预期 Following 总数，不能把 `complete` 当作已抓全。
+
 结果文件说明：
 
 - 最新扫描快照（每次覆盖）：

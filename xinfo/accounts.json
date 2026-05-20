@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updated_at": "2026-05-11T09:16:22.503438",
+  "updated_at": "2026-05-20T09:54:39.708047",
   "accounts": [
     {
       "handle": "dashen_wang",
@@ -540,8 +540,9 @@
     {
       "handle": "GeminiApp",
       "note": "Google Gemini，The Gemini app turns research into reality, bringing fron...",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-05-20"
     },
     {
       "handle": "NotebookLM",

@@ -15,6 +15,7 @@ xpost CLI：面向本地 Agent/自动化的 gitxPost 统一入口。
 - radar-daily: 基于扫描结果生成 Radar 日报
 - radar-weekly: 基于分析结果生成 Radar 周报
 - radar-accounts: 管理 X 雷达监控账号
+- following-sync: 抓取 X Following 列表并生成 Radar 差异报表
 - reply: 回复指定推文（提取正文 / 逐字输入 / 发送）
 - reply-extract: 仅提取推文正文（不回复）
 - doctor: 环境与依赖检查
@@ -2734,6 +2735,48 @@ def _cmd_follower_stats(args):
     return 0 if result.get("ok") else 1
 
 
+def _cmd_following_sync(args):
+    """同步 X Following 列表，并和 Radar active 账号生成差异报表。"""
+    script_path = BASE_DIR / "following_sync.py"
+    if not script_path.exists():
+        _print_json({"ok": False, "error": "following_sync.py 脚本不存在"})
+        return 1
+
+    username = args.username or os.environ.get("XPOST_USERNAME", "jackaiwison")
+    cmd_args = [username, "--json-only"]
+    if args.timeout:
+        cmd_args.extend(["--timeout", str(args.timeout)])
+    if args.limit:
+        cmd_args.extend(["--limit", str(args.limit)])
+    if args.idle_rounds:
+        cmd_args.extend(["--idle-rounds", str(args.idle_rounds)])
+    if args.profile_dir:
+        cmd_args.extend(["--profile-dir", args.profile_dir])
+    if args.json_output:
+        cmd_args.extend(["--json-output", args.json_output])
+    if args.xlsx_output:
+        cmd_args.extend(["--xlsx-output", args.xlsx_output])
+    if args.no_headless:
+        cmd_args.append("--no-headless")
+
+    proc = _run_python_script(script_path, cmd_args)
+    try:
+        result = json.loads(proc.stdout)
+    except Exception:
+        result = {
+            "ok": False,
+            "error": "解析输出失败",
+            "stdout_tail": proc.stdout[-500:] if proc.stdout else "",
+            "stderr_tail": proc.stderr[-500:] if proc.stderr else "",
+        }
+    if proc.returncode != 0 and result.get("ok"):
+        result["ok"] = False
+        result["error"] = result.get("error") or f"following-sync exited with {proc.returncode}"
+
+    _print_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def _detect_chrome_version():
     chrome_bin = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
     if not chrome_bin.exists():
@@ -3276,6 +3319,17 @@ def main():
     p_follower.add_argument("username", nargs="?", help="X username (default: jackaiwison)")
     p_follower.add_argument("--timeout", type=int, default=30, help="Page load timeout in seconds")
     p_follower.set_defaults(func=_cmd_follower_stats)
+
+    p_following_sync = sub.add_parser("following-sync", help="Fetch X following list and compare with radar accounts")
+    p_following_sync.add_argument("username", nargs="?", help="X username (default: jackaiwison)")
+    p_following_sync.add_argument("--limit", type=int, default=0, help="Max following accounts to collect; 0 means unlimited")
+    p_following_sync.add_argument("--timeout", type=int, default=30, help="Page load timeout in seconds")
+    p_following_sync.add_argument("--idle-rounds", type=int, default=15, help="Stop after N scroll rounds without new accounts")
+    p_following_sync.add_argument("--profile-dir", help="Chrome profile directory")
+    p_following_sync.add_argument("--json-output", help="JSON snapshot path")
+    p_following_sync.add_argument("--xlsx-output", help="XLSX report path")
+    p_following_sync.add_argument("--no-headless", action="store_true", help="Use visible Chrome window")
+    p_following_sync.set_defaults(func=_cmd_following_sync)
 
     p_scheduler = sub.add_parser("scheduler", help="Manage launchd daily task scheduler")
     p_scheduler.add_argument("action", choices=["install", "uninstall", "status", "run-now", "logs"], help="Scheduler action")

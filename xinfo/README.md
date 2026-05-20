@@ -137,7 +137,36 @@ python xpost.py radar-accounts restore elvissun
 
 > 每次操作前自动备份到 `log/account_backups/`，保留最近 10 份。
 
-### 4. 更新个人兴趣画像
+### 4. 同步 Following 与 Radar 差异
+
+```bash
+python xpost.py following-sync jackaiwison
+```
+
+该命令复用 `chrome_data_mirror` 的 X 登录态，通过页面 DOM 与 Following GraphQL 响应双通道抓取 `@jackaiwison` 当前 Following 列表，并和 `accounts.json` 中 `status=active` 的 Radar 账号对比。
+
+输出：
+
+- `xinfo/log/following/YYYY-MM-DD.json`：当天 Following 原始快照与对比结果
+- `xinfo/log/following/myfollowing_latest.json`：最新快照
+- `xinfo/log/myfollowing.xlsx`：五个标签页报表
+
+`myfollowing.xlsx` 的标签页：
+
+- `Summary`：抓取时间、Following 数量、Radar 数量、GAP 统计、完整性状态
+- `Following`：X 当前关注列表
+- `Radar`：当前活跃 Radar 账号
+- `GAP1_Following_Not_Radar`：Following 有但 Radar 没有，适合找新增候选
+- `GAP2_Radar_Not_Following`：Radar 有但 Following 没有，适合找移除候选
+
+完整性字段：
+
+- `completion_status=complete`：采集数量达到 X profile 显示的 Following 数量。
+- `completion_status=partial`：未收满，通常是滚动/页面加载提前停止。
+- `completion_status=partial_limited`：使用了 `--limit`，结果只适合 smoke test。
+- `completion_status=unknown`：未能读取预期 Following 总数，不应视为完整快照。
+
+### 5. 更新个人兴趣画像
 
 直接编辑 `log/interests.json`，AI 日报筛选标准立即更新，无需改任何代码：
 
