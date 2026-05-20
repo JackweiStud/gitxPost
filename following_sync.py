@@ -41,6 +41,7 @@ ROW_COLUMNS = [
     "note",
     "bio",
     "profile_url",
+    "followers_count",
     "in_following",
     "in_radar",
     "radar_status",
@@ -84,16 +85,37 @@ def display_handle(handle: str) -> str:
     return (handle or "").strip().lstrip("@")
 
 
-def _row_from_legacy_user(legacy: dict[str, Any]) -> dict[str, str] | None:
-    handle = display_handle(str(legacy.get("screen_name") or ""))
+def _row_from_user_result(result: dict[str, Any]) -> dict[str, Any] | None:
+    legacy = result.get("legacy") if isinstance(result.get("legacy"), dict) else {}
+    core = result.get("core") if isinstance(result.get("core"), dict) else {}
+    handle = display_handle(str(legacy.get("screen_name") or core.get("screen_name") or ""))
     if not handle:
         return None
-    return {
+    row = {
         "handle": handle,
-        "display_name": str(legacy.get("name") or handle),
+        "display_name": str(legacy.get("name") or core.get("name") or handle),
         "bio": str(legacy.get("description") or ""),
         "profile_url": f"https://x.com/{handle}",
     }
+    followers_count = _coerce_int(legacy.get("followers_count"))
+    if followers_count is not None:
+        row["followers_count"] = followers_count
+    return row
+
+
+def _row_from_legacy_user(legacy: dict[str, Any]) -> dict[str, Any] | None:
+    return _row_from_user_result({"legacy": legacy})
+
+
+def _coerce_int(value: Any) -> int | None:
+    if value in ("", None):
+        return None
+    if isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _extract_user_results(value: Any) -> list[dict[str, Any]]:
@@ -115,10 +137,7 @@ def _extract_user_results(value: Any) -> list[dict[str, Any]]:
 def extract_user_rows_from_graphql_payload(payload: Any) -> list[dict[str, str]]:
     rows_by_key: dict[str, dict[str, str]] = {}
     for result in _extract_user_results(payload):
-        legacy = result.get("legacy")
-        if not isinstance(legacy, dict):
-            continue
-        row = _row_from_legacy_user(legacy)
+        row = _row_from_user_result(result)
         if row:
             key = normalize_handle(row["handle"])
             rows_by_key[key] = merge_account_row(rows_by_key.get(key, {}), row)
@@ -205,6 +224,11 @@ def merge_account_row(existing: dict[str, Any], incoming: dict[str, Any]) -> dic
         if _is_better_text(candidate, current, handle):
             merged[field] = candidate
 
+    incoming_followers = _coerce_int(incoming.get("followers_count"))
+    current_followers = _coerce_int(merged.get("followers_count"))
+    if incoming_followers is not None and current_followers is None:
+        merged["followers_count"] = incoming_followers
+
     for field, value in incoming.items():
         if field not in merged or merged.get(field) in ("", None):
             merged[field] = value
@@ -230,6 +254,7 @@ def _following_row(
         "note": (radar or {}).get("note", ""),
         "bio": item.get("bio", ""),
         "profile_url": item.get("profile_url") or f"https://x.com/{handle}",
+        "followers_count": item.get("followers_count", ""),
         "in_following": True,
         "in_radar": in_radar,
         "radar_status": (radar or {}).get("status", ""),
@@ -258,6 +283,7 @@ def _radar_row(
         "note": item.get("note", ""),
         "bio": (following or {}).get("bio", ""),
         "profile_url": (following or {}).get("profile_url") or f"https://x.com/{handle}",
+        "followers_count": (following or {}).get("followers_count", ""),
         "in_following": in_following,
         "in_radar": True,
         "radar_status": item.get("status", ""),
@@ -447,6 +473,26 @@ def _extract_visible_following_accounts(page: Page) -> list[dict[str, str]]:
                 if (/^(Follow|Following|Follows you|Verified|Subscribe|Subscribed)$/i.test(line)) return false;
                 return true;
             }
+            function parseFollowersCount(text) {
+                const m = (text || '').match(/([\\d,.]+\\s*[KkMmBb]?)\\s*Followers/i);
+                if (!m) return null;
+                let raw = m[1].replace(/,/g, '').replace(/\\s+/g, '');
+                let multiplier = 1;
+                const suffix = raw.slice(-1).toLowerCase();
+                if (suffix === 'k') {
+                    multiplier = 1000;
+                    raw = raw.slice(0, -1);
+                } else if (suffix === 'm') {
+                    multiplier = 1000000;
+                    raw = raw.slice(0, -1);
+                } else if (suffix === 'b') {
+                    multiplier = 1000000000;
+                    raw = raw.slice(0, -1);
+                }
+                const num = Number.parseFloat(raw);
+                if (!Number.isFinite(num)) return null;
+                return Math.round(num * multiplier);
+            }
             const out = [];
             const cells = Array.from(document.querySelectorAll('[data-testid="UserCell"]'));
             for (const cell of cells) {
@@ -457,11 +503,11 @@ def _extract_visible_following_accounts(page: Page) -> list[dict[str, str]]:
                     handle = handleFromHref(link.getAttribute('href') || '');
                     if (handle) break;
                 }
-                const handleMatch = text.match(/@([A-Za-z0-9_]{1,15})/);
-                if (handleMatch) handle = cleanHandle(handleMatch[1]) || handle;
+                const lines = text.split('\n').map(s => s.trim()).filter(usefulLine);
+                const handleLine = lines.find(line => /^@[A-Za-z0-9_]{1,15}$/.test(line));
+                if (handleLine) handle = cleanHandle(handleLine) || handle;
                 if (!handle) continue;
 
-                const lines = text.split('\n').map(s => s.trim()).filter(usefulLine);
                 const displayName = lines.find(line => !line.startsWith('@') && line !== handle) || handle;
                 const bioLines = lines.filter(line => {
                     if (line === displayName) return false;
@@ -469,12 +515,15 @@ def _extract_visible_following_accounts(page: Page) -> list[dict[str, str]]:
                     if (line === handle) return false;
                     return !line.startsWith('@');
                 });
-                out.push({
+                const row = {
                     handle,
                     display_name: displayName,
                     bio: bioLines.join(' ').trim(),
                     profile_url: `https://x.com/${handle}`
-                });
+                };
+                const followersCount = parseFollowersCount(text);
+                if (followersCount !== null) row.followers_count = followersCount;
+                out.push(row);
             }
             return out;
         }"""
@@ -594,6 +643,46 @@ def _expected_following_count(page: Page, username: str, timeout: int) -> int:
         return -1
 
 
+def fill_missing_followers_counts(
+    *,
+    page: Page,
+    rows: list[dict[str, Any]],
+    timeout: int = 30,
+    max_profiles: int = 50,
+    fetcher=None,
+) -> int:
+    missing = [
+        row
+        for row in rows
+        if _coerce_int(row.get("followers_count")) is None
+        and normalize_handle(row.get("handle", ""))
+    ]
+    if not missing:
+        return 0
+
+    if fetcher is None:
+        from fetch_follower_stats import fetch_profile_stats
+
+        fetcher = fetch_profile_stats
+
+    updated = 0
+    for row in missing[:max_profiles]:
+        handle = display_handle(row.get("handle", ""))
+        try:
+            stats = fetcher(page, handle, timeout)
+        except Exception as exc:
+            _log(f"补抓 @{handle} 粉丝数失败: {exc}", "WARN")
+            continue
+
+        followers = _coerce_int(stats.get("followers") if isinstance(stats, dict) else None)
+        if followers is not None and followers >= 0:
+            row["followers_count"] = followers
+            updated += 1
+    if len(missing) > max_profiles:
+        _log(f"仍有 {len(missing) - max_profiles} 个账号缺少粉丝数，已达到兜底补抓上限", "WARN")
+    return updated
+
+
 def run_sync(args) -> dict[str, Any]:
     username = display_handle(args.username)
     fetched_at = datetime.now().astimezone().isoformat(timespec="seconds")
@@ -622,6 +711,7 @@ def run_sync(args) -> dict[str, Any]:
             expected_count=expected_count if expected_count >= 0 else None,
             idle_rounds=args.idle_rounds,
         )
+        fill_missing_followers_counts(page=page, rows=following, timeout=args.timeout)
     finally:
         if session:
             session.close()
