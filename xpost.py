@@ -2731,6 +2731,48 @@ def _cmd_follower_stats(args):
             "stderr_tail": proc.stderr[-500:] if proc.stderr else "",
         }
 
+    if not result.get("ok"):
+        combined_output = f"{proc.stdout}\n{proc.stderr}"
+        cdp_connect_failed = (
+            "Browser.setDownloadBehavior" in combined_output
+            or "connect_over_cdp" in combined_output
+            or "Browser context management is not supported" in combined_output
+        )
+        fallback_script = BASE_DIR / "scripts" / "fetch_followers_cdp.js"
+        if cdp_connect_failed and fallback_script.exists():
+            node_bin = os.environ.get("NODE_BIN") or "/opt/homebrew/bin/node"
+            if not Path(node_bin).exists():
+                node_bin = shutil.which("node") or node_bin
+            try:
+                fb_proc = subprocess.run(
+                    [
+                        node_bin,
+                        str(fallback_script),
+                        username,
+                        "--json-only",
+                        "--timeout",
+                        str(args.timeout or 30),
+                    ],
+                    cwd=BASE_DIR,
+                    capture_output=True,
+                    text=True,
+                    timeout=max(90, int(args.timeout or 30) * 4),
+                )
+                try:
+                    fallback_result = json.loads(fb_proc.stdout)
+                except Exception:
+                    fallback_result = _extract_last_json(fb_proc.stdout) or {
+                        "ok": False,
+                        "error": "CDP 兜底输出解析失败",
+                        "stdout_tail": fb_proc.stdout[-500:] if fb_proc.stdout else "",
+                        "stderr_tail": fb_proc.stderr[-500:] if fb_proc.stderr else "",
+                    }
+                fallback_result.setdefault("fallback_from", "patchright")
+                fallback_result.setdefault("fallback_reason", result.get("error") or "patchright CDP connect failed")
+                result = fallback_result
+            except Exception as exc:
+                result["fallback_error"] = str(exc)
+
     _print_json(result)
     return 0 if result.get("ok") else 1
 

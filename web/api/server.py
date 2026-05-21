@@ -30,6 +30,7 @@ ACCOUNTS_JSON = BASE_DIR / "xinfo" / "accounts.json"
 VENV_PYTHON = BASE_DIR / ".venv" / "bin" / "python"
 XPOST_PY = BASE_DIR / "xpost.py"
 GENERATE_REPLIES_PY = BASE_DIR / "skills" / "x-reply-assistV2" / "scripts" / "generate_replies.py"
+DAILY_OPPORTUNITIES_JS = BASE_DIR / "scripts" / "daily_opportunities.js"
 PUBLISH_QUEUE_JSON = XINFO_LOG / "publish_queue.json"
 UPLOAD_DIR = XINFO_LOG / "uploads"
 ARTICLES_DIR = XINFO_LOG / "articles"
@@ -211,6 +212,33 @@ async def _run_xpost(*args: str, timeout: int = 600) -> dict:
         if last_json is not None:
             return last_json
 
+        return {"ok": False, "stdout": out, "stderr": err, "returncode": proc.returncode}
+
+
+async def _run_daily_opportunities(timeout: int = 600) -> dict:
+    """生成日报后的借势机会文件。失败不应吞掉日报本身结果。"""
+    proc = await asyncio.create_subprocess_exec(
+        "node",
+        str(DAILY_OPPORTUNITIES_JS),
+        "--json",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=str(BASE_DIR),
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        proc.kill()
+        return {"ok": False, "error": "opportunities generation timeout"}
+
+    out = stdout.decode("utf-8", errors="replace").strip()
+    err = stderr.decode("utf-8", errors="replace").strip()
+    try:
+        return json.loads(out)
+    except Exception:
+        parsed = _extract_last_json(out)
+        if parsed is not None:
+            return parsed
         return {"ok": False, "stdout": out, "stderr": err, "returncode": proc.returncode}
 
 
@@ -770,7 +798,10 @@ async def radar_analyze(days: int = 7):
 
 @app.post("/api/radar/daily")
 async def radar_daily():
-    return await _run_xpost("radar-daily", timeout=300)
+    result = await _run_xpost("radar-daily", timeout=300)
+    if result.get("ok"):
+        result["opportunities"] = await _run_daily_opportunities(timeout=600)
+    return result
 
 
 @app.get("/api/radar/reports")
@@ -2685,6 +2716,8 @@ async def run_pipeline(req: PipelineRunRequest):
             r = await _run_xpost("radar-analyze", "--days", "7")
         elif step == "daily":
             r = await _run_xpost("radar-daily", timeout=300)
+            if r.get("ok"):
+                r["opportunities"] = await _run_daily_opportunities(timeout=600)
         elif step == "weekly":
             r = await _run_xpost("radar-weekly", timeout=300)
         else:
