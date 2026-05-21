@@ -38,7 +38,7 @@ logging.basicConfig(
 BASE_DIR = Path(__file__).resolve().parent
 PROFILE_DIR = Path(os.environ.get("XPOST_PROFILE_DIR") or (BASE_DIR / "chrome_data_mirror"))
 HOME_URL = "https://x.com/home"
-MAX_REPLY_LENGTH = 280
+# MAX_REPLY_LENGTH = 280 (X Premium has no limit)
 STEP_PAUSE_MS = int(os.environ.get("XPOST_STEP_PAUSE_MS", "900"))
 
 REPLY_SELECTORS = {
@@ -592,8 +592,6 @@ def auto_reply_post(
     session = None
 
     try:
-        if len(text) > MAX_REPLY_LENGTH:
-            raise ValueError(f"回复超过 {MAX_REPLY_LENGTH} 字符限制（当前: {len(text)}）")
         if not text.strip():
             raise ValueError("回复内容不能为空")
 

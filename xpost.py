@@ -3282,7 +3282,7 @@ def main():
     p_publish.set_defaults(func=_cmd_publish)
 
     p_post = sub.add_parser("post", help="Publish X Post (short text)")
-    p_post.add_argument("text", help="Post text content (max 280 characters)")
+    p_post.add_argument("text", help="Post text content (supports X Premium long post)")
     p_post.add_argument("--images", nargs="+", help="Image paths (max 4)")
     p_post.add_argument("--publish", action="store_true", help="Publish directly (default: draft)")
     p_post.add_argument("--profile-dir", help="Chrome profile directory")
@@ -3299,7 +3299,7 @@ def main():
 
     p_reply = sub.add_parser("reply", help="Reply to a tweet")
     p_reply.add_argument("url", help="Tweet URL to reply to")
-    p_reply.add_argument("text", help="Reply text content (max 280 characters)")
+    p_reply.add_argument("text", help="Reply text content (supports X Premium long reply)")
     p_reply.add_argument("--publish", action="store_true", help="Send reply (default: draft / fill only)")
     p_reply.add_argument("--profile-dir", help="Chrome profile directory")
     p_reply.add_argument("--no-wait", action="store_true", help="Do not wait after completion")

@@ -37,7 +37,7 @@ PROFILE_DIR = Path(os.environ.get("XPOST_PROFILE_DIR") or (BASE_DIR / "chrome_da
 POST_URL = "https://x.com/compose/post"
 LOGIN_URL = "https://x.com/i/flow/login"
 HOME_URL = "https://x.com/home"
-MAX_TEXT_LENGTH = 1000
+# MAX_TEXT_LENGTH = 1000 (X Premium has no limit)
 MAX_IMAGES = 10
 STEP_PAUSE_MS = int(os.environ.get("XPOST_STEP_PAUSE_MS", "900"))
 
@@ -72,8 +72,6 @@ SELECTORS = {
 
 def validate_text_length(text: str) -> bool:
     """验证文本长度"""
-    if len(text) > MAX_TEXT_LENGTH:
-        raise ValueError(f"文本超过 {MAX_TEXT_LENGTH} 字符限制（当前：{len(text)}）")
     if not text.strip():
         raise ValueError("文本内容不能为空")
     return True
