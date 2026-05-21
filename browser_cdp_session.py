@@ -12,7 +12,9 @@
 """
 
 import logging
+import json
 import os
+import shutil
 import subprocess
 import time
 import urllib.error
@@ -91,12 +93,108 @@ class ChromeCDPSession:
                 f"http://127.0.0.1:{self.remote_debugging_port}/json/version",
                 timeout=2,
             ) as response:
-                import json
-
                 return json.loads(response.read().decode("utf-8"))
         except Exception as e:
             logger.warning(f"读取 CDP 版本信息失败: {e}")
             return {}
+
+    def _fetch_cdp_targets(self) -> list[dict]:
+        """读取当前 CDP targets。Patchright 连接前至少需要一个 page target。"""
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{self.remote_debugging_port}/json/list",
+                timeout=2,
+            ) as response:
+                data = json.loads(response.read().decode("utf-8"))
+                return data if isinstance(data, list) else []
+        except Exception as e:
+            logger.warning(f"读取 CDP target 列表失败: {e}")
+            return []
+
+    def _create_background_page_target(self) -> bool:
+        """通过原生 CDP 创建后台 page target，避免 Patchright 连接 0-page 浏览器时报错。"""
+        version_info = self._fetch_cdp_version_info()
+        browser_ws = version_info.get("webSocketDebuggerUrl")
+        if not browser_ws:
+            logger.warning("CDP Browser websocket 不可用，无法创建后台 page target")
+            return False
+
+        try:
+            node_bin = os.environ.get("NODE_BIN") or "/opt/homebrew/bin/node"
+            if not Path(node_bin).exists():
+                node_bin = shutil.which("node") or node_bin
+            script = f"""
+class CDP {{
+  constructor(wsUrl) {{
+    this.wsUrl = wsUrl;
+    this.id = 0;
+    this.pending = new Map();
+  }}
+  connect() {{
+    return new Promise((resolve, reject) => {{
+      this.ws = new WebSocket(this.wsUrl);
+      this.ws.onopen = resolve;
+      this.ws.onerror = reject;
+      this.ws.onmessage = (event) => {{
+        const message = JSON.parse(event.data);
+        if (!message.id || !this.pending.has(message.id)) return;
+        const pending = this.pending.get(message.id);
+        this.pending.delete(message.id);
+        message.error ? pending.reject(new Error(JSON.stringify(message.error))) : pending.resolve(message.result);
+      }};
+    }});
+  }}
+  send(method, params = {{}}) {{
+    return new Promise((resolve, reject) => {{
+      const id = ++this.id;
+      this.pending.set(id, {{ resolve, reject }});
+      this.ws.send(JSON.stringify({{ id, method, params }}));
+    }});
+  }}
+  close() {{
+    try {{ this.ws.close(); }} catch {{}}
+  }}
+}}
+const client = new CDP({json.dumps(browser_ws)});
+await client.connect();
+const result = await client.send('Target.createTarget', {{ url: 'about:blank', background: true }});
+client.close();
+console.log(JSON.stringify(result));
+"""
+            proc = subprocess.run(
+                [node_bin, "--input-type=module", "-e", script],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if proc.returncode != 0:
+                logger.warning("创建后台 page target 失败: %s", (proc.stderr or proc.stdout).strip())
+                return False
+            logger.info("已为 Patchright 连接创建后台 page target: %s", proc.stdout.strip())
+            return True
+        except Exception as e:
+            logger.warning(f"创建后台 page target 异常: {e}")
+            return False
+
+    def _ensure_page_target_for_patchright(self) -> bool:
+        """确保 CDP 浏览器至少有一个 page target，再交给 Patchright 连接。"""
+        targets = self._fetch_cdp_targets()
+        if any(target.get("type") == "page" for target in targets):
+            return True
+
+        logger.warning(
+            "CDP 浏览器当前没有 page target，先创建后台 about:blank，避免 Patchright connect_over_cdp 初始化失败"
+        )
+        if not self._create_background_page_target():
+            return False
+
+        for _ in range(10):
+            targets = self._fetch_cdp_targets()
+            if any(target.get("type") == "page" for target in targets):
+                return True
+            time.sleep(0.2)
+        return False
 
     def _terminate_existing_debug_browser(self):
         """终止占用当前 CDP 端口的浏览器进程"""
@@ -272,6 +370,8 @@ class ChromeCDPSession:
                     raise
                 logger.warning("Patchright Sync API 命中 asyncio 检查，准备按兼容模式重试")
                 self.playwright = _start_sync_playwright(retry_bypass_asyncio_check=True)
+
+            self._ensure_page_target_for_patchright()
             
             # Connect over CDP for existing Chrome process
             self.browser = self.playwright.chromium.connect_over_cdp(
