@@ -32,7 +32,7 @@
       </button>
     </div>
 
-    <!-- Stats Grid - 3 Group Cards -->
+    <!-- Stats Grid - Group Cards -->
     <div class="stats-grid-grouped">
       <!-- 雷达状态 -->
       <div class="stat-group-card">
@@ -172,6 +172,29 @@
           </svg>
         </div>
       </div>
+
+      <!-- 最佳发帖时间 -->
+      <div class="stat-group-card best-time-card">
+        <div class="group-header">
+          <div class="group-icon group-icon-cyan">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 6v6l4 2"/>
+            </svg>
+          </div>
+          <span class="group-title">推荐发帖时间</span>
+        </div>
+        <div class="group-main">
+          <div class="group-value best-time-value">{{ bestTimeTopWindow?.time || '--' }}</div>
+          <div class="group-label">{{ bestTimeRunning ? '正在估算' : '每日推荐窗口' }}</div>
+          <div v-if="bestTimeReasonLines.length" class="best-time-reason">
+            <div v-for="line in bestTimeReasonLines" :key="line">{{ line }}</div>
+          </div>
+        </div>
+        <div class="best-time-meta">
+          <span>{{ bestTimeMetaText }}</span>
+        </div>
+      </div>
     </div>
 
     <div class="focus-grid">
@@ -231,6 +254,7 @@
             :key="action.id"
             type="button"
             class="focus-action"
+            :disabled="action.disabled"
             @click="handleFocusAction(action.id)"
           >
             <div class="focus-action-body">
@@ -393,6 +417,8 @@ const router = useRouter()
 const status = ref(null)
 const reports = ref([])
 const followers = ref(null)
+const bestTimeAnalysis = ref(null)
+const bestTimeRunning = ref(false)
 const pipelineRunning = ref(false)
 const pipelineResult = ref(null)
 const pipelineAbort = ref(null)
@@ -435,6 +461,19 @@ function formatDuration(ms) {
   const minutes = Math.floor(seconds / 60)
   const secs = seconds % 60
   return `${minutes}分${secs}秒`
+}
+
+function formatBestTimeAnalysisTime(dateStr) {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
 }
 
 // 计算上次更新时间的相对显示
@@ -496,6 +535,32 @@ const latestFollowerRecord = computed(() => {
   return sortedFollowerRecords.value.at(-1) || null
 })
 const activePipelineStep = computed(() => pipelineSteps.value.find((step) => step.status === 'running') || null)
+const bestTimeTopWindow = computed(() => {
+  const rec = bestTimeAnalysis.value?.daily_recommendations?.[0]
+  if (!rec) return null
+  return {
+    time: rec.time?.replace(/\s*\(.*\)$/, '') || '暂无结果',
+    score: Number.isFinite(rec.final_score) ? rec.final_score.toFixed(2) : '--',
+    posts: rec.radar_posts ?? '--',
+    audienceScore: Number.isFinite(rec.audience_score) ? rec.audience_score.toFixed(1) : '--',
+    competitionScore: Number.isFinite(rec.competition_score) ? rec.competition_score.toFixed(1) : '--',
+    overlapScore: Number.isFinite(rec.overlap_score) ? rec.overlap_score.toFixed(1) : '--',
+    reason: rec.reason || '',
+  }
+})
+const bestTimeReasonLines = computed(() => {
+  if (!bestTimeTopWindow.value) return []
+  return [
+    `情况：欧美受众活跃: ${bestTimeTopWindow.value.audienceScore} | 避堵竞争度: ${bestTimeTopWindow.value.competitionScore} | 欧美重叠度: ${bestTimeTopWindow.value.overlapScore}`,
+    `特征：硅谷${bestTimeTopWindow.value.reason}`,
+  ]
+})
+const bestTimeMetaText = computed(() => {
+  if (!bestTimeAnalysis.value) return '暂无历史结果'
+  const posts = bestTimeAnalysis.value.total_posts_analyzed ?? '--'
+  const updated = formatBestTimeAnalysisTime(bestTimeAnalysis.value.analysis_time)
+  return `${posts} 条样本${updated ? ` · ${updated}` : ''}`
+})
 
 function buildSparklineModel(records, getValue, { minZero = false } = {}) {
   if (records.length < 2) {
@@ -581,6 +646,16 @@ const focusActions = computed(() => {
   }
 
   actions.push({
+    id: 'best-time',
+    title: '获取最佳发帖时间估计',
+    desc: bestTimeTopWindow.value
+      ? `当前建议 ${bestTimeTopWindow.value.time}，综合评分 ${bestTimeTopWindow.value.score}。`
+      : '基于最近 7 天雷达样本，估算欧美用户更适合的北京时间发帖窗口。',
+    cta: bestTimeRunning.value ? '估算中' : '开始估算',
+    disabled: bestTimeRunning.value
+  })
+
+  actions.push({
     id: 'open-reply',
     title: '进入回帖工作台',
     desc: '把感兴趣的推文带去生成回复，尽快把内容转成互动。',
@@ -605,7 +680,7 @@ const focusActions = computed(() => {
     })
   }
 
-  return actions.slice(0, 3)
+  return actions.slice(0, 4)
 })
 
 const activityTimeline = computed(() => {
@@ -690,6 +765,9 @@ function handleFocusAction(actionId) {
     case 'open-radar':
       router.push('/radar')
       break
+    case 'best-time':
+      runBestTimeAnalysis()
+      break
     case 'open-reply':
       router.push('/reply')
       break
@@ -741,16 +819,18 @@ async function loadData() {
   if (isRefreshing.value) return
   isRefreshing.value = true
   try {
-    const [s, r, f, sched] = await Promise.all([
+    const [s, r, f, sched, bestTime] = await Promise.all([
       api.getStatus(), 
       api.getReports(),
       api.getFollowers(),
-      api.getSchedulerStatus()
+      api.getSchedulerStatus(),
+      api.getBestTimeAnalysis()
     ])
     status.value = s
     reports.value = r.reports || []
     followers.value = f
     schedulerStatus.value = sched
+    bestTimeAnalysis.value = bestTime.analysis || null
     lastUpdateTime.value = Date.now()
   } catch (e) {
     appStore.notify('加载数据失败: ' + e.message, 'error')
@@ -857,6 +937,25 @@ async function runScanOnly() {
     loadData()
   } catch (e) {
     appStore.notify('扫描失败: ' + e.message, 'error')
+  }
+}
+
+async function runBestTimeAnalysis() {
+  if (bestTimeRunning.value) return
+  bestTimeRunning.value = true
+  appStore.notify('开始估算最佳发帖时间...', 'info', 5000)
+  try {
+    const result = await api.runBestTimeAnalysis()
+    if (result.ok) {
+      bestTimeAnalysis.value = result.analysis || null
+      loadData()
+    } else {
+      appStore.notify('估算失败: ' + (result.stderr_tail || '未生成分析结果'), 'error')
+    }
+  } catch (e) {
+    appStore.notify('估算失败: ' + e.message, 'error')
+  } finally {
+    bestTimeRunning.value = false
   }
 }
 
@@ -1055,7 +1154,7 @@ onUnmounted(stopTimer)
 /* Grouped Stats Cards */
 .stats-grid-grouped {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -1108,10 +1207,15 @@ onUnmounted(stopTimer)
   transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
 }
 
-.focus-action:hover {
+.focus-action:hover:not(:disabled) {
   border-color: rgba(59, 130, 246, 0.28);
   background: rgba(59, 130, 246, 0.05);
   transform: translateY(-1px);
+}
+
+.focus-action:disabled {
+  cursor: wait;
+  opacity: 0.72;
 }
 
 .focus-action-body {
@@ -1371,6 +1475,7 @@ onUnmounted(stopTimer)
 .group-icon-blue { background: rgba(59, 130, 246, 0.12); color: var(--accent-blue); }
 .group-icon-red { background: var(--accent-red-dim); color: var(--accent-red); }
 .group-icon-orange { background: rgba(249, 115, 22, 0.12); color: #f97316; }
+.group-icon-cyan { background: rgba(14, 165, 233, 0.12); color: #0284c7; }
 
 .group-title {
   font-size: 13px;
@@ -1410,10 +1515,47 @@ onUnmounted(stopTimer)
 .group-value.large {
   font-size: 28px;
 }
+.group-value.best-time-value {
+  font-size: 20px;
+  line-height: 1.15;
+  white-space: nowrap;
+}
 .group-label {
   font-size: 12px;
   color: var(--text-tertiary);
   margin-top: 2px;
+}
+
+.best-time-reason {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+}
+
+.best-time-card {
+  width: 100%;
+  text-align: left;
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.best-time-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-tertiary);
+}
+
+.best-time-meta span:last-child {
+  flex-shrink: 0;
+  font-weight: 700;
+  color: var(--accent-blue);
 }
 
 .group-trend {

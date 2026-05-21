@@ -29,6 +29,8 @@ X_IDEAS_SCAN_PY = BASE_DIR / "xinfo" / "x_ideas_scan.py"
 ACCOUNTS_JSON = BASE_DIR / "xinfo" / "accounts.json"
 VENV_PYTHON = BASE_DIR / ".venv" / "bin" / "python"
 XPOST_PY = BASE_DIR / "xpost.py"
+BEST_TIME_ANALYZER_PY = BASE_DIR / "analyze_best_time_v2.py"
+BEST_TIME_ANALYSIS_JSON = XINFO_LOG / "best_time_analysis_v2.json"
 GENERATE_REPLIES_PY = BASE_DIR / "skills" / "x-reply-assistV2" / "scripts" / "generate_replies.py"
 DAILY_OPPORTUNITIES_JS = BASE_DIR / "scripts" / "daily_opportunities.js"
 PUBLISH_QUEUE_JSON = XINFO_LOG / "publish_queue.json"
@@ -240,6 +242,36 @@ async def _run_daily_opportunities(timeout: int = 600) -> dict:
         if parsed is not None:
             return parsed
         return {"ok": False, "stdout": out, "stderr": err, "returncode": proc.returncode}
+
+
+async def _run_best_time_analyzer(timeout: int = 120) -> dict:
+    proc = await asyncio.create_subprocess_exec(
+        _python_bin(),
+        str(BEST_TIME_ANALYZER_PY),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=str(BASE_DIR),
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        proc.kill()
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=15)
+        except asyncio.TimeoutError:
+            pass
+        raise HTTPException(504, detail="最佳发帖时间估计执行超时")
+
+    out = stdout.decode("utf-8", errors="replace").strip()
+    err = stderr.decode("utf-8", errors="replace").strip()
+    payload = _read_json(BEST_TIME_ANALYSIS_JSON)
+    return {
+        "ok": proc.returncode == 0 and bool(payload),
+        "analysis": payload,
+        "stdout_tail": out[-3000:] if out else "",
+        "stderr_tail": err[-1200:] if err else "",
+        "returncode": proc.returncode,
+    }
 
 
 async def _kill_active_xpost() -> dict:
@@ -794,6 +826,17 @@ async def radar_scan():
 @app.post("/api/radar/analyze")
 async def radar_analyze(days: int = 7):
     return await _run_xpost("radar-analyze", "--days", str(days))
+
+
+@app.get("/api/radar/best-time")
+async def get_best_time_analysis():
+    analysis = _read_json(BEST_TIME_ANALYSIS_JSON)
+    return {"ok": bool(analysis), "analysis": analysis}
+
+
+@app.post("/api/radar/best-time")
+async def run_best_time_analysis():
+    return await _run_best_time_analyzer()
 
 
 @app.post("/api/radar/daily")

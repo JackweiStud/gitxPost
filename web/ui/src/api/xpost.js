@@ -29,6 +29,8 @@ export const runScan = (config = {}) =>
   api.post('/radar/scan', null, { ...config, timeout: config.timeout ?? RADAR_SCAN_TIMEOUT_MS })
 export const runAnalyze = (days = 7, config = {}) =>
   api.post('/radar/analyze', null, { params: { days }, ...config })
+export const getBestTimeAnalysis = () => api.get('/radar/best-time')
+export const runBestTimeAnalysis = (config = {}) => api.post('/radar/best-time', null, config)
 export const runDaily = (config = {}) => api.post('/radar/daily', null, config)
 export const cancelRadar = () => api.post('/radar/cancel')
 
