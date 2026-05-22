@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shutil
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -16,7 +17,8 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent  # gitxPost root
 XINFO_LOG = BASE_DIR / "xinfo" / "log"
@@ -44,6 +46,7 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 ARTICLES_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="gitxPost API", version="0.1.0")
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,
@@ -215,6 +218,45 @@ async def _run_xpost(*args: str, timeout: int = 600) -> dict:
             return last_json
 
         return {"ok": False, "stdout": out, "stderr": err, "returncode": proc.returncode}
+
+
+def _classify_upload_kind(content_type: Optional[str]) -> Optional[str]:
+    if not content_type:
+        return None
+    if content_type.startswith("image/"):
+        return "image"
+    if content_type.startswith("video/"):
+        return "video"
+    return None
+
+
+async def _store_media_upload(file: UploadFile, *, allow_video: bool) -> dict:
+    kind = _classify_upload_kind(file.content_type)
+    detail = "只支持图片文件" if not allow_video else "只支持图片或视频文件"
+    if kind is None:
+        raise HTTPException(400, detail=detail)
+    if kind == "video" and not allow_video:
+        raise HTTPException(400, detail=detail)
+
+    ext = Path(file.filename).suffix if file.filename else ""
+    if not ext:
+        ext = ".mp4" if kind == "video" else ".jpg"
+
+    filename = f"{uuid.uuid4().hex}{ext}"
+    filepath = UPLOAD_DIR / filename
+
+    try:
+        filepath.write_bytes(await file.read())
+    except Exception as exc:
+        raise HTTPException(500, detail=f"文件保存失败: {str(exc)}")
+
+    return {
+        "ok": True,
+        "kind": kind,
+        "path": str(filepath),
+        "filename": filename,
+        "url": f"/uploads/{filename}",
+    }
 
 
 async def _run_daily_opportunities(timeout: int = 600) -> dict:
@@ -1635,6 +1677,7 @@ async def _execute_post_task(task: dict) -> dict:
     """执行 Post 发布任务"""
     content = task.get("content", {})
     text = content.get("text", "")
+    attachments = content.get("attachments", [])
     images = content.get("images", [])
     publish = content.get("publish", True)
     
@@ -1643,7 +1686,14 @@ async def _execute_post_task(task: dict) -> dict:
     
     # 调用发布接口
     args = ["post", text]
-    if images:
+    media = [
+        item.get("path")
+        for item in attachments
+        if isinstance(item, dict) and item.get("path")
+    ]
+    if media:
+        args.extend(["--media"] + media)
+    elif images:
         args.extend(["--images"] + images)
     if publish:
         args.append("--publish")
@@ -1768,34 +1818,26 @@ async def websocket_articles(websocket: WebSocket):
 @app.post("/api/upload/image")
 async def upload_image(file: UploadFile = File(...)):
     """上传图片"""
-    # 验证文件类型
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(400, detail="只支持图片文件")
-    
-    # 生成唯一文件名
-    import uuid
-    ext = Path(file.filename).suffix if file.filename else ".jpg"
-    filename = f"{uuid.uuid4().hex}{ext}"
-    filepath = UPLOAD_DIR / filename
-    
-    # 保存文件
-    try:
-        content = await file.read()
-        filepath.write_bytes(content)
-    except Exception as e:
-        raise HTTPException(500, detail=f"文件保存失败: {str(e)}")
-    
-    return {
-        "ok": True,
-        "path": str(filepath),
-        "filename": filename,
-        "url": f"/uploads/{filename}"
-    }
+    return await _store_media_upload(file, allow_video=False)
+
+
+@app.post("/api/upload/media")
+async def upload_media(file: UploadFile = File(...)):
+    """上传图片或视频"""
+    return await _store_media_upload(file, allow_video=True)
+
+
+class MediaAttachment(BaseModel):
+    kind: str
+    path: str
+    filename: Optional[str] = None
+    url: Optional[str] = None
 
 
 class PublishPostRequest(BaseModel):
     text: str
-    images: list[str] = []
+    attachments: list[MediaAttachment] = Field(default_factory=list)
+    images: list[str] = Field(default_factory=list)
     publish: bool = True
     scheduled_at: Optional[str] = None
 
@@ -1805,10 +1847,10 @@ async def publish_post(req: PublishPostRequest):
     """发布 Post（立即或定时）"""
     if not req.text.strip():
         raise HTTPException(400, detail="文本不能为空")
-    
-    # 验证图片数量
-    if len(req.images) > 4:
-        raise HTTPException(400, detail="最多上传 4 张图片")
+
+    media_paths = [item.path for item in req.attachments] if req.attachments else list(req.images)
+    if len(media_paths) > 4:
+        raise HTTPException(400, detail="最多上传 4 个媒体附件")
     
     # 解析定时时间
     scheduled_at = req.scheduled_at
@@ -1832,17 +1874,29 @@ async def publish_post(req: PublishPostRequest):
     if is_immediate:
         # 立即执行
         try:
-            result = await _run_xpost(
+            post_args = [
                 "post",
                 req.text,
-                *(["--images"] + req.images if req.images else []),
-                *(["--publish"] if req.publish else []),
-                "--observe-ms", "900",
+            ]
+            if req.attachments:
+                post_args += ["--media", *media_paths]
+            elif req.images:
+                post_args += ["--images", *media_paths]
+            if req.publish:
+                post_args += ["--publish"]
+            post_args += ["--observe-ms", "900"]
+            result = await _run_xpost(
+                *post_args,
                 timeout=120
             )
             
             # 记录到队列（已完成状态）
             queue_data = _read_publish_queue()
+            stored_attachments = (
+                [item.model_dump() for item in req.attachments]
+                if req.attachments
+                else [{"kind": "image", "path": path} for path in req.images]
+            )
             task = {
                 "id": _generate_queue_id(),
                 "type": "post",
@@ -1852,6 +1906,7 @@ async def publish_post(req: PublishPostRequest):
                 "executed_at": datetime.now().isoformat(),
                 "content": {
                     "text": req.text,
+                    "attachments": stored_attachments,
                     "images": req.images
                 },
                 "result": result,
@@ -1871,6 +1926,11 @@ async def publish_post(req: PublishPostRequest):
     else:
         # 加入队列
         queue_data = _read_publish_queue()
+        stored_attachments = (
+            [item.model_dump() for item in req.attachments]
+            if req.attachments
+            else [{"kind": "image", "path": path} for path in req.images]
+        )
         task = {
             "id": _generate_queue_id(),
             "type": "post",
@@ -1880,6 +1940,7 @@ async def publish_post(req: PublishPostRequest):
             "executed_at": None,
             "content": {
                 "text": req.text,
+                "attachments": stored_attachments,
                 "images": req.images,
                 "publish": req.publish
             },

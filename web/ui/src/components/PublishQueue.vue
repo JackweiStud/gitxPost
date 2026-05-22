@@ -118,6 +118,11 @@ function getStatusText(status) {
 }
 
 function getContentPreview(task) {
+  const attachments = task.content?.attachments || []
+  if (attachments.length > 0) {
+    const kinds = attachments.map(a => a.kind || 'media').join(', ')
+    return `📎 ${attachments.length} 个附件 (${kinds})`
+  }
   if (task.type === 'post') {
     const text = task.content?.text || ''
     return text.length > 50 ? text.substring(0, 50) + '...' : text

@@ -2091,34 +2091,34 @@ def _cmd_post(args):
         _print_json({"ok": False, "error": f"Post 发布模块加载失败: {exc}"})
         return 1
 
-    # 验证图片文件存在性
-    images = args.images or []
-    missing_images = []
-    if images:
-        for img_path in images:
-            abs_path = Path(img_path).expanduser().resolve()
+    # 验证媒体文件存在性
+    media = args.media or args.images or []
+    missing_media = []
+    if media:
+        for media_path in media:
+            abs_path = Path(media_path).expanduser().resolve()
             if not abs_path.exists():
-                missing_images.append(str(img_path))
+                missing_media.append(str(media_path))
 
-    if missing_images:
+    if missing_media:
         _print_json(
             {
                 "ok": False,
-                "error": "部分图片文件不存在",
-                "missing_images": missing_images,
+                "error": "部分媒体文件不存在",
+                "missing_media": missing_media,
             }
         )
         return 1
 
     # 转换为绝对路径
-    abs_images = [str(Path(img).expanduser().resolve()) for img in images] if images else None
+    abs_media = [str(Path(item).expanduser().resolve()) for item in media] if media else None
 
     # 执行发布
     start_ts = time.time()
     try:
         success = auto_publish_post(
             text=args.text,
-            images=abs_images,
+            media=abs_media,
             publish=args.publish,
             wait_after=not args.no_wait,
             step_pause_ms=args.observe_ms,
@@ -2130,7 +2130,7 @@ def _cmd_post(args):
                 "ok": success,
                 "mode": "publish" if args.publish else "draft",
                 "text_length": len(args.text),
-                "images_count": len(images),
+                "media_count": len(media),
                 "timings": {
                     "total_ms": total_ms,
                 },
@@ -3283,7 +3283,8 @@ def main():
 
     p_post = sub.add_parser("post", help="Publish X Post (short text)")
     p_post.add_argument("text", help="Post text content (supports X Premium long post)")
-    p_post.add_argument("--images", nargs="+", help="Image paths (max 4)")
+    p_post.add_argument("--media", nargs="+", help="Media paths (images or videos, max 4)")
+    p_post.add_argument("--images", nargs="+", help="Image paths (compatibility alias)")
     p_post.add_argument("--publish", action="store_true", help="Publish directly (default: draft)")
     p_post.add_argument("--profile-dir", help="Chrome profile directory")
     p_post.add_argument("--no-wait", action="store_true", help="Do not wait after completion")

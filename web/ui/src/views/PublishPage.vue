@@ -38,10 +38,10 @@
           </div>
         </div>
 
-        <!-- Image Upload Zone -->
+        <!-- Media Upload Zone -->
         <div
           class="upload-zone"
-          :class="{ 'has-images': images.length > 0 }"
+          :class="{ 'has-attachments': attachments.length > 0 }"
           @drop.prevent="handleDrop"
           @dragover.prevent="isDragging = true"
           @dragleave="isDragging = false"
@@ -51,31 +51,32 @@
             ref="fileInput"
             type="file"
             multiple
-            accept="image/*"
+            accept="image/*,video/*"
             @change="handleFileSelect"
             style="display: none"
           />
           
-          <div v-if="images.length === 0" class="upload-prompt">
+          <div v-if="attachments.length === 0" class="upload-prompt">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
               <circle cx="8.5" cy="8.5" r="1.5"/>
               <polyline points="21 15 16 10 5 21"/>
             </svg>
-            <p>拖拽图片到这里，或点击上传</p>
-            <p class="upload-hint">最多 4 张图片</p>
+            <p>拖拽图片或视频到这里，或点击上传</p>
+            <p class="upload-hint">最多 4 个媒体附件</p>
           </div>
 
           <div v-else class="image-grid" @click.stop>
-            <div v-for="(img, idx) in images" :key="idx" class="image-item">
-              <img :src="img.preview" :alt="img.name" />
-              <button class="image-remove" @click="removeImage(idx)">
+            <div v-for="(item, idx) in attachments" :key="idx" class="image-item">
+              <img v-if="item.kind === 'image'" :src="item.preview" :alt="item.name" />
+              <video v-else :src="item.preview" muted playsinline controls />
+              <button class="image-remove" @click="removeAttachment(idx)">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>
               </button>
             </div>
-            <div v-if="images.length < 4" class="image-add" @click="$refs.fileInput.click()">
+            <div v-if="attachments.length < 4" class="image-add" @click="$refs.fileInput.click()">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
               </svg>
@@ -153,7 +154,7 @@ const appStore = useAppStore()
 
 const postText = ref('')
 const charCount = ref(0)
-const images = ref([])
+const attachments = ref([])
 const isDragging = ref(false)
 const isScheduled = ref(false)
 const scheduledTime = ref('')
@@ -190,44 +191,45 @@ function updateCharCount() {
 function handleDrop(e) {
   isDragging.value = false
   const files = Array.from(e.dataTransfer.files)
-  addImages(files)
+  addAttachments(files)
 }
 
 function handleFileSelect(e) {
   const files = Array.from(e.target.files)
-  addImages(files)
+  addAttachments(files)
   e.target.value = ''
 }
 
-function addImages(files) {
-  const imageFiles = files.filter(f => f.type.startsWith('image/'))
+function addAttachments(files) {
+  const mediaFiles = files.filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'))
   
-  if (images.value.length + imageFiles.length > 4) {
-    appStore.notify('最多上传 4 张图片', 'error')
+  if (attachments.value.length + mediaFiles.length > 4) {
+    appStore.notify('最多上传 4 个媒体附件', 'error')
     return
   }
   
-  imageFiles.forEach(file => {
+  mediaFiles.forEach(file => {
     const reader = new FileReader()
     reader.onload = (e) => {
-      images.value.push({
+      attachments.value.push({
         file,
         preview: e.target.result,
-        name: file.name
+        name: file.name,
+        kind: file.type.startsWith('video/') ? 'video' : 'image'
       })
     }
     reader.readAsDataURL(file)
   })
 }
 
-function removeImage(index) {
-  images.value.splice(index, 1)
+function removeAttachment(index) {
+  attachments.value.splice(index, 1)
 }
 
 function clearForm() {
   postText.value = ''
   charCount.value = 0
-  images.value = []
+  attachments.value = []
   isScheduled.value = false
   scheduledTime.value = ''
 }
@@ -238,18 +240,23 @@ async function handlePublish() {
   isPublishing.value = true
   
   try {
-    // 上传图片到服务器
-    const imagePaths = []
-    if (images.value.length > 0) {
-      appStore.notify('正在上传图片...', 'info')
-      for (const img of images.value) {
+    // 上传媒体到服务器
+    const attachmentPaths = []
+    if (attachments.value.length > 0) {
+      appStore.notify('正在上传媒体...', 'info')
+      for (const item of attachments.value) {
         try {
-          const result = await api.uploadImage(img.file)
+          const result = await api.uploadMedia(item.file)
           if (result.ok && result.path) {
-            imagePaths.push(result.path)
+            attachmentPaths.push({
+              kind: result.kind || item.kind,
+              path: result.path,
+              filename: result.filename,
+              url: result.url
+            })
           }
         } catch (e) {
-          appStore.notify(`图片上传失败: ${e.message}`, 'error')
+          appStore.notify(`媒体上传失败: ${e.message}`, 'error')
           isPublishing.value = false
           return
         }
@@ -258,7 +265,7 @@ async function handlePublish() {
     
     const payload = {
       text: postText.value,
-      images: imagePaths,
+      attachments: attachmentPaths,
       publish: true,
       scheduled_at: isScheduled.value && scheduledTime.value
         ? new Date(scheduledTime.value).toISOString()
@@ -497,7 +504,7 @@ onUnmounted(() => {
   background: var(--bg-hover);
 }
 
-.upload-zone.has-images {
+.upload-zone.has-attachments {
   padding: 16px;
 }
 
@@ -534,7 +541,8 @@ onUnmounted(() => {
   background: var(--bg-tertiary);
 }
 
-.image-item img {
+.image-item img,
+.image-item video {
   width: 100%;
   height: 100%;
   object-fit: cover;

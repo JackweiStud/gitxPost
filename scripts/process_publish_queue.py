@@ -70,6 +70,7 @@ def process_queue():
         # 获取任务内容
         content = task.get("content", {})
         text = content.get("text", "")
+        attachments = content.get("attachments", [])
         images = content.get("images", [])
         publish = content.get("publish", True)
         
@@ -89,7 +90,14 @@ def process_queue():
             # 构建命令
             cmd = [str(VENV_PYTHON), str(XPOST_PY), "post", text]
             
-            if images:
+            media = [
+                item.get("path")
+                for item in attachments
+                if isinstance(item, dict) and item.get("path")
+            ]
+            if media:
+                cmd.extend(["--media"] + media)
+            elif images:
                 cmd.extend(["--images"] + images)
             
             if publish:

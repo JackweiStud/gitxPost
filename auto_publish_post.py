@@ -77,16 +77,19 @@ def validate_text_length(text: str) -> bool:
     return True
 
 
-def validate_images(images: Optional[List[str]]) -> bool:
-    """验证图片"""
-    if not images:
+def validate_media(media: Optional[List[str]]) -> bool:
+    """验证媒体附件"""
+    if not media:
         return True
-    if len(images) > MAX_IMAGES:
-        raise ValueError(f"图片数量超过 {MAX_IMAGES} 张限制（当前：{len(images)}）")
-    for img_path in images:
-        if not Path(img_path).exists():
-            raise FileNotFoundError(f"图片文件不存在: {img_path}")
+    if len(media) > MAX_IMAGES:
+        raise ValueError(f"媒体数量超过 {MAX_IMAGES} 个限制（当前：{len(media)}）")
+    for media_path in media:
+        if not Path(media_path).exists():
+            raise FileNotFoundError(f"媒体文件不存在: {media_path}")
     return True
+
+
+validate_images = validate_media
 
 
 class HumanBehaviorSimulator:
@@ -325,12 +328,12 @@ def input_post_text(page: Page, text: str, step_pause_ms: int = STEP_PAUSE_MS) -
     raise RuntimeError("未找到文本框或无法输入文本")
 
 
-def upload_post_images(page: Page, images: List[str], step_pause_ms: int = STEP_PAUSE_MS) -> bool:
-    """上传图片"""
-    if not images:
+def upload_post_media(page: Page, media: List[str], step_pause_ms: int = STEP_PAUSE_MS) -> bool:
+    """上传媒体附件"""
+    if not media:
         return True
     
-    print(f"   🖼️  上传 {len(images)} 张图片...")
+    print(f"   🖼️  上传 {len(media)} 个媒体附件...")
     
     # 查找文件上传控件
     matched_selector = None
@@ -344,16 +347,16 @@ def upload_post_images(page: Page, images: List[str], step_pause_ms: int = STEP_
     
     if matched_selector is None:
         _save_debug_artifacts(page)
-        raise RuntimeError("未找到图片上传 input")
+        raise RuntimeError("未找到媒体上传 input")
     
     handle = page.query_selector(matched_selector)
     if handle is None:
         _save_debug_artifacts(page)
-        raise RuntimeError(f"未找到图片上传控件句柄: {matched_selector}")
+        raise RuntimeError(f"未找到媒体上传控件句柄: {matched_selector}")
     
-    # 上传图片
-    abs_images = [str(Path(img_path).expanduser().resolve()) for img_path in images]
-    handle.set_input_files(abs_images, timeout=10000)
+    # 上传媒体
+    abs_media = [str(Path(media_path).expanduser().resolve()) for media_path in media]
+    handle.set_input_files(abs_media, timeout=10000)
     page.wait_for_timeout(2500)
     _activate_chrome_window()
     
@@ -370,7 +373,9 @@ def upload_post_images(page: Page, images: List[str], step_pause_ms: int = STEP_
             'button[data-testid="removeMedia"]',
             'button[aria-label*="Remove media"]',
             'div[data-testid="attachments"] img',
-            'img[src^="blob:"]'
+            'div[data-testid="attachments"] video',
+            'img[src^="blob:"]',
+            'video[src^="blob:"]'
           ];
           return Math.max(0, ...selectors.map((selector) => document.querySelectorAll(selector).length));
         }
@@ -378,13 +383,16 @@ def upload_post_images(page: Page, images: List[str], step_pause_ms: int = STEP_
     )
     
     detected = max(attached, preview_count)
-    if detected < len(images):
+    if detected < len(media):
         _save_debug_artifacts(page)
-        raise RuntimeError(f"图片上传不完整：期望 {len(images)} 张，实际检测 {detected} 张")
+        raise RuntimeError(f"媒体上传不完整：期望 {len(media)} 个，实际检测 {detected} 个")
     
-    print(f"   ✅ 图片上传成功 (检测到 {detected} 张)")
-    _pause_for_observation("图片已插入", step_pause_ms)
+    print(f"   ✅ 媒体上传成功 (检测到 {detected} 个)")
+    _pause_for_observation("媒体已插入", step_pause_ms)
     return True
+
+
+upload_post_images = upload_post_media
 
 
 def click_post_button(page: Page, publish: bool = False, step_pause_ms: int = STEP_PAUSE_MS) -> bool:
@@ -396,67 +404,78 @@ def click_post_button(page: Page, publish: bool = False, step_pause_ms: int = ST
         print("   ✅ 草稿模式完成（未自动点击发布）")
         return True
     
-    for selector in SELECTORS["post_button"]:
-        try:
-            handle = page.query_selector(selector)
-            if not handle:
-                continue
-            
-            disabled = handle.evaluate(
-                """
-                (el) => {
-                  const ariaDisabled = (el.getAttribute('aria-disabled') || '').toLowerCase();
-                  return ariaDisabled === 'true' || !!el.disabled;
-                }
-                """
-            )
-            
-            if disabled:
-                print(f"   ⚠️  发布按钮未激活: {selector}")
-                continue
-            
-            _pause_for_observation("准备点击发布", step_pause_ms)
-            
+    ready_timeout_ms = int(os.environ.get("XPOST_POST_BUTTON_READY_TIMEOUT_MS", "90000"))
+    poll_ms = int(os.environ.get("XPOST_POST_BUTTON_POLL_MS", "1500"))
+    deadline = time.time() + (ready_timeout_ms / 1000)
+
+    while True:
+        for selector in SELECTORS["post_button"]:
             try:
-                handle.evaluate(
+                handle = page.query_selector(selector)
+                if not handle:
+                    continue
+                
+                disabled = handle.evaluate(
                     """
                     (el) => {
-                      el.scrollIntoView({block: 'center', inline: 'nearest'});
-                      el.click();
+                      const ariaDisabled = (el.getAttribute('aria-disabled') || '').toLowerCase();
+                      return ariaDisabled === 'true' || !!el.disabled;
                     }
                     """
                 )
-            except Exception:
-                handle.click(timeout=5000, force=True)
-            
-            page.wait_for_timeout(2500)
-            
-            # 验证提交完成
-            try:
-                page.wait_for_function(
-                    """
-                    () => {
-                      const urlOk = !window.location.href.includes('/compose/post');
-                      const composerGone = !document.querySelector('div[data-testid="tweetTextarea_0"], div[contenteditable="true"][role="textbox"]');
-                      return urlOk || composerGone;
-                    }
-                    """,
-                    timeout=12000,
-                )
-                print(f"   ✅ 找到并点击发布按钮: {selector}")
-                print("   ✅ 发布成功")
-                _pause_for_observation("发布已完成", step_pause_ms)
-                return True
-            except Exception:
-                print(f"   ⚠️  已点击按钮但未确认提交完成: {selector}")
-                _pause_for_observation("按钮已点击，等待页面收尾", step_pause_ms)
-                return True
                 
-        except PlaywrightTimeoutError:
-            continue
-        except Exception as exc:
-            print(f"   ⚠️  点击发布按钮失败 {selector}: {exc}")
-            continue
+                if disabled:
+                    print(f"   ⚠️  发布按钮未激活: {selector}")
+                    continue
+                
+                _pause_for_observation("准备点击发布", step_pause_ms)
+                
+                try:
+                    handle.evaluate(
+                        """
+                        (el) => {
+                          el.scrollIntoView({block: 'center', inline: 'nearest'});
+                          el.click();
+                        }
+                        """
+                    )
+                except Exception:
+                    handle.click(timeout=5000, force=True)
+                
+                page.wait_for_timeout(2500)
+                
+                # 验证提交完成
+                try:
+                    page.wait_for_function(
+                        """
+                        () => {
+                          const urlOk = !window.location.href.includes('/compose/post');
+                          const composerGone = !document.querySelector('div[data-testid="tweetTextarea_0"], div[contenteditable="true"][role="textbox"]');
+                          return urlOk || composerGone;
+                        }
+                        """,
+                        timeout=12000,
+                    )
+                    print(f"   ✅ 找到并点击发布按钮: {selector}")
+                    print("   ✅ 发布成功")
+                    _pause_for_observation("发布已完成", step_pause_ms)
+                    return True
+                except Exception:
+                    print(f"   ⚠️  已点击按钮但未确认提交完成: {selector}")
+                    _pause_for_observation("按钮已点击，等待页面收尾", step_pause_ms)
+                    return True
+                    
+            except PlaywrightTimeoutError:
+                continue
+            except Exception as exc:
+                print(f"   ⚠️  点击发布按钮失败 {selector}: {exc}")
+                continue
+
+        if time.time() >= deadline:
+            break
+
+        print("   ⏳ 发布按钮仍在处理中，等待后重试...")
+        page.wait_for_timeout(min(poll_ms, max(250, int((deadline - time.time()) * 1000))))
     
     _save_debug_artifacts(page)
     print("   ⚠️  未找到发布按钮")
@@ -511,6 +530,7 @@ def initialize_login_session(profile_dir: Path = PROFILE_DIR, timeout: int = 600
 
 def auto_publish_post(
     text: str,
+    media: Optional[List[str]] = None,
     images: Optional[List[str]] = None,
     publish: bool = False,
     wait_after: bool = True,
@@ -528,7 +548,8 @@ def auto_publish_post(
         print("🔍 验证输入参数...")
         print(f"[DEBUG] text={text[:50]}...")
         validate_text_length(text)
-        validate_images(images)
+        media_paths = media if media is not None else images
+        validate_media(media_paths)
         print("✅ 输入验证通过")
         
         print("\n🌐 启动真实 Google Chrome 并附着 CDP...")
@@ -562,8 +583,8 @@ def auto_publish_post(
         if not input_post_text(page, text, step_pause_ms=step_pause_ms):
             raise RuntimeError("文本输入失败")
         
-        if images and not upload_post_images(page, images, step_pause_ms=step_pause_ms):
-            raise RuntimeError("图片上传失败")
+        if media_paths and not upload_post_media(page, media_paths, step_pause_ms=step_pause_ms):
+            raise RuntimeError("媒体上传失败")
         
         if not click_post_button(page, publish, step_pause_ms=step_pause_ms):
             raise RuntimeError("发布按钮操作失败")
@@ -600,7 +621,8 @@ if __name__ == "__main__":
     print(f"[DEBUG] sys.argv = {sys.argv}")
     parser = argparse.ArgumentParser(description="X Post 自动发布工具")
     parser.add_argument("text", nargs="?", help="Post 文本内容")
-    parser.add_argument("--images", nargs="+", help="图片路径（最多 4 张）")
+    parser.add_argument("--media", nargs="+", help="媒体路径（图片或视频，最多 4 个）")
+    parser.add_argument("--images", nargs="+", help="图片路径（兼容旧参数）")
     parser.add_argument("--publish", action="store_true", help="直接发布")
     parser.add_argument("--no-wait", action="store_true", help="完成后不等待")
     parser.add_argument("--observe-ms", type=int, default=STEP_PAUSE_MS, help="每个关键步骤后的可观察停顿毫秒数")
@@ -617,9 +639,11 @@ if __name__ == "__main__":
         if not args.text:
             parser.error("text 是必填参数，除非使用 --setup-login")
         print(f"[DEBUG] 调用 auto_publish_post, text={args.text}")
+        media_paths = args.media or args.images
         success = auto_publish_post(
             text=args.text,
-            images=args.images,
+            media=media_paths,
+            images=args.images if not args.media else None,
             publish=args.publish,
             wait_after=not args.no_wait,
             step_pause_ms=args.observe_ms,
