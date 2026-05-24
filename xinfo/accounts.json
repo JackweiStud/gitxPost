@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updated_at": "2026-05-20T12:16:37.452427",
+  "updated_at": "2026-05-24T10:26:02.358194",
   "accounts": [
     {
       "handle": "dashen_wang",
@@ -718,8 +718,9 @@
     {
       "handle": "XEng",
       "note": "Engineering，updates from our engineering team",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-05-24"
     },
     {
       "handle": "frankdilo",
@@ -1046,8 +1047,9 @@
     {
       "handle": "PMbackttfuture",
       "note": "AI产品黄叔，两家大厂AI产品顾问 加社团学skills：",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-05-24"
     },
     {
       "handle": "AlchainHust",
@@ -1264,8 +1266,9 @@
     {
       "handle": "brad_zhang2024",
       "note": "烟花老师，AI 社区【一支烟花】 发起人， AI 应用架构师，分享深度 AI 内容，链接 AI 创业者",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-05-24"
     },
     {
       "handle": "shesjuliez",
@@ -1460,8 +1463,9 @@
     {
       "handle": "chrisboettcher9",
       "note": "Chris Boettcher，Helping Men and Women over 40 lose 15-150 lbs and resolve...",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-05-24"
     },
     {
       "handle": "henuwangkai",
@@ -1569,8 +1573,9 @@
     {
       "handle": "mustafasuleyman",
       "note": "Microsoft AI 负责人",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-05-24"
     },
     {
       "handle": "aakashgupta",
@@ -1587,8 +1592,9 @@
     {
       "handle": "dinomogs",
       "note": "推荐人：@Mehedi_Crypto1",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-05-24"
     },
     {
       "handle": "METR_Evals",
