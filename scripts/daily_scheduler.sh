@@ -32,4 +32,7 @@ fi
 echo "[4/4] follower-stats..." >> "$LOG"
 python xpost.py follower-stats >> "$LOG" 2>&1 || true
 
+echo "[5/5] audit-run-status..." >> "$LOG"
+python scripts/audit_daily_run.py >> "$LOG" 2>&1 || true
+
 echo "========== DONE $(date) ==========" >> "$LOG"
