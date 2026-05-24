@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+const path = require('node:path');
 const DEFAULT_PORT = 19222;
 const DEFAULT_NAVIGATE_WAIT_MS = 7500;
 const DEFAULT_DELAY_MS = 1500;
@@ -164,11 +165,71 @@ async function createBackgroundTarget(port) {
   }
 }
 
-async function openBlankTarget(port, options = {}) {
-  if (options.backgroundTarget !== false) {
-    return createBackgroundTarget(port);
+const { spawn } = require('node:child_process');
+
+function checkPortFree(port) {
+  return new Promise((resolve) => {
+    const net = require('node:net');
+    const socket = new net.Socket();
+    socket.setTimeout(800);
+    socket.on('connect', () => {
+      socket.destroy();
+      resolve(false);
+    })
+    .on('error', () => {
+      socket.destroy();
+      resolve(true);
+    })
+    .on('timeout', () => {
+      socket.destroy();
+      resolve(true);
+    })
+    .connect(port, '127.0.0.1');
+  });
+}
+
+async function spawnChrome(port) {
+  const chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+  const userDir = path.resolve(__dirname, '../chrome_data_mirror');
+
+  const proc = spawn(chromePath, [
+    `--remote-debugging-port=${port}`,
+    '--headless=new',
+    `--user-data-dir=${userDir}`,
+    '--no-first-run',
+    '--no-default-browser-check'
+  ], {
+    detached: true,
+    stdio: 'ignore'
+  });
+  proc.unref();
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const isFree = await checkPortFree(port);
+    if (!isFree) return proc;
+    await sleep(250);
   }
-  return fetchJson(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' });
+  return proc;
+}
+
+async function openBlankTarget(port, options = {}) {
+  let spawnedProcess = null;
+  const isFree = await checkPortFree(port);
+  if (isFree) {
+    spawnedProcess = await spawnChrome(port);
+  }
+
+  let target = null;
+  if (options.backgroundTarget !== false) {
+    target = await createBackgroundTarget(port);
+  } else {
+    target = await fetchJson(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' });
+  }
+
+  if (target) {
+    target.spawnedProcess = spawnedProcess;
+  }
+  return target;
 }
 
 async function closeTarget(port, targetId) {
@@ -200,10 +261,12 @@ function buildExtractionExpression() {
 async function getTweetMetrics(url, options = {}) {
   const port = options.port || DEFAULT_PORT;
   const navigateWaitMs = options.navigateWaitMs || DEFAULT_NAVIGATE_WAIT_MS;
-  const target = await openBlankTarget(port, { backgroundTarget: options.backgroundTarget });
-  const client = new CDPClient(target.webSocketDebuggerUrl);
+  let target = null;
+  let client = null;
 
   try {
+    target = await openBlankTarget(port, { backgroundTarget: options.backgroundTarget });
+    client = new CDPClient(target.webSocketDebuggerUrl);
     await client.connect();
     await client.send('Page.enable');
     await client.send('Runtime.enable');
@@ -272,8 +335,17 @@ async function getTweetMetrics(url, options = {}) {
       },
     };
   } finally {
-    client.close();
-    await closeTarget(port, target.id);
+    if (client) {
+      client.close();
+    }
+    if (target) {
+      if (target.id) {
+        await closeTarget(port, target.id);
+      }
+      if (target.spawnedProcess) {
+        target.spawnedProcess.kill('SIGTERM');
+      }
+    }
   }
 }
 

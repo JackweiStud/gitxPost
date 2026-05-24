@@ -5,6 +5,8 @@ __pycache__/
 .venv/
 venv/
 .env
+web/test_fallback.py
+
 
 # macOS
 .DS_Store

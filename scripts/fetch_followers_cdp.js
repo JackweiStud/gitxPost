@@ -56,16 +56,27 @@ async function evaluate(client, expression, ...args) {
 }
 
 async function withPage(port, callback) {
-  const target = await openBlankTarget(port, { backgroundTarget: true });
-  const client = new CDPClient(target.webSocketDebuggerUrl);
-  await client.connect();
+  let target = null;
+  let client = null;
   try {
+    target = await openBlankTarget(port, { backgroundTarget: true });
+    client = new CDPClient(target.webSocketDebuggerUrl);
+    await client.connect();
     await client.send('Page.enable');
     await client.send('Runtime.enable');
     return await callback(client);
   } finally {
-    client.close();
-    await closeTarget(port, target.id);
+    if (client) {
+      client.close();
+    }
+    if (target) {
+      if (target.id) {
+        await closeTarget(port, target.id);
+      }
+      if (target.spawnedProcess) {
+        target.spawnedProcess.kill('SIGTERM');
+      }
+    }
   }
 }
 
