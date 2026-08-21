@@ -10,6 +10,36 @@
   - 仍未解决的边界或风险
 - 如果改动影响验收方式或测试结论，需要同步更新 `CI/` 目录下的文档。
 
+日期：2026-08-20
+
+## 修复：雷达扫描适配 nitter.net 限流
+
+范围：`xinfo/x_ideas_scan.py`
+
+### 问题
+
+- 公共 Nitter/RSSHub 实例大量加入人机验证或直接不可用；雷达仍用 3 Nitter + 1 RSSHub、workers=2。
+- `nitter.net` 对爬取极易返回 429；短时全量扫描 / 连续探测会把出口 IP 打进长时间限流。
+
+### 变更
+
+- 数据源收敛为仅 `https://nitter.net`；清空失效的 `privacydev` / `poast` / `rsshub.pseudoyu.com`。
+- 降速：`MAX_WORKERS=1`、`CONCURRENT_PER_INSTANCE=1`、jitter `3–6s`。
+- 429 / Too Many Requests：不立即重试，进入 **300s** 冷却；普通实例失败冷却 120s。
+- HTTP 错误提升为 `HTTP {code}` 日志；冷却中若全源不可用，等待最短冷却后再试一轮，避免 236 账号瞬间全 FAIL。
+
+### 验证
+
+- `python3 -m py_compile xinfo/x_ideas_scan.py` 通过。
+- Clash 侧已加 `DOMAIN-SUFFIX,nitter.net,hy2`；单次 curl 曾确认 200，随后因扫描/探测再次 429。
+- **需在限流冷却结束后再跑** `python xpost.py radar-scan` 做端到端验证。
+
+### 风险
+
+- 仍依赖公共 `nitter.net`；不保证长期可用。
+- 236 账号单线程扫描预计约 20–40+ 分钟；遇 429 会自动暂停冷却。
+- 未接入 X API；未启用 xcancel 白名单。
+
 日期：2026-05-20
 
 ## 新增：Following 与 Radar 差异同步报表

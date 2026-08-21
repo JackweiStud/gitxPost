@@ -6,6 +6,7 @@ X 创意雷达 - RSS 版本
 """
 
 import urllib.request
+import urllib.error
 import xml.etree.ElementTree as ET
 import json
 import os
@@ -314,16 +315,16 @@ NITTER_INSTANCES = [
 ]
 
 # nitter 实例列表（多实例 fallback）
+# 2026-08：公共实例普遍加了人机验证 / 限流。privacydev、poast、rsshub.pseudoyu
+# 对本机爬虫已不可用；只保留仍能返回 RSS 的 nitter.net，并靠降速避免 429。
 NITTER_INSTANCES = [
     "https://nitter.net",
-    "https://nitter.privacydev.net",
-    "https://nitter.poast.org",
 ]
 
 # RSSHub 实例列表（Nitter 全部失败后的备用数据源）
+# 当前公共 Twitter 路由不可用，留空；需要时再填入可用实例。
 # RSSHub 路由: /twitter/user/:username
 RSSHUB_INSTANCES = [
-    "https://rsshub.pseudoyu.com",
 ]
 
 # 文件路径（相对于脚本所在目录）
@@ -334,17 +335,18 @@ IDEAS_FILE = os.path.join(LOG_DIR, "ideas.md")
 SEEN_FILE = os.path.join(LOG_DIR, ".ideas_seen.json")
 
 # 配置参数
-MAX_RETRIES = 2          # 每个实例的重试次数
+MAX_RETRIES = 2          # 每个实例的重试次数（429 不重试，直接长冷却）
 SEEN_URLS_LIMIT = 5000   # seen.json 最大记录数（FIFO）
 KEEP_DAYS = 5            # ideas.md 保留天数
-INSTANCE_COOLDOWN = 90   # 实例失败后的冷却时间（秒），冷却后自动恢复
+INSTANCE_COOLDOWN = 120  # 普通实例失败冷却（秒）
+RATE_LIMIT_COOLDOWN = 300  # 429 / Too Many Requests 冷却（秒）
 MAX_PER_ACCOUNT = 5      # 每个账号最多保留的推文数
 
-# 并发配置
-CONCURRENT_PER_INSTANCE = 2   # 每个 Nitter 实例的最大并发请求数
-JITTER_MIN = 0.8              # 请求间最小随机延迟（秒）
-JITTER_MAX = 2.5              # 请求间最大随机延迟（秒）
-MAX_WORKERS = 2#CONCURRENT_PER_INSTANCE * (len(NITTER_INSTANCES) + len(RSSHUB_INSTANCES))
+# 并发配置（单 worker + 低并发，避免把 nitter.net 再次打进 429）
+CONCURRENT_PER_INSTANCE = 1
+JITTER_MIN = 3.0
+JITTER_MAX = 6.0
+MAX_WORKERS = 1
 
 # User-Agent 池（轮换以降低被识别风险）
 _UA_POOL = [
@@ -553,20 +555,32 @@ def _random_ua() -> str:
     return random.choice(_UA_POOL)
 
 def fetch_rss(username, nitter_instance):
-    """从指定 nitter 实例获取 RSS（带随机 UA）"""
+    """从指定 nitter 实例获取 RSS（带随机 UA）。失败时抛出带 HTTP 状态的异常。"""
     url = f"{nitter_instance}/{username}/rss"
-    headers = {'User-Agent': _random_ua()}
+    headers = {
+        'User-Agent': _random_ua(),
+        'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+    }
     req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=10) as response:
-        return response.read()
+    try:
+        with urllib.request.urlopen(req, timeout=15) as response:
+            return response.read()
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"HTTP {e.code}: {e.reason}") from e
 
 def fetch_rsshub(username, rsshub_instance):
-    """从指定 RSSHub 实例获取 RSS（带随机 UA）"""
+    """从指定 RSSHub 实例获取 RSS（带随机 UA）。失败时抛出带 HTTP 状态的异常。"""
     url = f"{rsshub_instance}/twitter/user/{username}"
-    headers = {'User-Agent': _random_ua()}
+    headers = {
+        'User-Agent': _random_ua(),
+        'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+    }
     req = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(req, timeout=15) as response:
-        return response.read()
+    try:
+        with urllib.request.urlopen(req, timeout=15) as response:
+            return response.read()
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"HTTP {e.code}: {e.reason}") from e
 
 # 构建域名替换表（从配置动态生成）[P1-5]
 _DOMAIN_REPLACEMENTS = []
@@ -614,34 +628,67 @@ def parse_rss(xml_content):
     
     return items
 
+def _is_rate_limited(error_msg: str) -> bool:
+    """是否为限流错误（应进入更长冷却，且不要立即重试）。"""
+    return '429' in error_msg or 'Too Many Requests' in error_msg
+
+
+def _cooldown_seconds_for_error(error_msg: str) -> int:
+    """按错误类型选择冷却时长。"""
+    if _is_rate_limited(error_msg):
+        return RATE_LIMIT_COOLDOWN
+    return INSTANCE_COOLDOWN
+
+
 def _is_instance_error(error_msg: str) -> bool:
     """判断是否是实例级错误（应进入冷却期）。
     账号级错误（404/403）不应标记实例为失败。
     """
+    if _is_rate_limited(error_msg):
+        return True
     account_errors = ['404', '403', 'Not Found', 'Forbidden']
     return not any(e in error_msg for e in account_errors)
 
 
 def _is_instance_available(instance: str, instance_fail_time: dict) -> bool:
-    """检查实例是否可用（冷却期外则自动恢复）。"""
-    fail_ts = instance_fail_time.get(instance)
-    if fail_ts is None:
+    """检查实例是否可用（冷却期外则自动恢复）。
+
+    instance_fail_time[instance] = {"ts": fail_epoch, "cd": cooldown_seconds}
+    """
+    info = instance_fail_time.get(instance)
+    if not info:
         return True
-    if time.time() - fail_ts >= INSTANCE_COOLDOWN:
-        # 冷却期已过，清除记录，恢复可用
+    fail_ts = info.get("ts", 0)
+    cooldown = info.get("cd", INSTANCE_COOLDOWN)
+    if time.time() - fail_ts >= cooldown:
         instance_fail_time.pop(instance, None)
         return True
     return False
 
+
+def _cooldown_remaining(instance: str, instance_fail_time: dict) -> int:
+    info = instance_fail_time.get(instance) or {}
+    fail_ts = info.get("ts", 0)
+    cooldown = info.get("cd", INSTANCE_COOLDOWN)
+    return max(0, int(cooldown - (time.time() - fail_ts)))
+
+
+def _mark_instance_failure(instance: str, error_msg: str, instance_fail_time: dict):
+    """记录实例失败并写入对应冷却时长。"""
+    cd = _cooldown_seconds_for_error(error_msg)
+    instance_fail_time[instance] = {"ts": time.time(), "cd": cd}
+    return cd
+
+
 def fetch_with_fallback(username, instance_fail_time: dict):
     """使用多实例 fallback 机制获取推文（Nitter → RSSHub）。
-    实例失败后进入冷却期（INSTANCE_COOLDOWN 秒），冷却后自动恢复，
-    不再永久封禁，解决扫描尾部连锁失败问题。
+    实例失败后进入冷却期，冷却后自动恢复。
+    429 使用更长冷却，且不在同一账号上立即重试。
     """
     # 第一层：尝试 Nitter 实例
     for instance in NITTER_INSTANCES:
         if not _is_instance_available(instance, instance_fail_time):
-            remaining = int(INSTANCE_COOLDOWN - (time.time() - instance_fail_time.get(instance, 0)))
+            remaining = _cooldown_remaining(instance, instance_fail_time)
             print(f"  ⏳ @{username} 跳过 {instance}（冷却中，剩余 {remaining}s）")
             continue
         sem = _get_semaphore(instance)
@@ -655,20 +702,24 @@ def fetch_with_fallback(username, instance_fail_time: dict):
                     return items, None
                 except Exception as e:
                     error_msg = str(e)
+                    if _is_rate_limited(error_msg):
+                        cd = _mark_instance_failure(instance, error_msg, instance_fail_time)
+                        print(f"  ❌ @{username} {instance} 限流: {error_msg}（冷却 {cd}s）")
+                        break
                     if attempt == MAX_RETRIES - 1:
                         print(f"  ❌ @{username} {instance} 失败: {error_msg}")
                         if _is_instance_error(error_msg):
-                            # 记录失败时间（冷却期后自动恢复，不永久封禁）
-                            instance_fail_time[instance] = time.time()
+                            cd = _mark_instance_failure(instance, error_msg, instance_fail_time)
+                            print(f"     → 实例冷却 {cd}s")
                         else:
                             break  # 账号级错误（404/403），不计入实例失败
                     else:
-                        time.sleep(random.uniform(1.0, 2.0))
+                        time.sleep(random.uniform(2.0, 4.0))
 
     # 第二层：Nitter 全部不可用，尝试 RSSHub
     for instance in RSSHUB_INSTANCES:
         if not _is_instance_available(instance, instance_fail_time):
-            remaining = int(INSTANCE_COOLDOWN - (time.time() - instance_fail_time.get(instance, 0)))
+            remaining = _cooldown_remaining(instance, instance_fail_time)
             print(f"  ⏳ @{username} 跳过 RSSHub（冷却中，剩余 {remaining}s）")
             continue
         sem = _get_semaphore(instance)
@@ -682,16 +733,54 @@ def fetch_with_fallback(username, instance_fail_time: dict):
                     return items, None
                 except Exception as e:
                     error_msg = str(e)
+                    if _is_rate_limited(error_msg):
+                        cd = _mark_instance_failure(instance, error_msg, instance_fail_time)
+                        print(f"  ❌ @{username} {instance} 限流: {error_msg}（冷却 {cd}s）")
+                        break
                     if attempt == MAX_RETRIES - 1:
                         print(f"  ❌ @{username} {instance} 失败: {error_msg}")
                         if _is_instance_error(error_msg):
-                            instance_fail_time[instance] = time.time()
+                            cd = _mark_instance_failure(instance, error_msg, instance_fail_time)
+                            print(f"     → 实例冷却 {cd}s")
                         else:
                             break
                     else:
-                        time.sleep(random.uniform(1.0, 2.0))
+                        time.sleep(random.uniform(2.0, 4.0))
 
-    return None, f"Nitter 和 RSSHub 所有实例均失败"
+    # 若当前只是因为限流冷却导致失败，等待最短冷却后重试一轮 Nitter
+    # （避免 236 个账号在冷却窗口内全部瞬间记 FAIL）
+    if NITTER_INSTANCES:
+        cooling = [
+            inst for inst in NITTER_INSTANCES
+            if inst in instance_fail_time and not _is_instance_available(inst, instance_fail_time)
+        ]
+        if cooling and len(cooling) == len(NITTER_INSTANCES):
+            wait_s = min(_cooldown_remaining(inst, instance_fail_time) for inst in cooling) + 1
+            if wait_s > 1:
+                print(f"  💤 @{username} 等待实例冷却 {wait_s}s 后重试")
+                time.sleep(wait_s)
+                for instance in NITTER_INSTANCES:
+                    if not _is_instance_available(instance, instance_fail_time):
+                        continue
+                    sem = _get_semaphore(instance)
+                    with sem:
+                        try:
+                            time.sleep(random.uniform(JITTER_MIN, JITTER_MAX))
+                            xml_content = fetch_rss(username, instance)
+                            items = parse_rss(xml_content)
+                            print(f"  ✅ @{username} [Nitter/{instance.split('/')[-1]}] {len(items)}条")
+                            return items, None
+                        except Exception as e:
+                            error_msg = str(e)
+                            print(f"  ❌ @{username} {instance} 重试失败: {error_msg}")
+                            if _is_instance_error(error_msg):
+                                cd = _mark_instance_failure(instance, error_msg, instance_fail_time)
+                                print(f"     → 实例冷却 {cd}s")
+
+    src = f"Nitter({len(NITTER_INSTANCES)})"
+    if RSSHUB_INSTANCES:
+        src += f"+RSSHub({len(RSSHUB_INSTANCES)})"
+    return None, f"{src} 所有实例均失败"
 
 def filter_new_items(items, seen_records, seen_set, source_account):
     """过滤出新推文，并记录元数据到 seen_records"""
@@ -902,7 +991,7 @@ def main():
     # 并发扫描所有账号
     all_new_items = []
     failed_accounts = []
-    instance_fail_time: dict = {}        # 实例失败时间戳（冷却恢复机制，GIL 保护 dict 操作）
+    instance_fail_time: dict = {}        # instance -> {"ts","cd"} 冷却恢复机制
     seen_lock = threading.Lock()         # 保护 seen_list / seen_set 的写操作
     ideas_lock = threading.Lock()        # 保护 ideas.md 文件写操作
     results_lock = threading.Lock()      # 保护 all_new_items / failed_accounts
