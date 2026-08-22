@@ -190,15 +190,38 @@ python /Users/jackwl/Code/gitcode/gitxPost/xpost.py post "smoke image test" \
 
 执行：
 
+CLI / 网页「重跑扫描」/ launchd 每日任务当前默认均为 auto、最多 100 账号：
+
 ```bash
 source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
 python /Users/jackwl/Code/gitcode/gitxPost/xpost.py radar-scan
+```
+
+小批量 CDP 验收可用：
+
+```bash
+python /Users/jackwl/Code/gitcode/gitxPost/xpost.py radar-scan --source auto --limit 1
+```
+
+全量（全部活跃账号）需显式：
+
+```bash
+python /Users/jackwl/Code/gitcode/gitxPost/xpost.py radar-scan --limit 0
 ```
 
 预期：
 - 返回 JSON：`ok=true`
 - `xinfo/RESULT.json` 被写入
 - 输出中包含 `successful_accounts`、`failed_accounts`、`new_items_count`
+- 不传参时 `source=auto`、`limit=100`
+- `auto` 且 RSS 不可用时：`effective_source=cdp`，账号数不超过 `--limit`
+- 本轮扫描账号全部失败时：`RESULT.json` 的 `success=false`，CLI 退出码非 0（按 limit 后的账号数判定，不是全量活跃账号）
+
+单元测试：
+
+```bash
+python3 -m unittest test_x_ideas_scan_auto_source.py
+```
 
 ### TC-09 Radar 分析
 

@@ -50,11 +50,16 @@ test('hasAnyMetric rejects empty metric payloads', () => {
   }), true);
 });
 
-test('detectPageGuard identifies login and rate-limit states', () => {
+test('detectPageGuard identifies login, challenge, and rate-limit states', () => {
   assert.deepEqual(detectPageGuard({
     title: 'X',
     text: 'Sign in to X to continue. JavaScript is not available.',
   }), { blocked: true, reason: 'login_required' });
+
+  assert.deepEqual(detectPageGuard({
+    title: 'Verify your identity / X',
+    text: 'Please complete this challenge to help us confirm you are not a robot.',
+  }), { blocked: true, reason: 'challenge_required' });
 
   assert.deepEqual(detectPageGuard({
     title: 'Rate limit exceeded / X',

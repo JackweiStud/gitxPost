@@ -342,10 +342,10 @@ KEEP_DAYS = 5            # ideas.md 保留天数
 INSTANCE_COOLDOWN = 120  # 普通实例失败冷却（秒）
 RATE_LIMIT_COOLDOWN = 300  # 429 / Too Many Requests 冷却（秒）
 MAX_PER_ACCOUNT = 5      # 每个账号最多保留的推文数
-DATA_SOURCE = os.environ.get("XPOST_RADAR_SOURCE", "rss").strip().lower()
+DATA_SOURCE = os.environ.get("XPOST_RADAR_SOURCE", "auto").strip().lower()
 EFFECTIVE_SOURCE = DATA_SOURCE
 AUTO_PROBE_ACCOUNT = os.environ.get("XPOST_RADAR_AUTO_PROBE_ACCOUNT", "sama").strip().lstrip("@") or "sama"
-ACCOUNT_LIMIT = int(os.environ.get("XPOST_RADAR_ACCOUNT_LIMIT", "0") or "0")
+ACCOUNT_LIMIT = int(os.environ.get("XPOST_RADAR_ACCOUNT_LIMIT", "100") or "100")
 CDP_SCRIPT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "scripts", "x_profile_timeline_cdp.js"))
 CDP_PER_ACCOUNT_TIMEOUT = int(os.environ.get("XPOST_RADAR_CDP_TIMEOUT", "45") or "45")
 CDP_LIMIT_ITEMS = int(os.environ.get("XPOST_RADAR_CDP_LIMIT_ITEMS", str(MAX_PER_ACCOUNT)) or str(MAX_PER_ACCOUNT))
@@ -711,9 +711,13 @@ def _is_cdp_guard_error(error_msg: str) -> bool:
         "login_required",
         "challenge_required",
         "rate_limited",
-        "page guard detected",
     ]
     return any(marker in lower for marker in guard_markers)
+
+
+def _scan_batch_failed(failed_accounts, scanned_accounts) -> bool:
+    """本轮实际扫描的账号是否全部失败（含 guard 跳过）。limit 后应与 scanned 比，不能和全量 TARGET_ACCOUNTS 比。"""
+    return len(failed_accounts) == len(scanned_accounts)
 
 def _is_rate_limited(error_msg: str) -> bool:
     """是否为限流错误（应进入更长冷却，且不要立即重试）。"""
@@ -1212,9 +1216,11 @@ def main():
         log(f'失败账号: {", ".join(failed_accounts)}', 'WARN')
     log('=' * 48)
 
+    batch_failed = _scan_batch_failed(failed_accounts, accounts)
+
     # 输出 JSON 结果供 OpenClaw 解析
     result = {
-        "success": True,
+        "success": not batch_failed,
         "data_source": DATA_SOURCE,
         "effective_source": EFFECTIVE_SOURCE,
         "total_accounts": len(accounts),
@@ -1251,7 +1257,7 @@ def main():
     except Exception as e:
         log(f'写入当日结果快照失败: {e}', 'WARN')
 
-    if len(failed_accounts) == len(TARGET_ACCOUNTS):
+    if batch_failed:
         return 1
     return 0
 

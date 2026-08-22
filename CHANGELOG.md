@@ -12,6 +12,41 @@
 
 日期：2026-08-22
 
+## 调整：雷达扫描默认改为 auto --limit 100
+
+范围：`xpost.py`、`xinfo/x_ideas_scan.py`、`web/api/server.py`、`web/ui/src/api/xpost.js`、`web/ui/src/views/Dashboard.vue`、`scripts/daily_scheduler.sh`、`test_x_ideas_scan_auto_source.py`、`CI/test-cases.md`
+
+### 问题
+
+- 网页「重跑扫描」、launchd 每日任务和 CLI 裸跑 `radar-scan` 默认 RSS 全量（约 235 账号）。
+- 当前 Nitter RSS 不可用，这些路径不会切 CDP，扫描结果为空。
+
+### 变更
+
+- `python3 xpost.py radar-scan` 默认 `--source auto --limit 100`；全量需显式 `--limit 0`。
+- `xinfo/x_ideas_scan.py` 环境变量默认同步为 `auto` / `100`。
+- `/api/radar/scan`、流水线 `scan` 步骤、`scripts/daily_scheduler.sh` 第一步均使用同一命令。
+- launchd 仍每天 09:00（本机时区），无需重装 plist。
+- 网页扫描 HTTP 超时 45 分钟；「立即执行」调度超时 90 分钟（扫描 + 日报 + 后续步骤）。
+- `scripts/daily_routine.sh` 调用裸 `xpost radar-scan`，随 CLI 默认一并生效。
+- CDP 停扫条件收窄为登录、验证、限流；`unavailable` / `account_unavailable` / `no_visible_timeline` 仅记当前账号失败，不停止整批。
+- `detectPageGuard()` 补充 `verify your identity`、`prove you are human`、`complete this challenge` 等 challenge 页面识别。
+- 扫描退出码 / `RESULT.json.success` 改为对照本轮实际扫描账号（limit 后），不再和全量 `TARGET_ACCOUNTS` 比；`--limit 100` 时 100 个全失败会记为失败。
+
+### 验证
+
+- 代码层面：CLI / Web / 调度默认均为 `auto --limit 100`；`--limit 0` 会写入环境变量，不再被当成未传参。
+- `python3 -m unittest test_x_ideas_scan_auto_source.py` 通过，覆盖 `unavailable` 不触发整批停扫，以及 limit=100 全败应判定失败。
+- `node --test test_x_metrics_cdp.js` 通过，覆盖 `challenge_required` 识别。
+- 未在本机实际跑满 100 账号 CDP（耗时长、会占用 Chrome）。
+
+### 风险
+
+- RSS 仍不可用时会用 CDP 扫前 100 个活跃账号，比 RSS 慢，且依赖本机 Chrome 登录态。
+- 同时只应跑一轮扫描，避免抢同一 Chrome。
+
+日期：2026-08-22
+
 ## 新增：Radar 无 X API 的 CDP 数据源
 
 范围：`scripts/x_profile_timeline_cdp.js`、`xinfo/x_ideas_scan.py`、`xpost.py`

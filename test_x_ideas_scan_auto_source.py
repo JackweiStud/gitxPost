@@ -49,6 +49,23 @@ class XIdeasScanAutoSourceTest(unittest.TestCase):
         self.assertIsNone(error)
         self.assertEqual("https://x.com/sama/status/123", items[0]["link"])
 
+    def test_cdp_unavailable_is_account_failure_not_batch_guard(self):
+        self.assertFalse(scan._is_cdp_guard_error("unavailable: Page guard detected: unavailable"))
+        self.assertFalse(scan._is_cdp_guard_error("account_unavailable: This account is unavailable"))
+        self.assertFalse(scan._is_cdp_guard_error("no_visible_timeline: No visible timeline items found"))
+        self.assertTrue(scan._is_cdp_guard_error("login_required: Page guard detected: login_required"))
+        self.assertTrue(scan._is_cdp_guard_error("challenge_required: Page guard detected: challenge_required"))
+        self.assertTrue(scan._is_cdp_guard_error("rate_limited: Page guard detected: rate_limited"))
+
+    def test_scan_batch_failed_uses_limited_account_set(self):
+        scanned = [f"acct{i}" for i in range(100)]
+        all_failed = list(scanned)
+        one_ok = scanned[1:]
+        self.assertTrue(scan._scan_batch_failed(all_failed, scanned))
+        self.assertFalse(scan._scan_batch_failed(one_ok, scanned))
+        self.assertTrue(scan._scan_batch_failed([], []))
+        self.assertFalse(scan._scan_batch_failed(all_failed, scanned * 2))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -60,7 +60,7 @@ function detectPageGuard(page) {
   if (/rate limit|too many requests|try again later|temporarily restricted|temporarily blocked/.test(source)) {
     return { blocked: true, reason: 'rate_limited' };
   }
-  if (/captcha|verify you are human|unusual activity|automated requests|confirm you.?re not a robot/.test(source)) {
+  if (/captcha|verify you are human|verify your identity|prove you are human|complete this challenge|unusual activity|automated requests|confirm you.?re not a robot/.test(source)) {
     return { blocked: true, reason: 'challenge_required' };
   }
   if (/sign in to x|log in to x|login to x|create your account|join x today|javascript is not available/.test(source)) {

@@ -61,6 +61,11 @@ app.add_middleware(
 
 _running_tasks: dict[str, dict] = {}
 
+# 网页按钮 / 流水线扫描：RSS 探测失败则本轮 CDP，最多 100 账号
+_RADAR_SCAN_CLI = ("radar-scan", "--source", "auto", "--limit", "100")
+_RADAR_SCAN_TIMEOUT_S = 2700  # 45 min；100 个 CDP 账号约 15–40 分钟
+_SCHEDULER_RUN_NOW_TIMEOUT_S = 5400  # 90 min：扫描 + 日报 + 机会 + 粉丝统计
+
 # 同一时间只跑一个 xpost 子进程（本地工具：避免多任务抢 Chrome / 状态混乱）
 _xpost_run_lock = asyncio.Lock()
 _active_xpost_proc: Optional[asyncio.subprocess.Process] = None
@@ -855,7 +860,7 @@ async def radar_scan():
     _running_tasks[task_id] = {"status": "running", "command": "radar-scan", "started": datetime.now().isoformat()}
 
     try:
-        result = await _run_xpost("radar-scan", timeout=900)
+        result = await _run_xpost(*_RADAR_SCAN_CLI, timeout=_RADAR_SCAN_TIMEOUT_S)
         _running_tasks[task_id]["status"] = "done"
         _running_tasks[task_id]["result"] = result
         return result
@@ -2797,7 +2802,7 @@ async def uninstall_scheduler():
 @app.post("/api/scheduler/run-now")
 async def run_scheduler_now():
     """立即执行一次"""
-    return await _run_xpost("scheduler", "run-now", timeout=900)
+    return await _run_xpost("scheduler", "run-now", timeout=_SCHEDULER_RUN_NOW_TIMEOUT_S)
 
 
 @app.get("/api/scheduler/logs")
@@ -2815,7 +2820,7 @@ async def run_pipeline(req: PipelineRunRequest):
     results = []
     for step in req.steps:
         if step == "scan":
-            r = await _run_xpost("radar-scan", timeout=900)
+            r = await _run_xpost(*_RADAR_SCAN_CLI, timeout=_RADAR_SCAN_TIMEOUT_S)
         elif step == "analyze":
             r = await _run_xpost("radar-analyze", "--days", "7")
         elif step == "daily":

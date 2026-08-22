@@ -16,8 +16,8 @@ LOG="$LOG_DIR/scheduler_$(date +%Y-%m-%d).log"
 
 echo "========== $(date) ==========" >> "$LOG"
 
-echo "[1/4] radar-scan..." >> "$LOG"
-python xpost.py radar-scan >> "$LOG" 2>&1 || true
+echo "[1/4] radar-scan --source auto --limit 100..." >> "$LOG"
+python xpost.py radar-scan --source auto --limit 100 >> "$LOG" 2>&1 || true
 
 echo "[2/4] radar-daily..." >> "$LOG"
 python xpost.py radar-daily >> "$LOG" 2>&1 || true

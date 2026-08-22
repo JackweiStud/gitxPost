@@ -2275,7 +2275,7 @@ def _cmd_radar_scan(_args):
     env = {}
     if getattr(_args, "source", None):
         env["XPOST_RADAR_SOURCE"] = _args.source
-    if getattr(_args, "limit", None):
+    if getattr(_args, "limit", None) is not None:
         env["XPOST_RADAR_ACCOUNT_LIMIT"] = str(_args.limit)
 
     start_ts = time.time()
@@ -2295,8 +2295,8 @@ def _cmd_radar_scan(_args):
         {
             "ok": ok,
             "command": "radar-scan",
-            "source": getattr(_args, "source", None) or os.environ.get("XPOST_RADAR_SOURCE") or "rss",
-            "limit": getattr(_args, "limit", 0),
+            "source": getattr(_args, "source", None) or os.environ.get("XPOST_RADAR_SOURCE") or "auto",
+            "limit": getattr(_args, "limit", 100),
             "result_path": str(result_path),
             "day_result_path": str(day_result_path),
             "result": parsed,
@@ -3329,14 +3329,14 @@ def main():
     p_radar_scan.add_argument(
         "--source",
         choices=["rss", "cdp", "auto"],
-        default=os.environ.get("XPOST_RADAR_SOURCE", "rss"),
-        help="Data source: rss only, cdp only, or rss with cdp fallback",
+        default=os.environ.get("XPOST_RADAR_SOURCE", "auto"),
+        help="Data source: rss only, cdp only, or rss with cdp fallback (default: auto)",
     )
     p_radar_scan.add_argument(
         "--limit",
         type=int,
-        default=0,
-        help="Limit scanned accounts for validation; 0 means all active accounts",
+        default=int(os.environ.get("XPOST_RADAR_ACCOUNT_LIMIT", "100") or "100"),
+        help="Limit scanned accounts; 0 means all active accounts (default: 100)",
     )
     p_radar_scan.set_defaults(func=_cmd_radar_scan)
 

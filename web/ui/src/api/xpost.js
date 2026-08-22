@@ -1,7 +1,8 @@
 import axios from 'axios'
 
 const DEFAULT_API_TIMEOUT_MS = 10 * 60 * 1000
-const RADAR_SCAN_TIMEOUT_MS = 15 * 60 * 1000
+const RADAR_SCAN_TIMEOUT_MS = 45 * 60 * 1000
+const SCHEDULER_RUN_NOW_TIMEOUT_MS = 90 * 60 * 1000
 
 const api = axios.create({
   baseURL: '/api',
@@ -67,7 +68,8 @@ export const fetchFollowers = (username = 'jackaiwison') =>
 export const getSchedulerStatus = () => api.get('/scheduler/status')
 export const installScheduler = (time = '09:00') => api.post('/scheduler/install', { time })
 export const uninstallScheduler = () => api.post('/scheduler/uninstall')
-export const runSchedulerNow = () => api.post('/scheduler/run-now')
+export const runSchedulerNow = () =>
+  api.post('/scheduler/run-now', null, { timeout: SCHEDULER_RUN_NOW_TIMEOUT_MS })
 export const getSchedulerLogs = (lines = 50) => api.get('/scheduler/logs', { params: { lines } })
 
 // Publish Queue
