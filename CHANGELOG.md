@@ -10,6 +10,44 @@
   - 仍未解决的边界或风险
 - 如果改动影响验收方式或测试结论，需要同步更新 `CI/` 目录下的文档。
 
+日期：2026-08-22
+
+## 新增：Radar 无 X API 的 CDP 数据源
+
+范围：`scripts/x_profile_timeline_cdp.js`、`xinfo/x_ideas_scan.py`、`xpost.py`
+
+### 问题
+
+- `nitter.net` RSS 当前返回 HTTP 200 + 0 字节；网页可访问不代表 RSS 路径可用。
+- `rss.xcancel.com` 使用 RSS Reader UA 可返回 XML，但内容为 “RSS reader not yet whitelisted”，不能直接作为公共 fallback。
+- 继续替换公共 Nitter 实例不稳定，且容易进入验证页、403 或空 feed。
+
+### 变更
+
+- 新增 `scripts/x_profile_timeline_cdp.js`：通过真实 Chrome/CDP 读取 X profile 可见时间线，不使用 X API，不点击、不发帖、不解验证。
+- `xinfo/x_ideas_scan.py` 新增 `XPOST_RADAR_SOURCE=rss|cdp|auto`，支持纯 RSS、纯 CDP、RSS 失败后 CDP fallback。
+- `xpost.py radar-scan` 新增 `--source` 和 `--limit`，便于小批量验证：`python3 xpost.py radar-scan --source cdp --limit 1`。
+- RSS 校验新增对 `RSS reader not yet whitelisted` 假成功 feed 的拒绝；RSS XML 解析允许前导空白。
+- CDP 数据源新增有限重试：`fetch failed`、超时、`No visible timeline items found` 默认重试 1 次，支持 `XPOST_RADAR_CDP_RETRIES` 调整。
+- CDP 数据源新增保守 guard 处理：识别登录、验证、限流页面后停止本轮后续账号访问，不尝试绕过。
+- CDP 账号间新增 `1.5–4.0s` 抖动，支持 `XPOST_RADAR_CDP_JITTER_MIN/MAX` 调整。
+- `auto` 模式改为启动时只探测一次 RSS；若实例级失败，本轮直接切换 CDP，避免逐账号先撞死 RSS。
+- `RESULT.json` 增加 `data_source` / `effective_source`，便于区分请求源与本轮实际数据源。
+
+### 验证
+
+- `python3 -m py_compile xinfo/x_ideas_scan.py xpost.py` 通过。
+- `node --check scripts/x_profile_timeline_cdp.js` 通过。
+- `node --test test_x_metrics_cdp.js` 通过。
+- `node --test test_x_profile_timeline_cdp.js` 通过。
+- `python3 -m unittest test_x_ideas_scan_auto_source.py` 通过。
+- `python3 xpost.py radar-scan --source cdp --limit 1` 通过：1 个账号成功抓取 5 条可见推文。
+
+### 风险
+
+- CDP 依赖本机 Chrome profile 登录态和 X 前端 DOM；全量扫描应先用 `--limit` 逐步放大，避免触发 X 风控。
+- CDP 比 RSS 慢，当前定位为 Nitter 断供时的可用 fallback，不建议无验证直接替换每日全量任务。
+
 日期：2026-08-21
 
 ## 增强：雷达 RSS 请求头与正文校验

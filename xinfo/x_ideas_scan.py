@@ -17,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 import sys
 import re
+import subprocess
 
 # ============================================================================
 # 配置区
@@ -341,6 +342,16 @@ KEEP_DAYS = 5            # ideas.md 保留天数
 INSTANCE_COOLDOWN = 120  # 普通实例失败冷却（秒）
 RATE_LIMIT_COOLDOWN = 300  # 429 / Too Many Requests 冷却（秒）
 MAX_PER_ACCOUNT = 5      # 每个账号最多保留的推文数
+DATA_SOURCE = os.environ.get("XPOST_RADAR_SOURCE", "rss").strip().lower()
+EFFECTIVE_SOURCE = DATA_SOURCE
+AUTO_PROBE_ACCOUNT = os.environ.get("XPOST_RADAR_AUTO_PROBE_ACCOUNT", "sama").strip().lstrip("@") or "sama"
+ACCOUNT_LIMIT = int(os.environ.get("XPOST_RADAR_ACCOUNT_LIMIT", "0") or "0")
+CDP_SCRIPT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "scripts", "x_profile_timeline_cdp.js"))
+CDP_PER_ACCOUNT_TIMEOUT = int(os.environ.get("XPOST_RADAR_CDP_TIMEOUT", "45") or "45")
+CDP_LIMIT_ITEMS = int(os.environ.get("XPOST_RADAR_CDP_LIMIT_ITEMS", str(MAX_PER_ACCOUNT)) or str(MAX_PER_ACCOUNT))
+CDP_MAX_RETRIES = int(os.environ.get("XPOST_RADAR_CDP_RETRIES", "1") or "1")
+CDP_JITTER_MIN = float(os.environ.get("XPOST_RADAR_CDP_JITTER_MIN", "1.5") or "1.5")
+CDP_JITTER_MAX = float(os.environ.get("XPOST_RADAR_CDP_JITTER_MAX", "4.0") or "4.0")
 
 # 并发配置（单 worker + 低并发，避免把 nitter.net 再次打进 429）
 CONCURRENT_PER_INSTANCE = 1
@@ -576,6 +587,8 @@ def _ensure_rss_body(body: bytes, source_label: str) -> bytes:
         raise RuntimeError(f"HTTP 200 HTML (not RSS) from {source_label}")
     if not (head.startswith(b'<?xml') or b'<rss' in head[:200] or b'<feed' in head[:200]):
         raise RuntimeError(f"HTTP 200 non-RSS body from {source_label}")
+    if b'rss reader not yet whitelist' in body.lower():
+        raise RuntimeError(f"HTTP 200 RSS client not whitelisted from {source_label}")
     return body
 
 
@@ -613,7 +626,7 @@ def _normalize_link(link):
 
 def parse_rss(xml_content):
     """解析 RSS XML 内容"""
-    root = ET.fromstring(xml_content)
+    root = ET.fromstring(xml_content.lstrip())
     items = []
     
     for item in root.findall('.//item'):
@@ -644,6 +657,63 @@ def parse_rss(xml_content):
             continue
     
     return items
+
+
+def fetch_cdp_profile(username):
+    """通过真实 Chrome/CDP 读取 X profile 可见时间线。"""
+    if not os.path.exists(CDP_SCRIPT):
+        raise RuntimeError(f"CDP timeline script missing: {CDP_SCRIPT}")
+    time.sleep(random.uniform(CDP_JITTER_MIN, CDP_JITTER_MAX))
+    cmd = [
+        "node",
+        CDP_SCRIPT,
+        "--limit-items", str(CDP_LIMIT_ITEMS),
+        "--max-scrolls", "3",
+        "--retries", str(CDP_MAX_RETRIES),
+        username,
+    ]
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=CDP_PER_ACCOUNT_TIMEOUT,
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        )
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError(f"CDP timeout after {CDP_PER_ACCOUNT_TIMEOUT}s") from e
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip()
+        raise RuntimeError(f"CDP exited {proc.returncode}: {err[-300:]}")
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"CDP JSON parse failed: {proc.stdout[-300:]}") from e
+    result = next((row for row in payload.get("results", []) if row.get("username", "").lower() == username.lower()), None)
+    if not result:
+        raise RuntimeError("CDP returned no result")
+    if not result.get("ok"):
+        error_type = result.get("error_type") or "cdp_unknown_failed"
+        attempts = result.get("attempt")
+        detail = result.get("error") or "CDP timeline failed"
+        suffix = f" after {attempts} attempt(s)" if attempts else ""
+        raise RuntimeError(f"{error_type}: {detail}{suffix}")
+    items = result.get("items", [])
+    if not items:
+        raise RuntimeError("CDP returned zero items")
+    return items
+
+
+def _is_cdp_guard_error(error_msg: str) -> bool:
+    """登录、验证、限流类 guard 应停止本轮 CDP 批量扫描。"""
+    lower = (error_msg or "").lower()
+    guard_markers = [
+        "login_required",
+        "challenge_required",
+        "rate_limited",
+        "page guard detected",
+    ]
+    return any(marker in lower for marker in guard_markers)
 
 def _is_rate_limited(error_msg: str) -> bool:
     """是否为限流错误（应进入更长冷却，且不要立即重试）。"""
@@ -698,11 +768,61 @@ def _mark_instance_failure(instance: str, error_msg: str, instance_fail_time: di
     return cd
 
 
+def _probe_rss_source(username: str = AUTO_PROBE_ACCOUNT):
+    """探测一次 RSS 源是否可用；auto 模式只在本轮启动时调用。"""
+    errors = []
+    for instance in NITTER_INSTANCES:
+        try:
+            xml_content = fetch_rss(username, instance)
+            parse_rss(xml_content)
+            return True, f"{instance}/{username}/rss"
+        except Exception as e:
+            error_msg = str(e)
+            errors.append(f"{instance}: {error_msg}")
+            if not _is_instance_error(error_msg):
+                return False, f"账号级 RSS 探测失败: {error_msg}"
+
+    for instance in RSSHUB_INSTANCES:
+        try:
+            xml_content = fetch_rsshub(username, instance)
+            parse_rss(xml_content)
+            return True, f"{instance}/twitter/user/{username}"
+        except Exception as e:
+            error_msg = str(e)
+            errors.append(f"{instance}: {error_msg}")
+            if not _is_instance_error(error_msg):
+                return False, f"账号级 RSSHub 探测失败: {error_msg}"
+
+    return False, "; ".join(errors) if errors else "未配置 RSS 源"
+
+
+def resolve_effective_source():
+    """将 auto 解析为本轮实际数据源，避免逐账号先撞 RSS 死源。"""
+    if DATA_SOURCE != "auto":
+        return DATA_SOURCE
+
+    ok, reason = _probe_rss_source()
+    if ok:
+        log(f'auto probe: RSS 可用 ({reason})，本轮使用 rss')
+        return "rss"
+
+    log(f'auto probe: RSS 不可用 ({reason})，本轮切换 cdp', 'WARN')
+    return "cdp"
+
+
 def fetch_with_fallback(username, instance_fail_time: dict):
     """使用多实例 fallback 机制获取推文（Nitter → RSSHub）。
     实例失败后进入冷却期，冷却后自动恢复。
     429 使用更长冷却，且不在同一账号上立即重试。
     """
+    if EFFECTIVE_SOURCE == "cdp":
+        try:
+            items = fetch_cdp_profile(username)
+            print(f"  ✅ @{username} [CDP/X profile] {len(items)}条")
+            return items, None
+        except Exception as e:
+            return None, f"CDP 失败: {e}"
+
     # 第一层：尝试 Nitter 实例
     for instance in NITTER_INSTANCES:
         if not _is_instance_available(instance, instance_fail_time):
@@ -767,7 +887,7 @@ def fetch_with_fallback(username, instance_fail_time: dict):
 
     # 若当前只是因为限流冷却导致失败，等待最短冷却后重试一轮 Nitter
     # （避免 236 个账号在冷却窗口内全部瞬间记 FAIL）
-    if NITTER_INSTANCES:
+    if EFFECTIVE_SOURCE == "rss" and NITTER_INSTANCES:
         cooling = [
             inst for inst in NITTER_INSTANCES
             if inst in instance_fail_time and not _is_instance_available(inst, instance_fail_time)
@@ -987,6 +1107,7 @@ def generate_summary(all_new_items, total_accounts, failed_accounts):
 
 def main():
     """主执行流程"""
+    global EFFECTIVE_SOURCE
     start_time = time.time()  # 记录启动时间
 
     # 确保目录存在（log() 依赖此步骤）
@@ -994,7 +1115,8 @@ def main():
 
     log('=' * 48)
     log(f'X 创意雷达启动  账号数:{len(TARGET_ACCOUNTS)}')
-    log(f'数据源: Nitter({len(NITTER_INSTANCES)}) + RSSHub({len(RSSHUB_INSTANCES)})')
+    EFFECTIVE_SOURCE = resolve_effective_source()
+    log(f'数据源: {DATA_SOURCE} -> {EFFECTIVE_SOURCE}  Nitter({len(NITTER_INSTANCES)}) + RSSHub({len(RSSHUB_INSTANCES)})')
 
     # 加载已见过的 URL
     seen_list, seen_set = load_seen_urls()
@@ -1003,6 +1125,9 @@ def main():
     # 账号顺序随机打乱（避免每次以相同规律访问）
     accounts = list(dict.fromkeys(TARGET_ACCOUNTS))  # 顺带去重
     random.shuffle(accounts)
+    if ACCOUNT_LIMIT > 0:
+        accounts = accounts[:ACCOUNT_LIMIT]
+        log(f'账号限制: 本次仅扫描 {len(accounts)} 个账号')
     log(f'并发模式: workers={MAX_WORKERS}  每实例≤{CONCURRENT_PER_INSTANCE}并发  jitter={JITTER_MIN}-{JITTER_MAX}s')
     print()
 
@@ -1013,11 +1138,18 @@ def main():
     seen_lock = threading.Lock()         # 保护 seen_list / seen_set 的写操作
     ideas_lock = threading.Lock()        # 保护 ideas.md 文件写操作
     results_lock = threading.Lock()      # 保护 all_new_items / failed_accounts
+    stop_scan = threading.Event()        # 登录/验证/限流 guard 触发后停止后续账号
     counter = [0]                        # 完成计数器（列表使闭包可写）
     total = len(accounts)
 
     def scan_one(username):
         """单账号扫描任务（在线程池中执行）"""
+        if stop_scan.is_set():
+            log(f'SKIP @{username}: CDP guard 已触发，本轮停止访问后续账号', 'WARN')
+            with results_lock:
+                failed_accounts.append(username)
+            return
+
         items, error = fetch_with_fallback(username, instance_fail_time)
 
         with results_lock:
@@ -1026,6 +1158,9 @@ def main():
 
         if items is None:
             log(f'FAIL [{idx}/{total}] @{username}: {error}', 'ERROR')
+            if EFFECTIVE_SOURCE == "cdp" and _is_cdp_guard_error(error):
+                stop_scan.set()
+                log('检测到 X 登录/验证/限流 guard，停止本轮后续账号访问', 'WARN')
             with results_lock:
                 failed_accounts.append(username)
             return
@@ -1064,13 +1199,13 @@ def main():
     cleanup_old_ideas()
 
     # 生成摘要
-    summary = generate_summary(all_new_items, len(TARGET_ACCOUNTS), failed_accounts)
+    summary = generate_summary(all_new_items, len(accounts), failed_accounts)
 
     elapsed = time.time() - start_time
     elapsed_str = f'{int(elapsed // 60)}m{int(elapsed % 60)}s'
 
     # 持久化本次运行关键指标
-    log(f'扫描完成  成功:{len(TARGET_ACCOUNTS)-len(failed_accounts)}/{len(TARGET_ACCOUNTS)}  '
+    log(f'扫描完成  成功:{len(accounts)-len(failed_accounts)}/{len(accounts)}  '
         f'新推文:{len(all_new_items)}  原创:{summary["new_originals_count"]}  '
         f'耗时:{elapsed_str}')
     if failed_accounts:
@@ -1080,8 +1215,10 @@ def main():
     # 输出 JSON 结果供 OpenClaw 解析
     result = {
         "success": True,
-        "total_accounts": len(TARGET_ACCOUNTS),
-        "successful_accounts": len(TARGET_ACCOUNTS) - len(failed_accounts),
+        "data_source": DATA_SOURCE,
+        "effective_source": EFFECTIVE_SOURCE,
+        "total_accounts": len(accounts),
+        "successful_accounts": len(accounts) - len(failed_accounts),
         "failed_accounts": failed_accounts,
         "new_items_count": len(all_new_items),
         "elapsed_seconds": round(elapsed, 1),

@@ -1852,9 +1852,12 @@ def _backup_file(path: Path):
     return backup_path
 
 
-def _run_python_script(script_path: Path, extra_args):
+def _run_python_script(script_path: Path, extra_args, env=None):
     cmd = [sys.executable, str(script_path), *extra_args]
-    return subprocess.run(cmd, capture_output=True, text=True, cwd=str(script_path.parent))
+    run_env = os.environ.copy()
+    if env:
+        run_env.update(env)
+    return subprocess.run(cmd, capture_output=True, text=True, cwd=str(script_path.parent), env=run_env)
 
 
 def _cmd_init(args):
@@ -2269,8 +2272,14 @@ def _cmd_radar_scan(_args):
         _print_json({"ok": False, "error": "xinfo 扫描脚本不存在"})
         return 1
 
+    env = {}
+    if getattr(_args, "source", None):
+        env["XPOST_RADAR_SOURCE"] = _args.source
+    if getattr(_args, "limit", None):
+        env["XPOST_RADAR_ACCOUNT_LIMIT"] = str(_args.limit)
+
     start_ts = time.time()
-    proc = _run_python_script(script_path, [])
+    proc = _run_python_script(script_path, [], env=env)
     total_ms = int((time.time() - start_ts) * 1000)
 
     parsed = None
@@ -2286,6 +2295,8 @@ def _cmd_radar_scan(_args):
         {
             "ok": ok,
             "command": "radar-scan",
+            "source": getattr(_args, "source", None) or os.environ.get("XPOST_RADAR_SOURCE") or "rss",
+            "limit": getattr(_args, "limit", 0),
             "result_path": str(result_path),
             "day_result_path": str(day_result_path),
             "result": parsed,
@@ -3315,6 +3326,18 @@ def main():
     p_reply_extract.set_defaults(func=_cmd_reply_extract)
 
     p_radar_scan = sub.add_parser("radar-scan", help="Run X radar scan")
+    p_radar_scan.add_argument(
+        "--source",
+        choices=["rss", "cdp", "auto"],
+        default=os.environ.get("XPOST_RADAR_SOURCE", "rss"),
+        help="Data source: rss only, cdp only, or rss with cdp fallback",
+    )
+    p_radar_scan.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="Limit scanned accounts for validation; 0 means all active accounts",
+    )
     p_radar_scan.set_defaults(func=_cmd_radar_scan)
 
     p_radar_analyze = sub.add_parser("radar-analyze", help="Run X radar analysis")
