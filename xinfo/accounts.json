@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updated_at": "2026-08-22T00:23:19.402017",
+  "updated_at": "2026-08-22T01:57:53.084404",
   "accounts": [
     {
       "handle": "dashen_wang",
@@ -384,8 +384,9 @@
     {
       "handle": "Mehedi_Crypto1",
       "note": "Mehedi，Web3 分析师，关注 AI 数据价值",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-08-22"
     },
     {
       "handle": "madsf88",
@@ -1072,8 +1073,9 @@
     {
       "handle": "OnlyXuanwo",
       "note": "Xuanwo，PMC Chair. VISION: Data Freedom. Working on",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-08-22"
     },
     {
       "handle": "WhileTravelling",
