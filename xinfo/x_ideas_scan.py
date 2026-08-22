@@ -10,6 +10,8 @@ import urllib.error
 import xml.etree.ElementTree as ET
 import json
 import os
+import atexit
+import fcntl
 import time
 import random
 import threading
@@ -332,6 +334,8 @@ RSSHUB_INSTANCES = [
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(SCRIPT_DIR, "log")
 DAY_LOG_DIR = os.path.join(LOG_DIR, "day")   # 每日持久化日志目录
+RUNTIME_DIR = os.path.join(LOG_DIR, "runtime")
+SCAN_LOCK_FILE = os.path.join(RUNTIME_DIR, "radar-scan.lock")
 IDEAS_FILE = os.path.join(LOG_DIR, "ideas.md")
 SEEN_FILE = os.path.join(LOG_DIR, ".ideas_seen.json")
 
@@ -386,6 +390,7 @@ def ensure_dirs():
     """确保必要的目录存在"""
     os.makedirs(LOG_DIR, exist_ok=True)
     os.makedirs(DAY_LOG_DIR, exist_ok=True)
+    os.makedirs(RUNTIME_DIR, exist_ok=True)
 
 # 当天日志文件路径（延迟求值，ensure_dirs 后才有效）
 def _day_log_path():
@@ -406,6 +411,140 @@ def log(msg, level='INFO'):
                 f.write(line + '\n')
         except Exception:
             pass  # 日志写失败不影响主流程
+
+
+def _active_scan_processes():
+    """查找未持有新锁的旧版扫描进程，避免升级期间重复触发。"""
+    current_pid = os.getpid()
+    parent_pid = os.getppid()
+    try:
+        proc = subprocess.run(
+            ["ps", "-axo", "pid=,ppid=,command="],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except Exception:
+        return []
+    if proc.returncode != 0:
+        return []
+
+    active = []
+    markers = (
+        "xpost.py radar-scan",
+        "x_ideas_scan.py",
+        "x_profile_timeline_cdp.js",
+    )
+    for raw_line in proc.stdout.splitlines():
+        parts = raw_line.strip().split(None, 2)
+        if len(parts) < 3:
+            continue
+        try:
+            pid = int(parts[0])
+            ppid = int(parts[1])
+        except ValueError:
+            continue
+        command = parts[2]
+        if pid == current_pid:
+            continue
+        if pid == parent_pid and "xpost.py radar-scan" in command:
+            continue
+        if any(marker in command for marker in markers):
+            active.append({
+                "pid": pid,
+                "ppid": ppid,
+                "command": command[:240],
+            })
+    return active
+
+
+class RadarScanLock:
+    """跨 CLI / Web / cron 的本机单实例扫描锁。"""
+
+    def __init__(self, path):
+        self.path = path
+        self.file = None
+
+    def acquire(self):
+        ensure_dirs()
+        self.file = open(self.path, "a+", encoding="utf-8")
+        try:
+            fcntl.flock(self.file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return False, self._read_info()
+
+        info = {
+            "pid": os.getpid(),
+            "ppid": os.getppid(),
+            "started_at": datetime.now().isoformat(),
+            "data_source": DATA_SOURCE,
+            "account_limit": ACCOUNT_LIMIT,
+            "command": " ".join(sys.argv),
+        }
+        self.file.seek(0)
+        self.file.truncate()
+        self.file.write(json.dumps(info, ensure_ascii=False, indent=2))
+        self.file.write("\n")
+        self.file.flush()
+        os.fsync(self.file.fileno())
+        return True, info
+
+    def _read_info(self):
+        try:
+            self.file.seek(0)
+            raw = self.file.read().strip()
+            return json.loads(raw) if raw else {}
+        except Exception:
+            return {}
+
+    def release(self):
+        if not self.file:
+            return
+        try:
+            fcntl.flock(self.file.fileno(), fcntl.LOCK_UN)
+        except Exception:
+            pass
+        try:
+            self.file.close()
+        except Exception:
+            pass
+        self.file = None
+        try:
+            if os.path.exists(self.path):
+                os.remove(self.path)
+        except Exception:
+            pass
+
+
+def _single_instance_result(reason, lock_info=None, active_processes=None):
+    message = "已有雷达扫描进程在运行，本次未启动"
+    return {
+        "success": False,
+        "error_type": "radar_scan_already_running",
+        "error": message,
+        "reason": reason,
+        "data_source": DATA_SOURCE,
+        "effective_source": EFFECTIVE_SOURCE,
+        "total_accounts": 0,
+        "successful_accounts": 0,
+        "failed_accounts": [],
+        "new_items_count": 0,
+        "elapsed_seconds": 0,
+        "elapsed_str": "0m0s",
+        "summary": {},
+        "lock_file": SCAN_LOCK_FILE,
+        "lock_info": lock_info or {},
+        "active_processes": active_processes or [],
+    }
+
+
+def _emit_result_json(result):
+    result_json_str = json.dumps(result, ensure_ascii=False, indent=2)
+    print("\n" + "=" * 50)
+    print("RESULT JSON:")
+    print(result_json_str)
+    print("=" * 50)
+    print("\n")
 
 def strip_html(text):
     """剥离 HTML 标签，返回纯文本"""
@@ -1117,6 +1256,22 @@ def main():
     # 确保目录存在（log() 依赖此步骤）
     ensure_dirs()
 
+    active_processes = _active_scan_processes()
+    if active_processes:
+        result = _single_instance_result("active_process", active_processes=active_processes)
+        log(f'已有雷达扫描进程在运行，本次未启动: PID {active_processes[0]["pid"]}', 'WARN')
+        _emit_result_json(result)
+        return 2
+
+    scan_lock = RadarScanLock(SCAN_LOCK_FILE)
+    locked, lock_info = scan_lock.acquire()
+    if not locked:
+        result = _single_instance_result("lock_held", lock_info=lock_info)
+        log(f'已有雷达扫描锁，本次未启动: {SCAN_LOCK_FILE}', 'WARN')
+        _emit_result_json(result)
+        return 2
+    atexit.register(scan_lock.release)
+
     log('=' * 48)
     log(f'X 创意雷达启动  账号数:{len(TARGET_ACCOUNTS)}')
     EFFECTIVE_SOURCE = resolve_effective_source()
@@ -1233,11 +1388,7 @@ def main():
     }
 
     result_json_str = json.dumps(result, ensure_ascii=False, indent=2)
-    print("\n" + "=" * 50)
-    print("RESULT JSON:")
-    print(result_json_str)
-    print("=" * 50)
-    print("\n")
+    _emit_result_json(result)
 
     # 同时写入文件，供 Cron Agent 通过 read_file 工具可靠读取
     result_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'RESULT.json')
@@ -1257,6 +1408,7 @@ def main():
     except Exception as e:
         log(f'写入当日结果快照失败: {e}', 'WARN')
 
+    scan_lock.release()
     if batch_failed:
         return 1
     return 0

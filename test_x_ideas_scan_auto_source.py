@@ -66,6 +66,21 @@ class XIdeasScanAutoSourceTest(unittest.TestCase):
         self.assertTrue(scan._scan_batch_failed([], []))
         self.assertFalse(scan._scan_batch_failed(all_failed, scanned * 2))
 
+    def test_main_refuses_when_scan_process_already_active(self):
+        active = [{"pid": 12345, "ppid": 1, "command": "python xpost.py radar-scan --source auto --limit 100"}]
+        with (
+            patch.object(scan, "ensure_dirs", lambda: None),
+            patch.object(scan, "_active_scan_processes", lambda: active),
+            patch.object(scan, "log", lambda *_args, **_kwargs: None),
+            patch.object(scan, "_emit_result_json") as print_result,
+        ):
+            self.assertEqual(2, scan.main())
+
+        result = print_result.call_args.args[0]
+        self.assertFalse(result["success"])
+        self.assertEqual("radar_scan_already_running", result["error_type"])
+        self.assertEqual(active, result["active_processes"])
+
 
 if __name__ == "__main__":
     unittest.main()

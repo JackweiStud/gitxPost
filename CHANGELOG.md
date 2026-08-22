@@ -12,6 +12,37 @@
 
 日期：2026-08-22
 
+## 修复：雷达扫描增加单实例保护
+
+范围：`xinfo/x_ideas_scan.py`、`xpost.py`、`test_x_ideas_scan_auto_source.py`
+
+### 问题
+
+- Web/API、scheduler、手工 CLI 可以同时触发 `radar-scan`，会并发抢同一套 Chrome/CDP 会话。
+- CDP 扫描叠加后容易出现大量 `no_visible_timeline`、前端空时间线或 X 风控页，增加账号风险。
+
+### 变更
+
+- `xinfo/x_ideas_scan.py` 增加本机文件锁：`xinfo/log/runtime/radar-scan.lock`。
+- 第二个扫描不会排队等待，会直接返回 `radar_scan_already_running`，不再启动实际抓取。
+- 增加遗留进程检测：即使当前已有旧代码启动的扫描没有持锁，也会通过进程表识别 `xpost.py radar-scan` / `x_ideas_scan.py` / `x_profile_timeline_cdp.js` 并拒绝新扫描。
+- `xpost.py radar-scan` 在子扫描非零退出时优先解析子进程 stdout 里的结果 JSON，避免把旧 `RESULT.json` 当成本次失败原因。
+- 单测覆盖：已有扫描进程时 `main()` 返回 2，且输出 `radar_scan_already_running`。
+
+### 验证
+
+- `python3 -m py_compile xinfo/x_ideas_scan.py xpost.py` 通过。
+- `python3 -m unittest test_x_ideas_scan_auto_source.py` 通过。
+- 临时持有 `xinfo/log/runtime/radar-scan.lock` 后执行 `python3 xpost.py radar-scan --source auto --limit 1`，75ms 返回 `radar_scan_already_running`，未进入 CDP。
+- 验证过程中第一次临时锁已释放，`--limit 1` 实际扫描 1 个账号成功；随后已用长时间临时锁复测单实例冲突通过。
+
+### 风险
+
+- 文件锁只保护本机同一工作区；不同机器或复制出的另一份仓库仍需外部调度互斥。
+- 如果直接 `kill -9`，锁文件可能残留，但操作系统会释放 `flock`；下一次成功获得锁会覆盖残留内容。
+
+日期：2026-08-22
+
 ## 调整：雷达扫描默认改为 auto --limit 100
 
 范围：`xpost.py`、`xinfo/x_ideas_scan.py`、`web/api/server.py`、`web/ui/src/api/xpost.js`、`web/ui/src/views/Dashboard.vue`、`scripts/daily_scheduler.sh`、`test_x_ideas_scan_auto_source.py`、`CI/test-cases.md`

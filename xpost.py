@@ -124,6 +124,27 @@ def _append_jsonl(path: Path, payload):
         f.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
+def _extract_last_json_object(text: str):
+    if not text:
+        return None
+    end = text.rfind("}")
+    if end < 0:
+        return None
+    depth = 0
+    for index in range(end, -1, -1):
+        char = text[index]
+        if char == "}":
+            depth += 1
+        elif char == "{":
+            depth -= 1
+            if depth == 0:
+                try:
+                    return json.loads(text[index : end + 1])
+                except Exception:
+                    return None
+    return None
+
+
 def _runtime_log_path(command: str) -> Path:
     return XINFO_RUNTIME_DIR / f"{_today_str()}_{command}.jsonl"
 
@@ -2282,8 +2303,9 @@ def _cmd_radar_scan(_args):
     proc = _run_python_script(script_path, [], env=env)
     total_ms = int((time.time() - start_ts) * 1000)
 
-    parsed = None
-    if result_path.exists():
+    stdout_result = _extract_last_json_object(proc.stdout)
+    parsed = stdout_result if proc.returncode != 0 and stdout_result else None
+    if parsed is None and result_path.exists():
         try:
             parsed = json.loads(result_path.read_text(encoding="utf-8"))
         except Exception:
