@@ -348,13 +348,13 @@ JITTER_MIN = 3.0
 JITTER_MAX = 6.0
 MAX_WORKERS = 1
 
-# User-Agent 池（轮换以降低被识别风险）
+# User-Agent 池（完整浏览器串；避免截断 UA 被当成脚本）
 _UA_POOL = [
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0',
     'Mozilla/5.0 (iPhone; CPU iPhone OS 17_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1',
 ]
 
@@ -554,33 +554,50 @@ def _random_ua() -> str:
     """随机返回一个 User-Agent"""
     return random.choice(_UA_POOL)
 
-def fetch_rss(username, nitter_instance):
-    """从指定 nitter 实例获取 RSS（带随机 UA）。失败时抛出带 HTTP 状态的异常。"""
-    url = f"{nitter_instance}/{username}/rss"
-    headers = {
+
+def _browser_rss_headers() -> dict:
+    """接近真实浏览器的 RSS 请求头（与本机可用 curl 对齐）。"""
+    return {
         'User-Agent': _random_ua(),
-        'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+        'Accept': 'application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.7',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Upgrade-Insecure-Requests': '1',
     }
-    req = urllib.request.Request(url, headers=headers)
+
+
+def _ensure_rss_body(body: bytes, source_label: str) -> bytes:
+    """拒绝维护页 / HTML 假 200，只接受看起来像 RSS/Atom 的正文。"""
+    if not body:
+        raise RuntimeError(f"HTTP 200 empty body from {source_label}")
+    head = body.lstrip()[:800].lower()
+    if b'maintenance' in head and b'<html' in head:
+        raise RuntimeError(f"HTTP 200 maintenance page from {source_label}")
+    if head.startswith(b'<!doctype html') or head.startswith(b'<html'):
+        raise RuntimeError(f"HTTP 200 HTML (not RSS) from {source_label}")
+    if not (head.startswith(b'<?xml') or b'<rss' in head[:200] or b'<feed' in head[:200]):
+        raise RuntimeError(f"HTTP 200 non-RSS body from {source_label}")
+    return body
+
+
+def fetch_rss(username, nitter_instance):
+    """从指定 nitter 实例获取 RSS。失败时抛出带原因的异常。"""
+    url = f"{nitter_instance}/{username}/rss"
+    req = urllib.request.Request(url, headers=_browser_rss_headers())
     try:
         with urllib.request.urlopen(req, timeout=15) as response:
-            return response.read()
+            return _ensure_rss_body(response.read(), url)
     except urllib.error.HTTPError as e:
-        raise RuntimeError(f"HTTP {e.code}: {e.reason}") from e
+        raise RuntimeError(f"HTTP {e.code}: {e.reason} from {url}") from e
 
 def fetch_rsshub(username, rsshub_instance):
-    """从指定 RSSHub 实例获取 RSS（带随机 UA）。失败时抛出带 HTTP 状态的异常。"""
+    """从指定 RSSHub 实例获取 RSS。失败时抛出带原因的异常。"""
     url = f"{rsshub_instance}/twitter/user/{username}"
-    headers = {
-        'User-Agent': _random_ua(),
-        'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-    }
-    req = urllib.request.Request(url, headers=headers)
+    req = urllib.request.Request(url, headers=_browser_rss_headers())
     try:
         with urllib.request.urlopen(req, timeout=15) as response:
-            return response.read()
+            return _ensure_rss_body(response.read(), url)
     except urllib.error.HTTPError as e:
-        raise RuntimeError(f"HTTP {e.code}: {e.reason}") from e
+        raise RuntimeError(f"HTTP {e.code}: {e.reason} from {url}") from e
 
 # 构建域名替换表（从配置动态生成）[P1-5]
 _DOMAIN_REPLACEMENTS = []
@@ -642,11 +659,12 @@ def _cooldown_seconds_for_error(error_msg: str) -> int:
 
 def _is_instance_error(error_msg: str) -> bool:
     """判断是否是实例级错误（应进入冷却期）。
-    账号级错误（404/403）不应标记实例为失败。
+    账号级错误（404）不应标记实例为失败。
     """
     if _is_rate_limited(error_msg):
         return True
-    account_errors = ['404', '403', 'Not Found', 'Forbidden']
+    # 公共账号 RSS 返回 403 通常是 Nitter/RSS 路径被实例禁用或拦截，不应逐账号重试。
+    account_errors = ['404', 'Not Found']
     return not any(e in error_msg for e in account_errors)
 
 

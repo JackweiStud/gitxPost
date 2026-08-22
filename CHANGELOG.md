@@ -10,6 +10,34 @@
   - 仍未解决的边界或风险
 - 如果改动影响验收方式或测试结论，需要同步更新 `CI/` 目录下的文档。
 
+日期：2026-08-21
+
+## 增强：雷达 RSS 请求头与正文校验
+
+范围：`xinfo/x_ideas_scan.py`
+
+### 问题
+
+- `nitter.net` 维护期间仍返回 HTTP 200 + HTML（`Maintenance - nitter.net`），旧逻辑会当成功体去解析。
+- 探测用完整浏览器头更稳；脚本头需对齐，并拒绝非 RSS 正文。
+
+### 变更
+
+- `_browser_rss_headers()`：补齐 `Accept` / `Accept-Language` / `Upgrade-Insecure-Requests`，UA 升到 Chrome 131 系。
+- `_ensure_rss_body()`：拒绝空体、维护页、HTML、非 `xml/rss/feed` 正文，并抛出明确错误。
+- `fetch_rss()` / `fetch_rsshub()`：错误信息补充完整 RSS URL，方便区分实例级与账号级失败。
+- `_is_instance_error()`：`403 Forbidden` 改按实例级失败处理，避免公共账号 RSS 被禁用时逐账号打满。
+
+### 验证
+
+- `python3 -m py_compile xinfo/x_ideas_scan.py` 通过。
+- 本机 `https://nitter.net/naval/rss`、`/jackaiwison/rss`、`/elonmusk/rss` 均返回 HTTP 200 + 0 字节；公共源仍不可扫。
+- `_ensure_rss_body()` 本地样例验证：空体/HTML 拒绝，RSS XML 通过。
+
+### 风险
+
+- 头与校验不能绕过站点维护；恢复前勿跑全量 `radar-scan`。
+
 日期：2026-08-20
 
 ## 修复：雷达扫描适配 nitter.net 限流
@@ -31,8 +59,8 @@
 ### 验证
 
 - `python3 -m py_compile xinfo/x_ideas_scan.py` 通过。
-- Clash 侧已加 `DOMAIN-SUFFIX,nitter.net,hy2`；单次 curl 曾确认 200，随后因扫描/探测再次 429。
-- **需在限流冷却结束后再跑** `python xpost.py radar-scan` 做端到端验证。
+- Clash 侧已加 `DOMAIN-SUFFIX,nitter.net → AnyTLS`（hy2 对部分节点 TLS 失败）。
+- **需在站点维护结束且正文为真 RSS 后再跑** `python xpost.py radar-scan`。
 
 ### 风险
 
