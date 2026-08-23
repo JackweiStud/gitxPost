@@ -64,6 +64,7 @@ _running_tasks: dict[str, dict] = {}
 # 网页按钮 / 流水线扫描：RSS 探测失败则本轮 CDP，最多 40 账号
 _RADAR_SCAN_CLI = ("radar-scan", "--source", "auto", "--limit", "40")
 _RADAR_SCAN_TIMEOUT_S = 5400  # 90 min；40 个 CDP 账号含 3–30s 间隔与整轮后补跑
+_RADAR_REPORT_TIMEOUT_S = 900  # 15 min；单次 LLM 最长 600s，留出 prompt/落盘余量
 _SCHEDULER_RUN_NOW_TIMEOUT_S = 7200  # 120 min：扫描 + 日报 + 机会 + 粉丝统计
 
 # 同一时间只跑一个 xpost 子进程（本地工具：避免多任务抢 Chrome / 状态混乱）
@@ -888,7 +889,7 @@ async def run_best_time_analysis():
 
 @app.post("/api/radar/daily")
 async def radar_daily():
-    result = await _run_xpost("radar-daily", timeout=300)
+    result = await _run_xpost("radar-daily", timeout=_RADAR_REPORT_TIMEOUT_S)
     if result.get("ok"):
         result["opportunities"] = await _run_daily_opportunities(timeout=600)
     return result
@@ -930,7 +931,7 @@ async def get_weekly_report(date: str):
 @app.post("/api/radar/weekly")
 async def radar_weekly():
     """触发周报生成"""
-    return await _run_xpost("radar-weekly", timeout=300)
+    return await _run_xpost("radar-weekly", timeout=_RADAR_REPORT_TIMEOUT_S)
 
 
 @app.get("/api/radar/result")
@@ -2824,11 +2825,11 @@ async def run_pipeline(req: PipelineRunRequest):
         elif step == "analyze":
             r = await _run_xpost("radar-analyze", "--days", "7")
         elif step == "daily":
-            r = await _run_xpost("radar-daily", timeout=300)
+            r = await _run_xpost("radar-daily", timeout=_RADAR_REPORT_TIMEOUT_S)
             if r.get("ok"):
                 r["opportunities"] = await _run_daily_opportunities(timeout=600)
         elif step == "weekly":
-            r = await _run_xpost("radar-weekly", timeout=300)
+            r = await _run_xpost("radar-weekly", timeout=_RADAR_REPORT_TIMEOUT_S)
         else:
             r = {"ok": False, "error": f"未知步骤: {step}"}
 

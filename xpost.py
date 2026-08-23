@@ -67,8 +67,9 @@ PLACEHOLDER_HINTS = [
     "[在这里填入你的主题",
 ]
 
-# radar-daily 默认上限（低于旧版 100k，避免与部分备用网关不兼容；可用 CLI 调大）
-DEFAULT_RADAR_DAILY_MAX_TOKENS = 16384
+# radar-daily 默认上限（可用 CLI --max-tokens 再调）
+DEFAULT_RADAR_DAILY_MAX_TOKENS = 65536
+LLM_REQUEST_TIMEOUT_S = 600
 DEFAULT_RADAR_DAILY_MAX_PREVIEW = 800
 RADAR_DAILY_EN_MIN_PERCENT = 65
 RADAR_DAILY_CN_MAX_PERCENT = 30
@@ -1069,6 +1070,8 @@ def _call_messages_api(
                 "--retry-all-errors",
                 "--connect-timeout",
                 "30",
+                "--max-time",
+                str(LLM_REQUEST_TIMEOUT_S),
                 "-X",
                 "POST",
                 api_url,
@@ -1083,7 +1086,7 @@ def _call_messages_api(
             ],
             capture_output=True,
             text=True,
-            timeout=180,
+            timeout=LLM_REQUEST_TIMEOUT_S,
         )
     except Exception as exc:
         raise RuntimeError(f"LLM API 请求失败: {exc}") from exc
@@ -1157,6 +1160,8 @@ def _call_openai_chat_api(
                 "--retry-all-errors",
                 "--connect-timeout",
                 "30",
+                "--max-time",
+                str(LLM_REQUEST_TIMEOUT_S),
                 "-X",
                 "POST",
                 endpoint,
@@ -1169,7 +1174,7 @@ def _call_openai_chat_api(
             ],
             capture_output=True,
             text=True,
-            timeout=180,
+            timeout=LLM_REQUEST_TIMEOUT_S,
         )
     except Exception as exc:
         raise RuntimeError(f"LLM API 请求失败: {exc}") from exc
