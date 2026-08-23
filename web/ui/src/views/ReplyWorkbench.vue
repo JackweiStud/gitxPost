@@ -131,6 +131,10 @@
       </div>
 
       <h3 class="reply-title">选择回复</h3>
+      <div v-if="llmMeta.llm_model" class="llm-meta">
+        模型：{{ llmMeta.llm_model }}
+        <span v-if="llmMeta.llm_route"> · 链路：{{ llmMeta.llm_route }}</span>
+      </div>
       <div class="reply-options">
         <div
           v-for="(text, key) in replies"
@@ -251,11 +255,30 @@ const tweetData = ref(null)
 const extracting = ref(false)
 const generatingReplies = ref(false)
 const replies = ref({})
+const llmMeta = ref({ llm_route: '', llm_model: '', llm_api_url: '' })
 const selectedReply = ref(null)
 const customReply = ref('')
 const sending = ref(false)
 const sendResult = ref(null)
 const recentUrls = ref([])
+
+const REPLY_KEYS = ['A', 'B', 'C']
+
+function pickReplyOptions(data) {
+  const options = {}
+  for (const key of REPLY_KEYS) {
+    if (data && typeof data[key] === 'string') options[key] = data[key]
+  }
+  return options
+}
+
+function pickLlmMeta(data) {
+  return {
+    llm_route: data?.llm_route || '',
+    llm_model: data?.llm_model || '',
+    llm_api_url: data?.llm_api_url || '',
+  }
+}
 
 // 校验推文 URL 格式
 function isValidTweetUrl(url) {
@@ -357,7 +380,9 @@ async function generateReplies() {
       appStore.notify('生成失败: ' + data.error, 'error')
       return
     }
-    replies.value = data
+    // 只取 A/B/C，避免把 llm_model 等元信息当成回复选项
+    replies.value = pickReplyOptions(data)
+    llmMeta.value = pickLlmMeta(data)
     selectedReply.value = null
     customReply.value = ''
     setCurrentStep(2)
@@ -409,6 +434,7 @@ function reset() {
   maxReachedStep.value = 0
   tweetData.value = null
   replies.value = {}
+  llmMeta.value = { llm_route: '', llm_model: '', llm_api_url: '' }
   selectedReply.value = null
   customReply.value = ''
   sendResult.value = null
@@ -828,6 +854,12 @@ onUnmounted(() => {
   font-size: 15px;
   font-weight: 600;
   margin-bottom: 12px;
+}
+.llm-meta {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin: -4px 0 12px;
+  font-family: var(--font-mono);
 }
 .reply-options {
   display: flex;

@@ -12,6 +12,33 @@
 
 日期：2026-08-22
 
+## 增强：Twitter 回复生成输出实际 LLM 模型与链路
+
+范围：`skills/x-reply-assistV2/scripts/generate_replies.py`、`web/ui/src/views/ReplyWorkbench.vue`
+
+### 问题
+
+- 日报已有 `llm_model` / `llm_route` 日志，但回复生成成功时只返回 `A/B/C`，用户无法从结果或界面看出实际用了哪个模型、走了 primary 还是 fallback。
+
+### 变更
+
+- `generate_replies.py` 成功输出追加 `llm_route`、`llm_model`、`llm_api_url`。
+- 同步写入 `xinfo/log/runtime/YYYY-MM-DD_reply-generate.jsonl`。
+- `ReplyWorkbench.vue` 只把 `A/B/C` 当作回复选项，并在选择页展示模型与链路；`reset` 时清空元信息。
+
+### 验证
+
+- `.venv/bin/python -m py_compile skills/x-reply-assistV2/scripts/generate_replies.py` 通过。
+- 加载 `.env` 后 `_build_reply_llm_chain()` 返回 2 条链路；primary 模型为当前配置的 SiliconFlow DeepSeek-V4-Flash。
+- UI 过滤逻辑：元信息字段不会进入回复选项字典。
+
+### 风险
+
+- 若旧前端未刷新，可能短暂把 `llm_model` 等字段渲染成回复卡片；需使用更新后的 `ReplyWorkbench.vue`。
+- 未做真实 LLM 端到端生成联调（避免额外扣费）；上线后在回复工作台点一次生成即可确认。
+
+日期：2026-08-22
+
 ## 修复：雷达扫描增加单实例保护
 
 范围：`xinfo/x_ideas_scan.py`、`xpost.py`、`test_x_ideas_scan_auto_source.py`

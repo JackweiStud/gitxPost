@@ -3,7 +3,11 @@
 读取推文内容，调用 gitxPost .env 里的 LLM，生成 3 条回复备选。
 用法: python generate_replies.py "<tweet_text>" "<handle>"
 
-输出 JSON: {"A": "...", "B": "...", "C": "..."}
+输出 JSON:
+  {"A": "...", "B": "...", "C": "...",
+   "llm_route": "primary|fallback",
+   "llm_model": "<实际模型>",
+   "llm_api_url": "<实际 API URL>"}
 主 LLM 失败时自动尝试 XPOST_LLM_FALLBACK_*（与 xpost 一致）。
 """
 
@@ -215,7 +219,8 @@ def _call_llm_once(spec: dict, prompt: str) -> str:
     return text
 
 
-def call_llm(prompt: str) -> dict:
+def call_llm(prompt: str) -> tuple[dict, dict]:
+    """返回 (回复 JSON, 实际调用元信息)。"""
     chain = _build_reply_llm_chain()
     if not chain:
         raise RuntimeError(
@@ -225,11 +230,43 @@ def call_llm(prompt: str) -> dict:
     for spec in chain:
         try:
             text = _call_llm_once(spec, prompt)
-            return _parse_llm_text_to_json(text)
+            payload = _parse_llm_text_to_json(text)
+            meta = {
+                "llm_route": spec.get("label") or "primary",
+                "llm_model": spec.get("model") or "",
+                "llm_api_url": spec.get("api_url") or "",
+            }
+            return payload, meta
         except Exception as exc:
             label = spec.get("label") or "?"
             errors.append(f"{label}: {exc}")
     raise RuntimeError("所有 LLM 端点均失败: " + " | ".join(errors))
+
+
+def _append_reply_runtime_log(meta: dict, ok: bool, error: str | None = None) -> None:
+    """写入 xinfo/log/runtime/YYYY-MM-DD_reply-generate.jsonl，便于事后查看用了哪个模型。"""
+    try:
+        from datetime import datetime
+
+        runtime_dir = _REPO_ROOT / "xinfo" / "log" / "runtime"
+        runtime_dir.mkdir(parents=True, exist_ok=True)
+        today = datetime.now().strftime("%Y-%m-%d")
+        path = runtime_dir / f"{today}_reply-generate.jsonl"
+        entry = {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "command": "reply-generate",
+            "ok": ok,
+            "llm_route": meta.get("llm_route"),
+            "llm_model": meta.get("llm_model"),
+            "llm_api_url": meta.get("llm_api_url"),
+        }
+        if error:
+            entry["error"] = error[:500]
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        # 日志失败不影响主流程
+        pass
 
 
 if __name__ == "__main__":
@@ -242,8 +279,13 @@ if __name__ == "__main__":
 
     try:
         prompt = build_prompt(tweet_text, handle)
-        result = call_llm(prompt)
-        print(json.dumps(result, ensure_ascii=False))
+        result, meta = call_llm(prompt)
+        # 保留 A/B/C 顶层字段，兼容现有调用方；追加模型元信息
+        out = dict(result)
+        out.update(meta)
+        _append_reply_runtime_log(meta, ok=True)
+        print(json.dumps(out, ensure_ascii=False))
     except Exception as e:
+        _append_reply_runtime_log({}, ok=False, error=str(e))
         print(json.dumps({"error": str(e)}))
         sys.exit(1)
