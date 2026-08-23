@@ -35,6 +35,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 from pathlib import Path
 from typing import Optional
 
@@ -108,7 +109,32 @@ _load_project_dotenv(BASE_DIR / ".env")
 
 
 def _print_json(payload):
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    print(json.dumps(payload, ensure_ascii=False, indent=2), flush=True)
+
+
+def _log_progress(msg: str):
+    print(msg, file=sys.stderr, flush=True)
+
+
+def _llm_spec_brief(spec: dict) -> str:
+    label = spec.get("label") or "?"
+    model = spec.get("model") or "?"
+    parsed = urlparse(spec.get("api_url") or "")
+    host = parsed.netloc or (spec.get("api_url") or "?")
+    return f"{label} {model} @ {host}"
+
+
+def _short_llm_error(exc: Exception) -> str:
+    if isinstance(exc, subprocess.TimeoutExpired):
+        return f"请求超时 ({LLM_REQUEST_TIMEOUT_S}s)"
+    msg = str(exc)
+    if "timed out after" in msg:
+        return f"请求超时 ({LLM_REQUEST_TIMEOUT_S}s)"
+    msg = re.sub(r"Bearer\s+\S+", "Bearer ***", msg)
+    if "Command '" in msg or "Command [" in msg:
+        head = msg.split("Command", 1)[0].strip(" :")
+        return f"{head} curl 失败" if head else "curl 请求失败"
+    return _truncate_text(msg, 200)
 
 
 def _read_text(path: Path) -> str:
@@ -1271,9 +1297,19 @@ def _call_llm_with_fallback(
     if not chain:
         raise RuntimeError("未配置任何 LLM 端点")
     errors = []
-    for spec in chain:
+    for idx, spec in enumerate(chain):
+        label = spec.get("label") or "?"
+        eff_max = _effective_max_tokens_for_spec(spec, max_tokens)
+        if idx > 0:
+            _log_progress(f"[LLM] 切换 {_llm_spec_brief(spec)}")
+        _log_progress(
+            f"[LLM] 请求 {_llm_spec_brief(spec)}  max_tokens={eff_max} timeout={LLM_REQUEST_TIMEOUT_S}s prompt≈{len(prompt)}字"
+        )
+        started = time.monotonic()
         try:
             out = _call_llm_spec(spec, prompt, max_tokens, return_debug=return_debug)
+            elapsed = time.monotonic() - started
+            _log_progress(f"[LLM] {label} 成功  耗时 {elapsed:.1f}s")
             meta = {
                 "route": spec.get("label"),
                 "model": spec.get("model"),
@@ -1281,7 +1317,8 @@ def _call_llm_with_fallback(
             }
             return out, meta
         except Exception as exc:
-            label = spec.get("label") or "?"
+            elapsed = time.monotonic() - started
+            _log_progress(f"[LLM] {label} 失败 ({elapsed:.1f}s): {_short_llm_error(exc)}")
             errors.append(f"{label}: {exc}")
     raise RuntimeError("所有 LLM 端点均失败: " + " | ".join(errors))
 
@@ -1390,7 +1427,9 @@ def _generate_radar_report(prompt: str, llm_chain: list, max_tokens: int):
     ]
     last_error = None
     attempt_logs = []
-    for attempt in attempts:
+    total = len(attempts)
+    for idx, attempt in enumerate(attempts, 1):
+        _log_progress(f"[radar-report] attempt {idx}/{total} mode={attempt['label']}")
         try:
             response, llm_meta = _call_llm_with_fallback(
                 llm_chain,
@@ -1420,8 +1459,12 @@ def _generate_radar_report(prompt: str, llm_chain: list, max_tokens: int):
                         "llm_model": llm_meta.get("model"),
                     }
                 )
+                _log_progress(
+                    f"[radar-report] attempt {idx} 成功 markdown={len(payload.get('markdown') or '')}字 route={llm_meta.get('route')}"
+                )
                 return payload, attempt_logs, llm_meta
             last_error = RuntimeError("LLM 未返回 markdown")
+            _log_progress(f"[radar-report] attempt {idx} 无 markdown，继续")
             attempt_logs.append(
                 {
                     "label": attempt["label"],
@@ -1434,6 +1477,7 @@ def _generate_radar_report(prompt: str, llm_chain: list, max_tokens: int):
             )
         except Exception as exc:
             last_error = exc
+            _log_progress(f"[radar-report] attempt {idx} 失败: {_short_llm_error(exc)}")
             attempt_logs.append(
                 {
                     "label": attempt["label"],
@@ -2388,6 +2432,7 @@ def _cmd_radar_daily(args):
     interests_path = Path(args.interests_file).expanduser() if args.interests_file else XINFO_LOG_DIR / "interests.json"
     actions_path = Path(args.actions_file).expanduser() if args.actions_file else XINFO_LOG_DIR / "actions.json"
     output_path = Path(args.output).expanduser() if args.output else XINFO_DAY_DIR / f"{_today_str()}.md"
+    _log_progress(f"[radar-daily] 开始  result={result_path}  output={output_path}")
     runtime_context = {
         "command": "radar-daily",
         "result_path": str(result_path),
@@ -2424,6 +2469,9 @@ def _cmd_radar_daily(args):
             "api_url": llm_cfg.get("api_url"),
         }
     )
+    chain_brief = " ; ".join(_llm_spec_brief(spec) for spec in (llm_cfg.get("llm_chain") or []))
+    if chain_brief:
+        _log_progress(f"[radar-daily] LLM 链路: {chain_brief}")
     if not llm_cfg.get("llm_chain"):
         log_path = _record_radar_runtime(
             "radar-daily",
@@ -2445,6 +2493,7 @@ def _cmd_radar_daily(args):
     summary = result_payload.get("summary", {})
     status = summary.get("status")
     preview = summary.get("new_ideas_preview", [])
+    _log_progress(f"[radar-daily] preview 原始 {len(preview)} 条  status={status or '?'}")
 
     # ── 过滤非近期推文，减少 LLM token 消耗 ──────────────────────
     # RSS pub_date 格式为 RFC 2822: "Wed, 29 Mar 2026 21:29:31 GMT"
@@ -2466,8 +2515,9 @@ def _cmd_radar_daily(args):
             _recent_preview.append(_item)  # 解析失败的保留，不丢数据
     if _recent_preview:
         preview = _recent_preview
-        if _skipped_old:
-            print(f"  📅 日报过滤: 保留近24h {len(preview)} 条, 跳过历史 {_skipped_old} 条")
+        _log_progress(f"[radar-daily] 近24h 过滤: 保留 {len(preview)} 条, 跳过历史 {_skipped_old} 条")
+    else:
+        _log_progress(f"[radar-daily] 近24h 过滤后为空，沿用原始 preview {len(preview)} 条")
     # 过滤后为空则保留原始 preview（兜底：首次使用/跨天场景）
     # ── 过滤结束 ──────────────────────────────────────────────
 
@@ -2488,7 +2538,14 @@ def _cmd_radar_daily(args):
     result_payload["summary"]["sampled_preview_count"] = len(preview)
     result_payload["summary"]["language_sampling"] = language_sampling
     runtime_context["language_sampling"] = language_sampling
+    sample_counts = (language_sampling or {}).get("selected_counts") or (language_sampling or {}).get("output_counts") or {}
+    _log_progress(
+        f"[radar-daily] 采样后 {len(preview)} 条"
+        f"  en={sample_counts.get('en', '?')} zh={sample_counts.get('zh', '?')} unknown={sample_counts.get('unknown', '?')}"
+        f"  strategy={(language_sampling or {}).get('strategy', '?')}"
+    )
     if status == "no_new" or not preview:
+        _log_progress("[radar-daily] 无新推文，跳过 LLM")
         body = "\n".join(
             [
                 f"📅 {datetime.now().year}年{datetime.now().month}月{datetime.now().day}日",
@@ -2502,10 +2559,14 @@ def _cmd_radar_daily(args):
     else:
         try:
             prompt = _build_radar_daily_prompt(result_payload, interests_payload)
+            _log_progress(
+                f"[radar-daily] 调用 LLM  prompt≈{len(prompt)}字 max_tokens={args.max_tokens} timeout={LLM_REQUEST_TIMEOUT_S}s"
+            )
             report_json, attempt_logs, llm_used = _generate_radar_report(
                 prompt, llm_cfg["llm_chain"], args.max_tokens
             )
         except Exception as exc:
+            _log_progress(f"[radar-daily] 生成失败: {_short_llm_error(exc)}")
             log_path = _record_radar_runtime(
                 "radar-daily",
                 {
@@ -2550,6 +2611,7 @@ def _cmd_radar_daily(args):
     report_text = _wrap_report_markdown(markdown_body, daily_meta)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(report_text, encoding="utf-8")
+    _log_progress(f"[radar-daily] 已写入 {output_path}  markdown={len(markdown_body)}字")
     log_path = _record_radar_runtime(
         "radar-daily",
         {
@@ -2583,6 +2645,7 @@ def _cmd_radar_weekly(args):
     analysis_path = Path(args.analysis_file).expanduser() if args.analysis_file else XINFO_DAY_DIR / f"{_today_str()}_analysis.json"
     actions_path = Path(args.actions_file).expanduser() if args.actions_file else XINFO_LOG_DIR / "actions.json"
     output_path = Path(args.output).expanduser() if args.output else XINFO_WEEK_DIR / f"{_today_str()}.md"
+    _log_progress(f"[radar-weekly] 开始  analysis={analysis_path}  output={output_path}")
     runtime_context = {
         "command": "radar-weekly",
         "analysis_path": str(analysis_path),
@@ -2616,6 +2679,9 @@ def _cmd_radar_weekly(args):
             "api_url": llm_cfg.get("api_url"),
         }
     )
+    chain_brief = " ; ".join(_llm_spec_brief(spec) for spec in (llm_cfg.get("llm_chain") or []))
+    if chain_brief:
+        _log_progress(f"[radar-weekly] LLM 链路: {chain_brief}")
     if not llm_cfg.get("llm_chain"):
         log_path = _record_radar_runtime(
             "radar-weekly",
@@ -2636,10 +2702,14 @@ def _cmd_radar_weekly(args):
 
     try:
         prompt = _build_radar_weekly_prompt(analysis_payload, actions_payload)
+        _log_progress(
+            f"[radar-weekly] 调用 LLM  prompt≈{len(prompt)}字 max_tokens={args.max_tokens} timeout={LLM_REQUEST_TIMEOUT_S}s"
+        )
         report_json, attempt_logs, llm_used = _generate_radar_report(
             prompt, llm_cfg["llm_chain"], args.max_tokens
         )
     except Exception as exc:
+        _log_progress(f"[radar-weekly] 生成失败: {_short_llm_error(exc)}")
         log_path = _record_radar_runtime(
             "radar-weekly",
             {
