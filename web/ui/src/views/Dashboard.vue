@@ -440,7 +440,7 @@ const showLogs = ref(false)
 const schedulerLogs = ref(null)
 
 const pipelineSteps = ref([
-  { id: 'scan', label: '雷达扫描', desc: 'auto：RSS 失败则 CDP，最多 100 账号', estimate: '约 15-40 分钟', status: 'pending', startTime: null, duration: null },
+  { id: 'scan', label: '雷达扫描', desc: 'auto：RSS 失败则 CDP，最多 40 账号，失败整轮后再补一次', estimate: '约 20-40 分钟', status: 'pending', startTime: null, duration: null },
   { id: 'daily', label: '生成日报', desc: 'AI 筛选并生成 Markdown 日报', estimate: '2-5 分钟', status: 'pending', startTime: null, duration: null },
 ])
 
@@ -930,7 +930,7 @@ async function runFullPipeline() {
 }
 
 async function runScanOnly() {
-  appStore.notify('开始雷达扫描（auto，最多 100 账号）...', 'info', 8000)
+  appStore.notify('开始雷达扫描（auto，最多 40 账号）...', 'info', 8000)
   try {
     await api.runScan()
     appStore.notify('扫描完成', 'success')

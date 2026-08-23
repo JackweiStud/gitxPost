@@ -13,9 +13,10 @@ const DEFAULT_PORT = 19222;
 const DEFAULT_WAIT_MS = 10000;
 const DEFAULT_MAX_SCROLLS = 3;
 const DEFAULT_LIMIT_ITEMS = 8;
-const DEFAULT_RETRIES = 1;
+const DEFAULT_RETRIES = 0;
 const DEFAULT_RETRY_DELAY_MS = 2500;
 const DEFAULT_RETRY_JITTER_MS = 2500;
+const HARD_GUARD_REASONS = new Set(['login_required', 'challenge_required', 'rate_limited']);
 
 function normalizeHandle(raw) {
   return String(raw || '').replace(/^@+/, '').trim();
@@ -155,6 +156,9 @@ function classifyErrorMessage(message) {
   if (/no visible timeline/.test(source)) {
     return { error_type: 'no_visible_timeline', retryable: true };
   }
+  if (/出错了|请尝试重新加载|something went wrong|please try reloading|try reloading/.test(source)) {
+    return { error_type: 'timeline_error', retryable: false };
+  }
   if (/account doesn.?t exist|page doesn.?t exist|unavailable/.test(source)) {
     return { error_type: 'account_unavailable', retryable: false };
   }
@@ -190,7 +194,7 @@ async function fetchProfileTimeline(username, options = {}) {
         });
         value = evaluated.result && evaluated.result.value ? evaluated.result.value : value;
         const guard = detectPageGuard(value);
-        if (guard.blocked) {
+        if (guard.blocked && HARD_GUARD_REASONS.has(guard.reason)) {
           return {
             ok: false,
             username: handle,
@@ -339,7 +343,9 @@ Output:
 Safety:
   Uses your existing Chrome/CDP session. It reads visible DOM only; it does not
   call X API, click, like, repost, reply, solve challenges, or bypass guards.
-  It stops on login, challenge, or rate-limit guard pages.`);
+  Immediate per-account retries default to 0. Login/challenge/rate-limit pages
+  stop the current profile; empty or "something went wrong" timelines are left
+  to the Python scanner's one deferred retry after the batch.`);
 }
 
 async function main() {
@@ -354,7 +360,7 @@ async function main() {
     if (index > 0) await sleep(jitterDelay(options.delayMs, options.jitterMs));
     const result = await fetchProfileTimelineWithRetry(usernames[index], options);
     results.push(result);
-    if (result.guard && result.guard.blocked) break;
+    if (result.guard && result.guard.blocked && HARD_GUARD_REASONS.has(result.guard.reason)) break;
   }
 
   console.log(JSON.stringify({

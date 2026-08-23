@@ -70,6 +70,16 @@ test('detectPageGuard identifies login, challenge, and rate-limit states', () =>
     title: 'Post / X',
     text: 'Composer 2.5 is now the most-chosen model in Cursor. 10 replies 20 likes',
   }), { blocked: false, reason: null });
+
+  assert.deepEqual(detectPageGuard({
+    title: 'OpenAI Developers (OpenAIDevs) / X',
+    text: '出错了。请尝试重新加载。',
+  }), { blocked: true, reason: 'timeline_error' });
+
+  assert.deepEqual(detectPageGuard({
+    title: 'X',
+    text: 'Something went wrong. Please try reloading.',
+  }), { blocked: true, reason: 'timeline_error' });
 });
 
 test('parseArgs supports conservative pacing options', () => {

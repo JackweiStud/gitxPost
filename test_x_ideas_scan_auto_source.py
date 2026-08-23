@@ -1,3 +1,6 @@
+import json
+import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -53,9 +56,55 @@ class XIdeasScanAutoSourceTest(unittest.TestCase):
         self.assertFalse(scan._is_cdp_guard_error("unavailable: Page guard detected: unavailable"))
         self.assertFalse(scan._is_cdp_guard_error("account_unavailable: This account is unavailable"))
         self.assertFalse(scan._is_cdp_guard_error("no_visible_timeline: No visible timeline items found"))
+        self.assertFalse(scan._is_cdp_guard_error("timeline_error: Page guard detected: timeline_error"))
         self.assertTrue(scan._is_cdp_guard_error("login_required: Page guard detected: login_required"))
         self.assertTrue(scan._is_cdp_guard_error("challenge_required: Page guard detected: challenge_required"))
         self.assertTrue(scan._is_cdp_guard_error("rate_limited: Page guard detected: rate_limited"))
+
+    def test_cdp_empty_timeline_is_deferred_retryable(self):
+        self.assertTrue(scan._is_cdp_deferred_retryable("no_visible_timeline: No visible timeline items found"))
+        self.assertTrue(scan._is_cdp_deferred_retryable("timeline_error: Page guard detected: timeline_error"))
+        self.assertTrue(scan._is_cdp_deferred_retryable("unavailable: Page guard detected: unavailable"))
+        self.assertFalse(scan._is_cdp_deferred_retryable("login_required: Page guard detected: login_required"))
+        self.assertFalse(scan._is_cdp_deferred_retryable("challenge_required: Page guard detected: challenge_required"))
+        self.assertFalse(scan._is_cdp_deferred_retryable(""))
+
+    def test_same_day_cdp_completed_ignores_smoke_and_lock_results(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = f"{tmpdir}/day_result.json"
+            self.assertFalse(scan._same_day_cdp_completed(path))
+
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump({"effective_source": "cdp", "total_accounts": 40, "error_type": None}, handle)
+            self.assertTrue(scan._same_day_cdp_completed(path))
+            self.assertTrue(scan._should_skip_same_day_cdp("cdp", force=False, result_path=path))
+            self.assertFalse(scan._should_skip_same_day_cdp("cdp", force=True, result_path=path))
+            self.assertFalse(scan._should_skip_same_day_cdp("rss", force=False, result_path=path))
+            self.assertFalse(scan._should_skip_same_day_cdp("cdp", force=False, result_path=path, account_limit=1))
+
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump({"effective_source": "cdp", "total_accounts": 1}, handle)
+            self.assertFalse(scan._same_day_cdp_completed(path))
+
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump({"effective_source": "cdp", "total_accounts": 40, "error_type": "radar_scan_already_running"}, handle)
+            self.assertFalse(scan._same_day_cdp_completed(path))
+
+    def test_deferred_retry_runs_each_failed_account_once(self):
+        calls = []
+        stop_scan = threading.Event()
+
+        def scan_one(username, deferred_pass=False):
+            calls.append((username, deferred_pass))
+
+        with patch.object(scan, "log", lambda *_args, **_kwargs: None):
+            scan._run_cdp_deferred_retry(["a", "b"], scan_one, stop_scan, pause_seconds=0)
+            self.assertEqual(calls, [("a", True), ("b", True)])
+
+            calls.clear()
+            stop_scan.set()
+            scan._run_cdp_deferred_retry(["a", "b"], scan_one, stop_scan, pause_seconds=0)
+            self.assertEqual(calls, [])
 
     def test_scan_batch_failed_uses_limited_account_set(self):
         scanned = [f"acct{i}" for i in range(100)]

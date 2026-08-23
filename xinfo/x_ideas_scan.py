@@ -349,13 +349,17 @@ MAX_PER_ACCOUNT = 5      # 每个账号最多保留的推文数
 DATA_SOURCE = os.environ.get("XPOST_RADAR_SOURCE", "auto").strip().lower()
 EFFECTIVE_SOURCE = DATA_SOURCE
 AUTO_PROBE_ACCOUNT = os.environ.get("XPOST_RADAR_AUTO_PROBE_ACCOUNT", "sama").strip().lstrip("@") or "sama"
-ACCOUNT_LIMIT = int(os.environ.get("XPOST_RADAR_ACCOUNT_LIMIT", "100") or "100")
+DEFAULT_ACCOUNT_LIMIT = 40
+ACCOUNT_LIMIT = int(os.environ.get("XPOST_RADAR_ACCOUNT_LIMIT", str(DEFAULT_ACCOUNT_LIMIT)) or str(DEFAULT_ACCOUNT_LIMIT))
 CDP_SCRIPT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "scripts", "x_profile_timeline_cdp.js"))
 CDP_PER_ACCOUNT_TIMEOUT = int(os.environ.get("XPOST_RADAR_CDP_TIMEOUT", "45") or "45")
 CDP_LIMIT_ITEMS = int(os.environ.get("XPOST_RADAR_CDP_LIMIT_ITEMS", str(MAX_PER_ACCOUNT)) or str(MAX_PER_ACCOUNT))
-CDP_MAX_RETRIES = int(os.environ.get("XPOST_RADAR_CDP_RETRIES", "1") or "1")
-CDP_JITTER_MIN = float(os.environ.get("XPOST_RADAR_CDP_JITTER_MIN", "1.5") or "1.5")
-CDP_JITTER_MAX = float(os.environ.get("XPOST_RADAR_CDP_JITTER_MAX", "4.0") or "4.0")
+CDP_MAX_RETRIES = int(os.environ.get("XPOST_RADAR_CDP_RETRIES", "0") or "0")
+CDP_JITTER_MIN = float(os.environ.get("XPOST_RADAR_CDP_JITTER_MIN", "3") or "3")
+CDP_JITTER_MAX = float(os.environ.get("XPOST_RADAR_CDP_JITTER_MAX", "30") or "30")
+CDP_DEFERRED_RETRY_PAUSE = float(os.environ.get("XPOST_RADAR_CDP_RETRY_PAUSE", "60") or "60")
+if CDP_JITTER_MAX < CDP_JITTER_MIN:
+    CDP_JITTER_MIN, CDP_JITTER_MAX = CDP_JITTER_MAX, CDP_JITTER_MIN
 
 # 并发配置（单 worker + 低并发，避免把 nitter.net 再次打进 429）
 CONCURRENT_PER_INSTANCE = 1
@@ -399,6 +403,68 @@ def _day_log_path():
 
 def _day_result_path():
     return os.path.join(DAY_LOG_DIR, datetime.now().strftime('%Y-%m-%d') + '_result.json')
+
+
+def _force_scan_enabled() -> bool:
+    return os.environ.get("XPOST_RADAR_FORCE", "").strip().lower() in ("1", "true", "yes")
+
+
+def _load_json_file(path):
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return json.load(handle)
+    except Exception:
+        return None
+
+
+def _same_day_cdp_completed(result_path=None) -> bool:
+    """同一自然日已经跑过一轮有效 CDP 扫描（smoke / 锁冲突不计）。"""
+    data = _load_json_file(result_path or _day_result_path())
+    if not isinstance(data, dict):
+        return False
+    if data.get("error_type") in ("radar_scan_already_running", "radar_scan_same_day"):
+        return False
+    if data.get("effective_source") != "cdp":
+        return False
+    return int(data.get("total_accounts") or 0) > 1
+
+
+def _should_skip_same_day_cdp(effective_source, force=None, result_path=None, account_limit=None) -> bool:
+    if force is None:
+        force = _force_scan_enabled()
+    if force or effective_source != "cdp":
+        return False
+    if account_limit is None:
+        account_limit = ACCOUNT_LIMIT
+    if account_limit == 1:
+        return False
+    return _same_day_cdp_completed(result_path)
+
+
+def _same_day_skip_result(existing=None):
+    existing = existing if isinstance(existing, dict) else {}
+    return {
+        "success": False,
+        "error_type": "radar_scan_same_day",
+        "error": "今日已完成一轮 CDP 扫描，如需再跑请使用 --force",
+        "data_source": DATA_SOURCE,
+        "effective_source": EFFECTIVE_SOURCE,
+        "total_accounts": 0,
+        "successful_accounts": 0,
+        "failed_accounts": [],
+        "new_items_count": 0,
+        "elapsed_seconds": 0,
+        "elapsed_str": "0m0s",
+        "summary": {},
+        "existing_result": {
+            "total_accounts": existing.get("total_accounts"),
+            "successful_accounts": existing.get("successful_accounts"),
+            "elapsed_str": existing.get("elapsed_str"),
+            "new_items_count": existing.get("new_items_count"),
+        },
+    }
 
 def log(msg, level='INFO'):
     """追加一行到当天日志文件（线程安全，同时打印到 stdout）"""
@@ -844,7 +910,7 @@ def fetch_cdp_profile(username):
 
 
 def _is_cdp_guard_error(error_msg: str) -> bool:
-    """登录、验证、限流类 guard 应停止本轮 CDP 批量扫描。"""
+    """登录、验证、明确限流类 guard 应停止本轮 CDP 批量扫描。"""
     lower = (error_msg or "").lower()
     guard_markers = [
         "login_required",
@@ -852,6 +918,30 @@ def _is_cdp_guard_error(error_msg: str) -> bool:
         "rate_limited",
     ]
     return any(marker in lower for marker in guard_markers)
+
+
+def _is_cdp_deferred_retryable(error_msg: str) -> bool:
+    """空时间线 / 出错了 / 账号不可用等：本轮先记失败，整轮结束后再补跑一次。"""
+    if not error_msg:
+        return False
+    return not _is_cdp_guard_error(error_msg)
+
+
+def _run_cdp_deferred_retry(retry_usernames, scan_one, stop_scan, pause_seconds=None):
+    """失败账号在整轮名单扫完后各补跑一次，不再立刻重试。"""
+    if not retry_usernames or stop_scan.is_set():
+        return
+    pause = CDP_DEFERRED_RETRY_PAUSE if pause_seconds is None else pause_seconds
+    if pause > 0:
+        log(f'本轮失败 {len(retry_usernames)} 个账号，等待 {int(pause)}s 后各补跑 1 次')
+        time.sleep(pause)
+    log(f'开始补跑失败账号: {len(retry_usernames)} 个，每个只跑 1 次')
+    for index, username in enumerate(retry_usernames, 1):
+        if stop_scan.is_set():
+            log(f'SKIP 补跑 @{username}: CDP guard 已触发，停止后续补跑', 'WARN')
+            continue
+        log(f'RETRY [{index}/{len(retry_usernames)}] @{username}')
+        scan_one(username, deferred_pass=True)
 
 
 def _scan_batch_failed(failed_accounts, scanned_accounts) -> bool:
@@ -1277,6 +1367,14 @@ def main():
     EFFECTIVE_SOURCE = resolve_effective_source()
     log(f'数据源: {DATA_SOURCE} -> {EFFECTIVE_SOURCE}  Nitter({len(NITTER_INSTANCES)}) + RSSHub({len(RSSHUB_INSTANCES)})')
 
+    if _should_skip_same_day_cdp(EFFECTIVE_SOURCE):
+        existing = _load_json_file(_day_result_path()) or {}
+        result = _same_day_skip_result(existing)
+        log('今日已完成一轮 CDP 扫描，本次未启动。如需再跑请使用 --force', 'WARN')
+        _emit_result_json(result)
+        scan_lock.release()
+        return 2
+
     # 加载已见过的 URL
     seen_list, seen_set = load_seen_urls()
     log(f'已记录 URL 数: {len(seen_set)}')
@@ -1287,12 +1385,16 @@ def main():
     if ACCOUNT_LIMIT > 0:
         accounts = accounts[:ACCOUNT_LIMIT]
         log(f'账号限制: 本次仅扫描 {len(accounts)} 个账号')
-    log(f'并发模式: workers={MAX_WORKERS}  每实例≤{CONCURRENT_PER_INSTANCE}并发  jitter={JITTER_MIN}-{JITTER_MAX}s')
+    if EFFECTIVE_SOURCE == "cdp":
+        log(f'并发模式: workers={MAX_WORKERS}  CDP间隔={CDP_JITTER_MIN}-{CDP_JITTER_MAX}s  即时重试={CDP_MAX_RETRIES}')
+    else:
+        log(f'并发模式: workers={MAX_WORKERS}  每实例≤{CONCURRENT_PER_INSTANCE}并发  jitter={JITTER_MIN}-{JITTER_MAX}s')
     print()
 
     # 并发扫描所有账号
     all_new_items = []
     failed_accounts = []
+    retry_queue = []
     instance_fail_time: dict = {}        # instance -> {"ts","cd"} 冷却恢复机制
     seen_lock = threading.Lock()         # 保护 seen_list / seen_set 的写操作
     ideas_lock = threading.Lock()        # 保护 ideas.md 文件写操作
@@ -1301,34 +1403,51 @@ def main():
     counter = [0]                        # 完成计数器（列表使闭包可写）
     total = len(accounts)
 
-    def scan_one(username):
+    def scan_one(username, deferred_pass=False):
         """单账号扫描任务（在线程池中执行）"""
         if stop_scan.is_set():
             log(f'SKIP @{username}: CDP guard 已触发，本轮停止访问后续账号', 'WARN')
             with results_lock:
-                failed_accounts.append(username)
+                if username not in failed_accounts:
+                    failed_accounts.append(username)
             return
 
         items, error = fetch_with_fallback(username, instance_fail_time)
 
-        with results_lock:
-            counter[0] += 1
-            idx = counter[0]
+        if not deferred_pass:
+            with results_lock:
+                counter[0] += 1
+                idx = counter[0]
+            label = f'[{idx}/{total}]'
+        else:
+            label = '[补跑]'
 
         if items is None:
-            log(f'FAIL [{idx}/{total}] @{username}: {error}', 'ERROR')
+            log(f'FAIL {label} @{username}: {error}', 'ERROR')
             if EFFECTIVE_SOURCE == "cdp" and _is_cdp_guard_error(error):
                 stop_scan.set()
                 log('检测到 X 登录/验证/限流 guard，停止本轮后续账号访问', 'WARN')
             with results_lock:
-                failed_accounts.append(username)
+                if username not in failed_accounts:
+                    failed_accounts.append(username)
+                if (
+                    not deferred_pass
+                    and EFFECTIVE_SOURCE == "cdp"
+                    and _is_cdp_deferred_retryable(error)
+                ):
+                    retry_queue.append(username)
             return
+
+        if deferred_pass:
+            with results_lock:
+                if username in failed_accounts:
+                    failed_accounts.remove(username)
 
         # 过滤新推文（需要锁保护 seen_set）
         with seen_lock:
             new_items = filter_new_items(items, seen_list, seen_set, username)
 
-        log(f'OK   [{idx}/{total}] @{username}: 获取{len(items)}条, 新增{len(new_items)}条')
+        log(f'OK   {label} @{username}: 获取{len(items)}条, 新增{len(new_items)}条')
 
         if new_items:
             for ni in new_items:
@@ -1347,7 +1466,11 @@ def main():
                 uname = futures[future]
                 log(f'FAIL @{uname} 未捕获异常: {e}', 'ERROR')
                 with results_lock:
-                    failed_accounts.append(uname)
+                    if uname not in failed_accounts:
+                        failed_accounts.append(uname)
+
+    if EFFECTIVE_SOURCE == "cdp":
+        _run_cdp_deferred_retry(list(retry_queue), scan_one, stop_scan)
 
     print()
 

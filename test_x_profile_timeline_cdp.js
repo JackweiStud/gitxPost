@@ -43,10 +43,20 @@ test('classifies retryable CDP failures', () => {
     error_type: 'no_visible_timeline',
     retryable: true,
   });
+  assert.deepEqual(classifyErrorMessage('出错了。请尝试重新加载。'), {
+    error_type: 'timeline_error',
+    retryable: false,
+  });
   assert.deepEqual(classifyErrorMessage('This account is unavailable'), {
     error_type: 'account_unavailable',
     retryable: false,
   });
+});
+
+test('parseArgs defaults to no immediate retries', () => {
+  const parsed = parseArgs(['naval']);
+  assert.equal(parsed.options.retries, 0);
+  assert.deepEqual(parsed.usernames, ['naval']);
 });
 
 test('parseArgs supports conservative retry options', () => {

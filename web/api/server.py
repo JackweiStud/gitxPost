@@ -61,10 +61,10 @@ app.add_middleware(
 
 _running_tasks: dict[str, dict] = {}
 
-# 网页按钮 / 流水线扫描：RSS 探测失败则本轮 CDP，最多 100 账号
-_RADAR_SCAN_CLI = ("radar-scan", "--source", "auto", "--limit", "100")
-_RADAR_SCAN_TIMEOUT_S = 2700  # 45 min；100 个 CDP 账号约 15–40 分钟
-_SCHEDULER_RUN_NOW_TIMEOUT_S = 5400  # 90 min：扫描 + 日报 + 机会 + 粉丝统计
+# 网页按钮 / 流水线扫描：RSS 探测失败则本轮 CDP，最多 40 账号
+_RADAR_SCAN_CLI = ("radar-scan", "--source", "auto", "--limit", "40")
+_RADAR_SCAN_TIMEOUT_S = 5400  # 90 min；40 个 CDP 账号含 3–30s 间隔与整轮后补跑
+_SCHEDULER_RUN_NOW_TIMEOUT_S = 7200  # 120 min：扫描 + 日报 + 机会 + 粉丝统计
 
 # 同一时间只跑一个 xpost 子进程（本地工具：避免多任务抢 Chrome / 状态混乱）
 _xpost_run_lock = asyncio.Lock()

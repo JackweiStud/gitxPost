@@ -12,6 +12,36 @@
 
 日期：2026-08-22
 
+## 调整：CDP 扫描降速，失败改为整轮后补跑一次
+
+范围：`xinfo/x_ideas_scan.py`、`xpost.py`、`scripts/x_profile_timeline_cdp.js`、`scripts/x_metrics_cdp.js`、`web/api/server.py`、`web/ui/src/views/Dashboard.vue`、`web/ui/src/api/xpost.js`、`scripts/daily_scheduler.sh`、`test_x_ideas_scan_auto_source.py`、`CI/test-cases.md`
+
+### 问题
+
+- CDP 用同一 Chrome 登录态连续打开用户主页，约 50 个账号后 X 会返回空时间线或「出错了。请尝试重新加载。」
+- 失败账号会立刻再打开一次主页，等于在风控窗口里加倍打页。
+- 默认每轮 100 个账号，网页/调度同一天还能再叠几轮。
+
+### 变更
+
+- 默认 `--limit 40`；账号间隔改为 3–30 秒随机；CDP 即时重试改为 0。
+- 失败账号先入列表，整轮名单跑完后等待 60 秒，再各补跑恰好 1 次。
+- 识别「出错了 / Something went wrong / 请尝试重新加载」为 `timeline_error`，记失败并进入补跑，不停整轮。登录/验证码/明确限流仍停扫。
+- 同一自然日已完成一轮有效 CDP（账号数 > 1）后再跑，默认返回 `radar_scan_same_day`，不覆盖当天结果快照；`--force` 可继续；`--limit 1` 的 smoke 不受此限制。
+- 网页扫描 HTTP 超时 90 分钟；「立即执行」调度超时 120 分钟。
+
+### 验证
+
+- `python3 -m unittest test_x_ideas_scan_auto_source.py`
+- `node --test test_x_metrics_cdp.js test_x_profile_timeline_cdp.js`
+
+### 风险
+
+- 40 个账号按 3–30 秒间隔，一轮大约 20–40 分钟；若大量失败再补跑一次，可能接近网页超时上限。
+- 今日若已有 CDP 扫描结果，未加 `--force` 的第二次扫描会被拒绝。
+
+日期：2026-08-22
+
 ## 增强：Twitter 回复生成输出实际 LLM 模型与链路
 
 范围：`skills/x-reply-assistV2/scripts/generate_replies.py`、`web/ui/src/views/ReplyWorkbench.vue`

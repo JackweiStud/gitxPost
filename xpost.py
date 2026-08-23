@@ -2298,6 +2298,8 @@ def _cmd_radar_scan(_args):
         env["XPOST_RADAR_SOURCE"] = _args.source
     if getattr(_args, "limit", None) is not None:
         env["XPOST_RADAR_ACCOUNT_LIMIT"] = str(_args.limit)
+    if getattr(_args, "force", False):
+        env["XPOST_RADAR_FORCE"] = "1"
 
     start_ts = time.time()
     proc = _run_python_script(script_path, [], env=env)
@@ -2318,7 +2320,7 @@ def _cmd_radar_scan(_args):
             "ok": ok,
             "command": "radar-scan",
             "source": getattr(_args, "source", None) or os.environ.get("XPOST_RADAR_SOURCE") or "auto",
-            "limit": getattr(_args, "limit", 100),
+            "limit": getattr(_args, "limit", 40),
             "result_path": str(result_path),
             "day_result_path": str(day_result_path),
             "result": parsed,
@@ -3357,8 +3359,13 @@ def main():
     p_radar_scan.add_argument(
         "--limit",
         type=int,
-        default=int(os.environ.get("XPOST_RADAR_ACCOUNT_LIMIT", "100") or "100"),
-        help="Limit scanned accounts; 0 means all active accounts (default: 100)",
+        default=int(os.environ.get("XPOST_RADAR_ACCOUNT_LIMIT", "40") or "40"),
+        help="Limit scanned accounts; 0 means all active accounts (default: 40)",
+    )
+    p_radar_scan.add_argument(
+        "--force",
+        action="store_true",
+        help="Ignore same-day CDP cooldown and run another scan today",
     )
     p_radar_scan.set_defaults(func=_cmd_radar_scan)
 

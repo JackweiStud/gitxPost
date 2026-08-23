@@ -1,8 +1,8 @@
 import axios from 'axios'
 
 const DEFAULT_API_TIMEOUT_MS = 10 * 60 * 1000
-const RADAR_SCAN_TIMEOUT_MS = 45 * 60 * 1000
-const SCHEDULER_RUN_NOW_TIMEOUT_MS = 90 * 60 * 1000
+const RADAR_SCAN_TIMEOUT_MS = 90 * 60 * 1000
+const SCHEDULER_RUN_NOW_TIMEOUT_MS = 120 * 60 * 1000
 
 const api = axios.create({
   baseURL: '/api',

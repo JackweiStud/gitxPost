@@ -69,6 +69,9 @@ function detectPageGuard(page) {
   if (/this account doesn.?t exist|this post is unavailable|page doesn.?t exist/.test(source)) {
     return { blocked: true, reason: 'unavailable' };
   }
+  if (/出错了|请尝试重新加载|something went wrong|please try reloading|try reloading/.test(source)) {
+    return { blocked: true, reason: 'timeline_error' };
+  }
 
   return { blocked: false, reason: null };
 }
