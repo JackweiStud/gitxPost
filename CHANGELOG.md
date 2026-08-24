@@ -10,6 +10,167 @@
   - 仍未解决的边界或风险
 - 如果改动影响验收方式或测试结论，需要同步更新 `CI/` 目录下的文档。
 
+日期：2026-08-24
+
+## 调整：最后一班按任务开始时刻判断，网页扫描超时加到 180 分钟
+
+范围：`xpost.py`、`scripts/daily_scheduler.sh`、`test_scheduler.py`、`web/api/server.py`、`web/ui/src/api/xpost.js`、`web/ui/src/views/Dashboard.vue`、`CI/test-cases.md`
+
+### 问题
+
+- 是否最后一班在扫描结束后用当前时钟判断，长扫描会滑出 90 分钟窗口，当天可能没日报。
+- `should-full` 失败时回退 `HOUR>=20`，只设凌晨 1:00 时又变回只扫不出报；JSON 解析失败还会被 `set -e` 打死。
+- 网页扫描超时仍是 90 分钟，100 个串行 CDP 失败路径（45s 超时 + 间隔 + 补跑）会超过。
+
+### 变更
+
+- `daily_scheduler.sh` 在任务开始时记下 `START_TS`，`scheduler should-full --now` 用这个时刻判断最后一班和当天日报是否已存在。
+- 90 分钟 grace 只覆盖 launchd 迟到，不再被扫描耗时吃掉。
+- `should-full` 失败改为回退「开始时刻是否最后一班」，不再用 `HOUR>=20`；解析失败不会中断脚本。
+- 网页扫描超时 180 分钟，立即执行 210 分钟；前后端对齐。
+
+### 验证
+
+- `python3 -m unittest test_x_ideas_scan_auto_source.py test_scheduler.py`
+
+### 风险
+
+- 扫描若跨过午夜，`radar-daily` 仍按当时日历日写文件，日报日期可能落到第二天。
+- 任务开始时刻晚于最晚一班 +90 分钟时，仍可能只扫不出报。
+
+日期：2026-08-24
+
+## 调整：失败账号留给后续班次补扫
+
+范围：`xinfo/x_ideas_scan.py`、`test_x_ideas_scan_auto_source.py`、`web/ui/src/views/Dashboard.vue`、`CI/test-cases.md`、`xinfo/README.md`
+
+### 问题
+
+- 后续班次按「今日已出现在 scanned_accounts」跳过，失败账号和 guard 导致的 SKIP 都不会再扫。
+- 分班间隔本应用来给登录态降温后补扫失败账号，实际只服务还没抽到的账号。
+
+### 变更
+
+- 选下一批时只跳过今日已成功账号；失败账号重新进入剩余池。
+- guard 触发后未真正打开主页的账号不再记入 `scanned_accounts` / `failed_accounts`，留给后续班次。
+- 本批内失败账号仍只在整轮结束后补跑一次。
+- 当天全部成功才返回 `radar_scan_day_complete`。
+
+### 验证
+
+- `python3 -m unittest test_x_ideas_scan_auto_source.py test_scheduler.py`
+
+### 风险
+
+- 若某些账号每班都失败，remaining 不会到 0，需靠当天最后一班窗口出日报。
+- 旧快照若只有 `scanned_accounts`、没有 `failed_accounts`，仍会把名单里的账号都当成已成功。
+
+日期：2026-08-24
+
+## 调整：网页可改调度时刻，当天扫完即出日报
+
+范围：`xpost.py`、`scripts/daily_scheduler.sh`、`web/ui/src/views/Dashboard.vue`、`CI/test-cases.md`、`test_scheduler.py`
+
+### 问题
+
+- 网页「修改时间」不能填写自定义时刻，安装仍写死 09:00 / 14:00 / 20:00。
+- 日报判断写死 `HOUR>=20`，只设凌晨 1:00 时只会扫描、当天没有日报。
+
+### 变更
+
+- 网页可填写逗号分隔的 `HH:MM`，兼容多分班扫描。
+- 去掉「只填 09:00 就展开成三班」的特殊规则。
+- 扫描后若当天剩余账号为 0，或当前落在当天最后一班窗口（最晚时刻起 90 分钟内、不跨午夜），则生成日报；当天日报已存在则跳过。
+- 「立即执行」仍强制完整流水线。
+
+### 验证
+
+- `python3 -m unittest test_scheduler.py`：9 passed.
+
+### 风险
+
+- 账号很多且当天只设一班时，最后一班仍会出日报，但可能尚未扫完全部账号。
+
+日期：2026-08-24
+
+## 调整：雷达扫描默认改为一次 100 个账号
+
+范围：`xinfo/x_ideas_scan.py`、`xpost.py`、`scripts/daily_scheduler.sh`、`web/api/server.py`、`web/ui/src/views/Dashboard.vue`、`CI/test-cases.md`
+
+### 问题
+
+- 默认 `--limit 50` 偏保守；2026-08-24 实测一次 100 个账号可跑完。
+
+### 变更
+
+- 默认 `limit` 改为 100（CLI / 网页 / 调度脚本对齐）。
+- 同日多批次逻辑不变：后续班次仍跳过今日已扫账号。
+- 网页扫描预估改为约 25–40 分钟。
+
+### 验证
+
+- 当日 CDP 间隔 1–10s、一次 100 个：成功 98/100，耗时 30m25s。
+- 当日活跃账号已全部扫完（含尾批 2 个）。
+
+### 风险
+
+- 连续打开主页仍可能出现空时间线 / `timeline_error`；失败账号整轮后再补一次。
+
+日期：2026-08-24
+
+## 调整：CDP 账号间隔改为 1–10 秒
+
+范围：`xinfo/x_ideas_scan.py`、`web/api/server.py`、`web/ui/src/views/Dashboard.vue`
+
+### 问题
+
+- 默认 CDP 间隔 3–30 秒，50 个账号一轮偏慢。
+
+### 变更
+
+- `XPOST_RADAR_CDP_JITTER_MIN/MAX` 默认改为 `1` / `10`。
+- 网页扫描预估改为约 15–30 分钟。
+
+### 验证
+
+- 代码默认值已改为 1–10；仍可用环境变量覆盖。
+
+### 风险
+
+- 间隔缩短后，连续打开主页更容易触发空时间线或限流。
+- 正在跑的扫描不会热更新，需等本轮结束或重开才会用新间隔。
+
+日期：2026-08-23
+
+## 调整：雷达扫描改为同日多批次，默认 limit 50
+
+范围：`xinfo/x_ideas_scan.py`、`xpost.py`、`scripts/daily_scheduler.sh`、`scripts/com.gitxpost.daily.plist`、`web/api/server.py`、`web/ui/src/views/Dashboard.vue`、`web/ui/src/api/xpost.js`、`test_x_ideas_scan_auto_source.py`、`CI/test-cases.md`
+
+### 问题
+
+- 默认每轮只随机抽 40 个账号，231 个活跃账号覆盖率不足；同日第二轮 CDP 直接拒绝，无法续扫剩余账号。
+- 账号选择没有「今日已扫过则跳过」的记忆，随机截断会重复命中、长期漏扫。
+
+### 变更
+
+- 默认 `--limit 50`；CLI / 网页 / 调度脚本对齐。
+- 同一自然日后续批次跳过今日已尝试账号，从剩余账号再抽 50 个；全部尝试完后返回 `radar_scan_day_complete`，不覆盖当天快照。
+- `--force` 忽略今日已扫集合再抽一批；`--limit 1` smoke 不写入当天 `_result.json`。
+- 当天 `_result.json` / `RESULT.json` 按批次累计合并（`scanned_accounts`、`batches`、预览）。
+- 调度默认 09:00 / 14:00 / 20:00；前两班只扫描，20:00 扫描后跑日报、机会和粉丝统计。「立即执行」仍跑完整流水线。
+
+### 验证
+
+- `python3 -m unittest test_x_ideas_scan_auto_source.py`：14 项通过。
+- `python3 xpost.py scheduler install` 后 `status` 显示 `09:00 / 14:00 / 20:00`，下次运行为 `2026-08-24 09:00:00`。
+- 单实例检测会忽略启动链条上的 zsh / xpost 祖先进程，避免把「正在启动的这次扫描」误判为已有扫描。
+
+### 风险
+
+- 50 个账号仍贴近此前「约 50 个开始空时间线」的边界；批次间隔约 5 小时用于登录态降温。
+- 旧的当天结果若没有 `scanned_accounts`，会尝试从当天日志解析；解析失败时可能与上午批次少量重叠。
+- 今天 20:00 已过，本机下一班是明天 09:00；若今晚还要再扫一批，需手工再跑一次 `radar-scan`。
+
 日期：2026-08-22
 
 ## 调整：CDP 扫描降速，失败改为整轮后补跑一次

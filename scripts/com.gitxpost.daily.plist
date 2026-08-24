@@ -10,13 +10,7 @@
     <string>/bin/bash</string>
     <string>/Users/jackwl/Code/gitcode/gitxPost/scripts/daily_scheduler.sh</string>
   </array>
-  <key>StartCalendarInterval</key>
-  <dict>
-    <key>Hour</key>
-    <integer>{HOUR}</integer>
-    <key>Minute</key>
-    <integer>{MINUTE}</integer>
-  </dict>
+  {CALENDAR_INTERVALS}
   <key>StandardOutPath</key>
   <string>/Users/jackwl/Code/gitcode/gitxPost/xinfo/log/runtime/launchd_stdout.log</string>
   <key>StandardErrorPath</key>

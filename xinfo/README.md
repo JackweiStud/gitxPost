@@ -48,12 +48,12 @@ python xpost.py radar-scan
 结果文件说明：
 
 - `RESULT.json`
-  - 最新一次扫描快照
-  - 每次运行覆盖，不按天保留
+  - 最新扫描快照（当天多批次时为累计合并结果）
+  - 普通扫描会覆盖；`--limit 1` 的 smoke 不改写当天 `_result.json`
 - `log/day/YYYY-MM-DD.log`
   - 天级扫描日志
 - `log/day/YYYY-MM-DD_result.json`
-  - 天级扫描结果快照
+  - 当天累计扫描快照，含 `scanned_accounts`（实际请求过的账号）与 `batches`；后续班次跳过已成功账号，失败账号会再扫
 - `log/day/YYYY-MM-DD_analysis.json`
   - 天级分析结果
 - `log/day/YYYY-MM-DD.md`

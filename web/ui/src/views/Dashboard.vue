@@ -344,7 +344,7 @@
           {{ schedulerRunning ? '执行中…' : '立即执行' }}
         </button>
         <button class="btn-link" @click="toggleLogs">{{ showLogs ? '隐藏日志' : '查看日志' }}</button>
-        <button class="btn-link" @click="showInstallModal = true">修改时间</button>
+        <button class="btn-link" @click="openSchedulerModal">修改时间</button>
         <button class="btn-link danger" @click="uninstallScheduler">卸载</button>
       </div>
     </div>
@@ -356,10 +356,10 @@
         <span class="badge badge-gray">🔴 未安装</span>
       </div>
       <div class="scheduler-empty">
-        <p>定时任务未安装，安装后将每天自动执行扫描、日报和粉丝统计。</p>
+        <p>定时任务未安装。安装后按你设定的时刻分批扫描，当天全部成功或任务开始时刻落在当天最后一班时生成日报。</p>
       </div>
       <div class="scheduler-actions">
-        <button class="btn btn-primary" @click="showInstallModal = true">
+        <button class="btn btn-primary" @click="openSchedulerModal">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
           安装调度器
         </button>
@@ -389,11 +389,17 @@
         <div class="modal-body">
           <label class="form-label">执行时间</label>
           <input
-            type="time"
             v-model="installTime"
             class="form-input"
+            type="text"
+            placeholder="09:00,14:00,20:00"
+            autocomplete="off"
+            @keyup.enter="installScheduler"
           />
-          <p class="form-hint">调度器将在每天指定时间自动执行扫描、日报和粉丝统计任务</p>
+          <p class="form-hint">
+            逗号分隔多个时刻，例如 <code>09:00,14:00,20:00</code> 或只填 <code>01:00</code>。
+            每班最多 100 个尚未成功的账号；失败账号会在后续班次补扫。当天全部成功，或任务开始时刻落在当天最后一班（不跨午夜），会生成日报、机会和粉丝统计。立即执行仍跑完整流水线。
+          </p>
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" @click="showInstallModal = false">取消</button>
@@ -433,14 +439,14 @@ const sparklineHeight = 38
 // Scheduler state
 const schedulerStatus = ref(null)
 const showInstallModal = ref(false)
-const installTime = ref('09:00')
+const installTime = ref('09:00,14:00,20:00')
 const installing = ref(false)
 const schedulerRunning = ref(false)
 const showLogs = ref(false)
 const schedulerLogs = ref(null)
 
 const pipelineSteps = ref([
-  { id: 'scan', label: '雷达扫描', desc: 'auto：RSS 失败则 CDP，最多 40 账号，失败整轮后再补一次', estimate: '约 20-40 分钟', status: 'pending', startTime: null, duration: null },
+  { id: 'scan', label: '雷达扫描', desc: 'auto：RSS 失败则 CDP，最多 100 账号，失败整轮后再补一次', estimate: '约 25-40 分钟，失败偏多最多约 3 小时', status: 'pending', startTime: null, duration: null },
   { id: 'daily', label: '生成日报', desc: 'AI 筛选并生成 Markdown 日报', estimate: '2-5 分钟', status: 'pending', startTime: null, duration: null },
 ])
 
@@ -775,7 +781,7 @@ function handleFocusAction(actionId) {
       router.push('/followers')
       break
     case 'open-scheduler':
-      showInstallModal.value = true
+      openSchedulerModal()
       break
   }
 }
@@ -795,7 +801,7 @@ async function handleTimelineAction(actionId) {
       router.push('/followers')
       break
     case 'open-scheduler':
-      showInstallModal.value = true
+      openSchedulerModal()
       break
     case 'toggle-logs':
       if (!showLogs.value) {
@@ -930,7 +936,7 @@ async function runFullPipeline() {
 }
 
 async function runScanOnly() {
-  appStore.notify('开始雷达扫描（auto，最多 40 账号）...', 'info', 8000)
+  appStore.notify('开始雷达扫描（auto，最多 100 账号）...', 'info', 8000)
   try {
     await api.runScan()
     appStore.notify('扫描完成', 'success')
@@ -959,10 +965,51 @@ async function runBestTimeAnalysis() {
   }
 }
 
+function openSchedulerModal() {
+  const times = schedulerStatus.value?.scheduled_times
+  installTime.value = Array.isArray(times) && times.length
+    ? times.join(',')
+    : '09:00,14:00,20:00'
+  showInstallModal.value = true
+}
+
+function parseSchedulerTimesInput(raw) {
+  const parts = String(raw || '')
+    .split(/[,;]/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+  if (!parts.length) {
+    return { ok: false, error: '请填写至少一个 HH:MM' }
+  }
+  const seen = new Set()
+  const normalized = []
+  for (const part of parts) {
+    const match = part.match(/^(\d{1,2}):(\d{2})$/)
+    if (!match) {
+      return { ok: false, error: `时间格式错误: ${part}` }
+    }
+    const hour = Number(match[1])
+    const minute = Number(match[2])
+    if (hour > 23 || minute > 59) {
+      return { ok: false, error: `时间无效: ${part}` }
+    }
+    const item = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+    if (seen.has(item)) continue
+    seen.add(item)
+    normalized.push(item)
+  }
+  return { ok: true, value: normalized.join(',') }
+}
+
 async function installScheduler() {
+  const parsed = parseSchedulerTimesInput(installTime.value)
+  if (!parsed.ok) {
+    appStore.notify(parsed.error, 'error')
+    return
+  }
   installing.value = true
   try {
-    const result = await api.installScheduler(installTime.value)
+    const result = await api.installScheduler(parsed.value)
     if (result.ok) {
       appStore.notify(result.message || '调度器安装成功', 'success')
       showInstallModal.value = false
@@ -2056,6 +2103,11 @@ onUnmounted(stopTimer)
   color: var(--text-tertiary);
   margin-top: 8px;
   line-height: 1.5;
+}
+
+.form-hint code {
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
 .badge-gray {

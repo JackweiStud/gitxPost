@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updated_at": "2026-08-22T01:57:53.084404",
+  "updated_at": "2026-08-24T02:40:06.001981",
   "accounts": [
     {
       "handle": "dashen_wang",
@@ -548,8 +548,9 @@
     {
       "handle": "NotebookLM",
       "note": "NotebookLM，Think smarter, not harder. Meet your brain's new best friend",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-08-23"
     },
     {
       "handle": "GoogleLabs",
@@ -640,8 +641,9 @@
     {
       "handle": "xai",
       "note": "xAI",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-08-23"
     },
     {
       "handle": "AIatMeta",
@@ -768,8 +770,9 @@
     {
       "handle": "JermicX",
       "note": "Jermic 𝕏 ，正在做：AIART - AI 提示词灵感库、PicSeed - 灵感收集助手",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-08-24"
     },
     {
       "handle": "raindesign007",
@@ -1006,8 +1009,9 @@
     {
       "handle": "heyshrutimishra",
       "note": "Shruti，Reality is programmable ｜ Building digital leverage w/ AI...",
-      "status": "active",
-      "added_at": "2026-01-01"
+      "status": "removed",
+      "added_at": "2026-01-01",
+      "removed_at": "2026-08-22"
     },
     {
       "handle": "Wasay6797",

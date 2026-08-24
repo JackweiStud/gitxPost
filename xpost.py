@@ -34,7 +34,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 from pathlib import Path
 from typing import Optional
@@ -2369,7 +2369,7 @@ def _cmd_radar_scan(_args):
             "ok": ok,
             "command": "radar-scan",
             "source": getattr(_args, "source", None) or os.environ.get("XPOST_RADAR_SOURCE") or "auto",
-            "limit": getattr(_args, "limit", 40),
+            "limit": getattr(_args, "limit", 100),
             "result_path": str(result_path),
             "day_result_path": str(day_result_path),
             "result": parsed,
@@ -2943,6 +2943,208 @@ def _detect_chrome_version():
         return None
 
 
+DEFAULT_SCHEDULER_TIMES = ["09:00", "14:00", "20:00"]
+SCHEDULER_LAST_SLOT_GRACE_MIN = 90
+SCHEDULER_TIMES_FILE = XINFO_RUNTIME_DIR / "scheduler_times.json"
+
+
+def _parse_hhmm(value):
+    hour, minute = map(int, value.strip().split(":"))
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise ValueError(value)
+    return hour, minute
+
+
+def _hhmm_to_minutes(value):
+    hour, minute = _parse_hhmm(value)
+    return hour * 60 + minute
+
+
+def _parse_scheduler_times(time_str):
+    raw = (time_str or "").strip()
+    if not raw:
+        return list(DEFAULT_SCHEDULER_TIMES)
+    parts = [part.strip() for part in raw.replace(";", ",").split(",") if part.strip()]
+    times = []
+    seen = set()
+    for part in parts:
+        hour, minute = _parse_hhmm(part)
+        item = f"{hour:02d}:{minute:02d}"
+        if item in seen:
+            continue
+        seen.add(item)
+        times.append(item)
+    if not times:
+        return list(DEFAULT_SCHEDULER_TIMES)
+    return times
+
+
+def _format_scheduler_times(times):
+    return " / ".join(times)
+
+
+def _calendar_interval_xml(times):
+    blocks = []
+    for item in times:
+        hour, minute = _parse_hhmm(item)
+        blocks.append(
+            "  <dict>\n"
+            f"    <key>Hour</key>\n    <integer>{hour}</integer>\n"
+            f"    <key>Minute</key>\n    <integer>{minute}</integer>\n"
+            "  </dict>"
+        )
+    inner = "\n".join(blocks)
+    return (
+        "<key>StartCalendarInterval</key>\n"
+        "<array>\n"
+        f"{inner}\n"
+        "</array>"
+    )
+
+
+def _plist_schedule_times(plist_target):
+    import xml.etree.ElementTree as ET
+    tree = ET.parse(plist_target)
+    root = tree.getroot()
+    plist_dict = root.find("dict")
+    children = list(plist_dict)
+    times = []
+    for index, node in enumerate(children):
+        if node.tag != "key" or node.text != "StartCalendarInterval":
+            continue
+        value = children[index + 1]
+        dicts = [child for child in list(value) if child.tag == "dict"] if value.tag == "array" else ([value] if value.tag == "dict" else [])
+        for interval in dicts:
+            hour = 0
+            minute = 0
+            items = list(interval)
+            for item_index, item in enumerate(items):
+                if item.tag == "key" and item.text == "Hour":
+                    hour = int(items[item_index + 1].text)
+                elif item.tag == "key" and item.text == "Minute":
+                    minute = int(items[item_index + 1].text)
+            times.append(f"{hour:02d}:{minute:02d}")
+    return times
+
+
+def _next_run_from_times(times):
+    now = datetime.now()
+    candidates = []
+    for item in times:
+        hour, minute = _parse_hhmm(item)
+        candidate = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if candidate <= now:
+            candidate = candidate + timedelta(days=1)
+        candidates.append(candidate)
+    if not candidates:
+        return None
+    return min(candidates).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _write_scheduler_times(times):
+    XINFO_RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    payload = {"times": list(times)}
+    SCHEDULER_TIMES_FILE.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _load_installed_scheduler_times(plist_target=None):
+    if SCHEDULER_TIMES_FILE.exists():
+        try:
+            data = json.loads(SCHEDULER_TIMES_FILE.read_text(encoding="utf-8"))
+            times = data.get("times") or []
+            if times:
+                return _parse_scheduler_times(",".join(str(item) for item in times))
+        except Exception:
+            pass
+    target = plist_target or (Path.home() / "Library" / "LaunchAgents" / "com.gitxpost.daily.plist")
+    if target.exists():
+        try:
+            times = _plist_schedule_times(target)
+            if times:
+                return times
+        except Exception:
+            pass
+    return list(DEFAULT_SCHEDULER_TIMES)
+
+
+def _parse_scheduler_now(value):
+    if value is None or str(value).strip() == "":
+        return datetime.now()
+    raw = str(value).strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(raw, fmt)
+        except ValueError:
+            continue
+    raise ValueError(raw)
+
+
+def _is_last_scheduler_slot(now, times, grace_min=SCHEDULER_LAST_SLOT_GRACE_MIN):
+    """now 应为任务触发时刻，而不是扫描结束时刻。grace 只覆盖 launchd 迟到，不含扫描耗时。"""
+    if not times:
+        return False
+    last = max(_hhmm_to_minutes(item) for item in times)
+    now_m = now.hour * 60 + now.minute
+    end = min(last + max(0, int(grace_min)), 24 * 60 - 1)
+    return last <= now_m <= end
+
+
+def _scheduler_report_exists(now=None, day_dir=None):
+    day = (now or datetime.now()).strftime("%Y-%m-%d")
+    path = (day_dir or XINFO_DAY_DIR) / f"{day}.md"
+    try:
+        return path.is_file() and path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _today_remaining_account_count():
+    from xinfo import x_ideas_scan as scan
+
+    selected, _completed = scan._select_scan_accounts(scan.TARGET_ACCOUNTS, limit=0, force=False)
+    return len(selected)
+
+
+def _scheduler_should_full(
+    *,
+    now=None,
+    scheduled_times=None,
+    remaining_count=None,
+    report_exists=None,
+    day_dir=None,
+):
+    now = now or datetime.now()
+    times = list(scheduled_times) if scheduled_times is not None else _load_installed_scheduler_times()
+    if remaining_count is None:
+        remaining_count = _today_remaining_account_count()
+    if report_exists is None:
+        report_exists = _scheduler_report_exists(now=now, day_dir=day_dir)
+
+    day_complete = int(remaining_count) <= 0
+    last_slot = _is_last_scheduler_slot(now, times)
+    if report_exists:
+        reason = "already_reported"
+        full = False
+    elif day_complete:
+        reason = "day_complete"
+        full = True
+    elif last_slot:
+        reason = "last_slot"
+        full = True
+    else:
+        reason = "scan_only"
+        full = False
+    return {
+        "full": full,
+        "reason": reason,
+        "day_complete": day_complete,
+        "last_slot": last_slot,
+        "remaining_count": int(remaining_count),
+        "scheduled_times": times,
+        "report_exists": bool(report_exists),
+    }
+
+
 def _cmd_scheduler(args):
     """管理 launchd 定时任务调度器"""
     action = args.action
@@ -2952,15 +3154,12 @@ def _cmd_scheduler(args):
     label = "com.gitxpost.daily"
 
     if action == "install":
-        # 解析时间参数
-        time_str = args.time or "09:00"
         try:
-            hour, minute = map(int, time_str.split(":"))
-            if not (0 <= hour <= 23 and 0 <= minute <= 59):
-                raise ValueError
+            times = _parse_scheduler_times(getattr(args, "time", None))
         except Exception:
-            _print_json({"ok": False, "error": f"时间格式错误，应为 HH:MM (00:00-23:59)，收到: {time_str}"})
+            _print_json({"ok": False, "error": f"时间格式错误，应为 HH:MM 或逗号分隔，收到: {getattr(args, 'time', None)}"})
             return 1
+        time_str = _format_scheduler_times(times)
 
         # 检查脚本是否存在
         if not scheduler_script.exists():
@@ -2973,8 +3172,13 @@ def _cmd_scheduler(args):
             return 1
 
         plist_content = plist_template.read_text(encoding="utf-8")
-        plist_content = plist_content.replace("{HOUR}", str(hour))
-        plist_content = plist_content.replace("{MINUTE}", str(minute))
+        calendar_xml = _calendar_interval_xml(times)
+        if "{CALENDAR_INTERVALS}" in plist_content:
+            plist_content = plist_content.replace("{CALENDAR_INTERVALS}", calendar_xml)
+        else:
+            first_hour, first_minute = _parse_hhmm(times[0])
+            plist_content = plist_content.replace("{HOUR}", str(first_hour))
+            plist_content = plist_content.replace("{MINUTE}", str(first_minute))
 
         # 如果已安装，先卸载
         if plist_target.exists():
@@ -2983,6 +3187,7 @@ def _cmd_scheduler(args):
         # 写入 plist
         plist_target.parent.mkdir(parents=True, exist_ok=True)
         plist_target.write_text(plist_content, encoding="utf-8")
+        _write_scheduler_times(times)
 
         # 加载到 launchd
         proc = subprocess.run(["launchctl", "load", str(plist_target)], capture_output=True, text=True)
@@ -2998,13 +3203,14 @@ def _cmd_scheduler(args):
             "ok": True,
             "action": "install",
             "scheduled_time": time_str,
+            "scheduled_times": times,
             "plist_path": str(plist_target),
-            "message": f"调度器已安装，将在每天 {time_str} 执行",
+            "message": f"调度器已安装，将在每天 {time_str} 执行。当天全部成功或任务开始时刻落在当天最后一班时生成日报。",
         })
         return 0
 
     elif action == "uninstall":
-        if not plist_target.exists():
+        if not plist_target.exists() and not SCHEDULER_TIMES_FILE.exists():
             _print_json({
                 "ok": True,
                 "action": "uninstall",
@@ -3013,8 +3219,11 @@ def _cmd_scheduler(args):
             return 0
 
         # 卸载
-        proc = subprocess.run(["launchctl", "unload", str(plist_target)], capture_output=True, text=True)
-        plist_target.unlink()
+        if plist_target.exists():
+            subprocess.run(["launchctl", "unload", str(plist_target)], capture_output=True, text=True)
+            plist_target.unlink()
+        if SCHEDULER_TIMES_FILE.exists():
+            SCHEDULER_TIMES_FILE.unlink()
 
         _print_json({
             "ok": True,
@@ -3027,37 +3236,14 @@ def _cmd_scheduler(args):
         # 检查 plist 是否存在
         installed = plist_target.exists()
         scheduled_time = None
+        scheduled_times = []
         next_run = None
 
         if installed:
-            # 解析 plist 获取时间
             try:
-                import xml.etree.ElementTree as ET
-                tree = ET.parse(plist_target)
-                root = tree.getroot()
-                plist_dict = root.find("dict")
-                keys = list(plist_dict.iter("key"))
-                for i, key in enumerate(keys):
-                    if key.text == "StartCalendarInterval":
-                        interval_dict = list(plist_dict)[i + 1]
-                        hour_elem = None
-                        minute_elem = None
-                        for j, k in enumerate(interval_dict.iter("key")):
-                            if k.text == "Hour":
-                                hour_elem = list(interval_dict)[j + 1]
-                            elif k.text == "Minute":
-                                minute_elem = list(interval_dict)[j + 1]
-                        if hour_elem is not None and minute_elem is not None:
-                            hour = int(hour_elem.text)
-                            minute = int(minute_elem.text)
-                            scheduled_time = f"{hour:02d}:{minute:02d}"
-                            
-                            # 计算下次执行时间
-                            now = datetime.now()
-                            next_run_dt = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-                            if next_run_dt <= now:
-                                next_run_dt = next_run_dt.replace(day=now.day + 1)
-                            next_run = next_run_dt.strftime("%Y-%m-%d %H:%M:%S")
+                scheduled_times = _load_installed_scheduler_times(plist_target)
+                scheduled_time = _format_scheduler_times(scheduled_times) if scheduled_times else None
+                next_run = _next_run_from_times(scheduled_times) if scheduled_times else None
             except Exception:
                 pass
 
@@ -3085,6 +3271,7 @@ def _cmd_scheduler(args):
             "action": "status",
             "installed": installed,
             "scheduled_time": scheduled_time,
+            "scheduled_times": scheduled_times,
             "next_run": next_run,
             "last_run": last_run,
             "plist_path": str(plist_target) if installed else None,
@@ -3098,7 +3285,7 @@ def _cmd_scheduler(args):
 
         # 直接执行脚本
         start_ts = time.time()
-        proc = subprocess.run(["/bin/bash", str(scheduler_script)], capture_output=True, text=True, cwd=str(BASE_DIR))
+        proc = subprocess.run(["/bin/bash", str(scheduler_script), "full"], capture_output=True, text=True, cwd=str(BASE_DIR))
         total_ms = int((time.time() - start_ts) * 1000)
 
         _print_json({
@@ -3110,6 +3297,24 @@ def _cmd_scheduler(args):
             "timings": {"total_ms": total_ms},
         })
         return 0 if proc.returncode == 0 else 1
+
+    elif action == "should-full":
+        try:
+            now = _parse_scheduler_now(getattr(args, "now", None))
+        except Exception:
+            _print_json({
+                "ok": False,
+                "action": "should-full",
+                "error": f"时间格式错误，应为 YYYY-MM-DD HH:MM:SS，收到: {getattr(args, 'now', None)}",
+            })
+            return 1
+        decision = _scheduler_should_full(now=now)
+        _print_json({
+            "ok": True,
+            "action": "should-full",
+            **decision,
+        })
+        return 0
 
     elif action == "logs":
         lines_limit = args.lines or 50
@@ -3434,13 +3639,13 @@ def main():
     p_radar_scan.add_argument(
         "--limit",
         type=int,
-        default=int(os.environ.get("XPOST_RADAR_ACCOUNT_LIMIT", "40") or "40"),
-        help="Limit scanned accounts; 0 means all active accounts (default: 40)",
+        default=int(os.environ.get("XPOST_RADAR_ACCOUNT_LIMIT", "100") or "100"),
+        help="Limit scanned accounts; 0 means all remaining active accounts (default: 100)",
     )
     p_radar_scan.add_argument(
         "--force",
         action="store_true",
-        help="Ignore same-day CDP cooldown and run another scan today",
+        help="Ignore today's successful-account set and pick another batch",
     )
     p_radar_scan.set_defaults(func=_cmd_radar_scan)
 
@@ -3502,8 +3707,15 @@ def main():
     p_following_sync.set_defaults(func=_cmd_following_sync)
 
     p_scheduler = sub.add_parser("scheduler", help="Manage launchd daily task scheduler")
-    p_scheduler.add_argument("action", choices=["install", "uninstall", "status", "run-now", "logs"], help="Scheduler action")
-    p_scheduler.add_argument("--time", help="Scheduled time in HH:MM format (default: 09:00, only for install)")
+    p_scheduler.add_argument("action", choices=["install", "uninstall", "status", "run-now", "logs", "should-full"], help="Scheduler action")
+    p_scheduler.add_argument(
+        "--time",
+        help="Scheduled time(s) in HH:MM, comma-separated (default: 09:00,14:00,20:00; only for install)",
+    )
+    p_scheduler.add_argument(
+        "--now",
+        help="Decision clock YYYY-MM-DD HH:MM:SS for should-full (pass job start time, not scan end time)",
+    )
     p_scheduler.add_argument("--lines", type=int, default=50, help="Number of log lines to show (only for logs)")
     p_scheduler.set_defaults(func=_cmd_scheduler)
 

@@ -190,7 +190,7 @@ python /Users/jackwl/Code/gitcode/gitxPost/xpost.py post "smoke image test" \
 
 执行：
 
-CLI / 网页「重跑扫描」/ launchd 每日任务当前默认均为 auto、最多 40 账号：
+CLI / 网页「重跑扫描」/ launchd 每日任务当前默认均为 auto、最多 100 账号：
 
 ```bash
 source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
@@ -203,13 +203,13 @@ python /Users/jackwl/Code/gitcode/gitxPost/xpost.py radar-scan
 python /Users/jackwl/Code/gitcode/gitxPost/xpost.py radar-scan --source auto --limit 1
 ```
 
-同一天再跑一轮 CDP 需显式：
+同一天再跑一批（跳过今日已成功账号，失败会补扫）直接再执行 `radar-scan`。若要重复抽取已成功账号：
 
 ```bash
 python /Users/jackwl/Code/gitcode/gitxPost/xpost.py radar-scan --force
 ```
 
-全量（全部活跃账号）需显式：
+全量（全部剩余活跃账号）需显式：
 
 ```bash
 python /Users/jackwl/Code/gitcode/gitxPost/xpost.py radar-scan --limit 0
@@ -219,16 +219,17 @@ python /Users/jackwl/Code/gitcode/gitxPost/xpost.py radar-scan --limit 0
 - 返回 JSON：`ok=true`
 - `xinfo/RESULT.json` 被写入
 - 输出中包含 `successful_accounts`、`failed_accounts`、`new_items_count`
-- 不传参时 `source=auto`、`limit=40`
+- 不传参时 `source=auto`、`limit=100`
 - `auto` 且 RSS 不可用时：`effective_source=cdp`，账号数不超过 `--limit`
 - CDP 失败账号不会立刻重试；整轮名单跑完后各补跑 1 次
 - 本轮扫描账号全部失败时：`RESULT.json` 的 `success=false`，CLI 退出码非 0（按 limit 后的账号数判定，不是全量活跃账号）
-- 同一自然日已完成一轮 CDP（账号数 > 1）后再跑：`error_type=radar_scan_same_day`，不覆盖当天 `_result.json`；`--force` 可继续
+- 同一自然日后续批次跳过今日已成功账号；失败账号及 guard 未请求账号会在后续班次补扫。全部成功后 `error_type=radar_scan_day_complete`，不覆盖当天 `_result.json`；`--force` 可继续
+- launchd 默认 09:00 / 14:00 / 20:00；网页可改逗号分隔时刻。每班最多 100 个尚未成功的账号（失败会补扫）。当天全部成功，或任务开始时刻落在当天最后一班窗口（最晚时刻起 90 分钟内、不跨午夜），生成日报；今日日报已存在则跳过。立即执行仍跑完整流水线。网页扫描 HTTP 超时 180 分钟，立即执行 210 分钟。
 
 单元测试：
 
 ```bash
-python3 -m unittest test_x_ideas_scan_auto_source.py
+python3 -m unittest test_x_ideas_scan_auto_source.py test_scheduler.py
 ```
 
 ### TC-09 Radar 分析

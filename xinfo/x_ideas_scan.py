@@ -349,14 +349,14 @@ MAX_PER_ACCOUNT = 5      # 每个账号最多保留的推文数
 DATA_SOURCE = os.environ.get("XPOST_RADAR_SOURCE", "auto").strip().lower()
 EFFECTIVE_SOURCE = DATA_SOURCE
 AUTO_PROBE_ACCOUNT = os.environ.get("XPOST_RADAR_AUTO_PROBE_ACCOUNT", "sama").strip().lstrip("@") or "sama"
-DEFAULT_ACCOUNT_LIMIT = 40
+DEFAULT_ACCOUNT_LIMIT = 100
 ACCOUNT_LIMIT = int(os.environ.get("XPOST_RADAR_ACCOUNT_LIMIT", str(DEFAULT_ACCOUNT_LIMIT)) or str(DEFAULT_ACCOUNT_LIMIT))
 CDP_SCRIPT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "scripts", "x_profile_timeline_cdp.js"))
 CDP_PER_ACCOUNT_TIMEOUT = int(os.environ.get("XPOST_RADAR_CDP_TIMEOUT", "45") or "45")
 CDP_LIMIT_ITEMS = int(os.environ.get("XPOST_RADAR_CDP_LIMIT_ITEMS", str(MAX_PER_ACCOUNT)) or str(MAX_PER_ACCOUNT))
 CDP_MAX_RETRIES = int(os.environ.get("XPOST_RADAR_CDP_RETRIES", "0") or "0")
-CDP_JITTER_MIN = float(os.environ.get("XPOST_RADAR_CDP_JITTER_MIN", "3") or "3")
-CDP_JITTER_MAX = float(os.environ.get("XPOST_RADAR_CDP_JITTER_MAX", "30") or "30")
+CDP_JITTER_MIN = float(os.environ.get("XPOST_RADAR_CDP_JITTER_MIN", "1") or "1")
+CDP_JITTER_MAX = float(os.environ.get("XPOST_RADAR_CDP_JITTER_MAX", "10") or "10")
 CDP_DEFERRED_RETRY_PAUSE = float(os.environ.get("XPOST_RADAR_CDP_RETRY_PAUSE", "60") or "60")
 if CDP_JITTER_MAX < CDP_JITTER_MIN:
     CDP_JITTER_MIN, CDP_JITTER_MAX = CDP_JITTER_MAX, CDP_JITTER_MIN
@@ -419,36 +419,176 @@ def _load_json_file(path):
         return None
 
 
+_SKIP_RESULT_ERROR_TYPES = (
+    "radar_scan_already_running",
+    "radar_scan_same_day",
+    "radar_scan_day_complete",
+)
+
+
+def _scan_log_account_re(kinds=("OK", "FAIL")):
+    labels = "|".join(kinds)
+    return re.compile(
+        rf"\] (?:{labels})\s+(?:\[[^\]]+\] )?@([A-Za-z0-9_]+)",
+        re.IGNORECASE,
+    )
+
+
+def _normalize_handle(handle):
+    return str(handle or "").strip().lstrip("@")
+
+
+def _unique_keep_order(items):
+    return list(dict.fromkeys(item for item in items if item))
+
+
+def _is_usable_scan_result(data) -> bool:
+    if not isinstance(data, dict):
+        return False
+    if data.get("error_type") in _SKIP_RESULT_ERROR_TYPES:
+        return False
+    return True
+
+
 def _same_day_cdp_completed(result_path=None) -> bool:
     """同一自然日已经跑过一轮有效 CDP 扫描（smoke / 锁冲突不计）。"""
     data = _load_json_file(result_path or _day_result_path())
-    if not isinstance(data, dict):
-        return False
-    if data.get("error_type") in ("radar_scan_already_running", "radar_scan_same_day"):
+    if not _is_usable_scan_result(data):
         return False
     if data.get("effective_source") != "cdp":
         return False
+    scanned = data.get("scanned_accounts")
+    if isinstance(scanned, list) and len(scanned) > 1:
+        return True
     return int(data.get("total_accounts") or 0) > 1
 
 
-def _should_skip_same_day_cdp(effective_source, force=None, result_path=None, account_limit=None) -> bool:
+def _scanned_accounts_from_result(data):
+    if not _is_usable_scan_result(data):
+        return []
+    scanned = data.get("scanned_accounts")
+    if isinstance(scanned, list) and scanned:
+        return _unique_keep_order(_normalize_handle(item) for item in scanned)
+    batches = data.get("batches")
+    if isinstance(batches, list):
+        accounts = []
+        for batch in batches:
+            if isinstance(batch, dict):
+                accounts.extend(batch.get("accounts") or [])
+        if accounts:
+            return _unique_keep_order(_normalize_handle(item) for item in accounts)
+    return []
+
+
+def _accounts_from_day_log(log_path=None, kinds=("OK", "FAIL")):
+    path = log_path or _day_log_path()
+    if not path or not os.path.exists(path):
+        return []
+    pattern = _scan_log_account_re(kinds)
+    found = []
+    try:
+        with open(path, encoding="utf-8") as handle:
+            for line in handle:
+                match = pattern.search(line)
+                if match:
+                    found.append(match.group(1))
+    except Exception:
+        return []
+    return _unique_keep_order(found)
+
+
+def _scanned_accounts_from_day_log(log_path=None):
+    return _accounts_from_day_log(log_path, kinds=("OK", "FAIL"))
+
+
+def _completed_accounts_from_day_log(log_path=None):
+    return _accounts_from_day_log(log_path, kinds=("OK",))
+
+
+def _failed_accounts_from_result(data):
+    if not _is_usable_scan_result(data):
+        return []
+    failed = data.get("failed_accounts")
+    if not isinstance(failed, list):
+        summary = data.get("summary") if isinstance(data.get("summary"), dict) else {}
+        failed = summary.get("failed_accounts") or []
+    if not isinstance(failed, list):
+        return []
+    return _unique_keep_order(_normalize_handle(item) for item in failed)
+
+
+def _completed_accounts_from_result(data):
+    scanned = _scanned_accounts_from_result(data)
+    if not scanned:
+        return []
+    failed = set(_failed_accounts_from_result(data))
+    return [account for account in scanned if account not in failed]
+
+
+def _load_today_completed_accounts(result_path=None, log_path=None):
+    data = _load_json_file(result_path or _day_result_path())
+    scanned = _scanned_accounts_from_result(data)
+    if scanned:
+        return _completed_accounts_from_result(data)
+    if _same_day_cdp_completed(result_path):
+        return _completed_accounts_from_day_log(log_path)
+    return []
+
+
+def _select_scan_accounts(all_accounts, limit=None, force=None, result_path=None, log_path=None):
+    unique = _unique_keep_order(_normalize_handle(item) for item in all_accounts)
+    if limit is None:
+        limit = ACCOUNT_LIMIT
     if force is None:
         force = _force_scan_enabled()
-    if force or effective_source != "cdp":
+
+    if force or limit == 1:
+        pool = list(unique)
+        random.shuffle(pool)
+        selected = pool if limit <= 0 else pool[:limit]
+        return selected, []
+
+    completed = _load_today_completed_accounts(result_path=result_path, log_path=log_path)
+    completed_set = set(completed)
+    remaining = [account for account in unique if account not in completed_set]
+    random.shuffle(remaining)
+    selected = remaining if limit <= 0 else remaining[:limit]
+    return selected, completed
+
+
+def _should_skip_same_day_cdp(
+    effective_source,
+    force=None,
+    result_path=None,
+    account_limit=None,
+    all_accounts=None,
+    log_path=None,
+) -> bool:
+    if force is None:
+        force = _force_scan_enabled()
+    if force:
         return False
     if account_limit is None:
         account_limit = ACCOUNT_LIMIT
     if account_limit == 1:
         return False
-    return _same_day_cdp_completed(result_path)
+    selected, _scanned = _select_scan_accounts(
+        TARGET_ACCOUNTS if all_accounts is None else all_accounts,
+        limit=account_limit,
+        force=False,
+        result_path=result_path,
+        log_path=log_path,
+    )
+    return len(selected) == 0
 
 
 def _same_day_skip_result(existing=None):
     existing = existing if isinstance(existing, dict) else {}
+    scanned = _scanned_accounts_from_result(existing) or existing.get("scanned_accounts") or []
     return {
         "success": False,
-        "error_type": "radar_scan_same_day",
-        "error": "今日已完成一轮 CDP 扫描，如需再跑请使用 --force",
+        "error_type": "radar_scan_day_complete",
+        "error": "今日活跃账号已全部扫描成功，如需再跑请使用 --force",
         "data_source": DATA_SOURCE,
         "effective_source": EFFECTIVE_SOURCE,
         "total_accounts": 0,
@@ -458,12 +598,125 @@ def _same_day_skip_result(existing=None):
         "elapsed_seconds": 0,
         "elapsed_str": "0m0s",
         "summary": {},
+        "scanned_accounts": scanned,
         "existing_result": {
             "total_accounts": existing.get("total_accounts"),
             "successful_accounts": existing.get("successful_accounts"),
             "elapsed_str": existing.get("elapsed_str"),
             "new_items_count": existing.get("new_items_count"),
+            "scanned_accounts": scanned,
         },
+    }
+
+
+def _merge_previews(old_preview, new_preview, cap=500):
+    merged = []
+    seen = set()
+    for item in list(new_preview or []) + list(old_preview or []):
+        if not isinstance(item, dict):
+            continue
+        key = item.get("link") or item.get("url") or json.dumps(item, sort_keys=True, ensure_ascii=False)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(item)
+        if len(merged) >= cap:
+            break
+    return merged
+
+
+def _merge_day_result(existing, batch_result):
+    existing = existing if _is_usable_scan_result(existing) else {}
+    prev_scanned = _scanned_accounts_from_result(existing)
+    batch_accounts = [
+        _normalize_handle(item) for item in (batch_result.get("scanned_accounts") or []) if item
+    ]
+    scanned = _unique_keep_order(prev_scanned + batch_accounts)
+
+    prev_failed = [
+        _normalize_handle(item)
+        for item in (existing.get("failed_accounts") or [])
+        if _normalize_handle(item) in scanned
+    ]
+    batch_failed = [_normalize_handle(item) for item in (batch_result.get("failed_accounts") or []) if item]
+    batch_ok = set(batch_accounts) - set(batch_failed)
+    failed = _unique_keep_order(item for item in prev_failed + batch_failed if item not in batch_ok)
+
+    prev_batches = existing.get("batches")
+    if not isinstance(prev_batches, list):
+        prev_batches = []
+    if not prev_batches and prev_scanned:
+        prev_summary = existing.get("summary") if isinstance(existing.get("summary"), dict) else {}
+        prev_batches = [{
+            "batch_index": 1,
+            "started_at": existing.get("scan_time") or prev_summary.get("scan_time"),
+            "accounts": prev_scanned,
+            "successful_accounts": existing.get("successful_accounts"),
+            "failed_accounts": existing.get("failed_accounts") or [],
+            "new_items_count": existing.get("new_items_count") or 0,
+            "elapsed_str": existing.get("elapsed_str"),
+            "effective_source": existing.get("effective_source"),
+        }]
+
+    new_batch = {
+        "batch_index": len(prev_batches) + 1,
+        "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "accounts": batch_accounts,
+        "successful_accounts": len(batch_accounts) - len(batch_failed),
+        "failed_accounts": batch_failed,
+        "new_items_count": batch_result.get("new_items_count") or 0,
+        "elapsed_seconds": batch_result.get("elapsed_seconds"),
+        "elapsed_str": batch_result.get("elapsed_str"),
+        "effective_source": batch_result.get("effective_source"),
+    }
+    batches = prev_batches + [new_batch]
+
+    prev_summary = existing.get("summary") if isinstance(existing.get("summary"), dict) else {}
+    batch_summary = batch_result.get("summary") if isinstance(batch_result.get("summary"), dict) else {}
+    preview = _merge_previews(
+        prev_summary.get("new_ideas_preview") or [],
+        batch_summary.get("new_ideas_preview") or [],
+    )
+    new_tweets = int(prev_summary.get("new_tweets_count") or existing.get("new_items_count") or 0) + int(
+        batch_summary.get("new_tweets_count") or batch_result.get("new_items_count") or 0
+    )
+    new_originals = int(prev_summary.get("new_originals_count") or 0) + int(
+        batch_summary.get("new_originals_count") or 0
+    )
+    elapsed_seconds = round(
+        float(existing.get("elapsed_seconds") or 0) + float(batch_result.get("elapsed_seconds") or 0),
+        1,
+    )
+    merged_summary = {
+        "title": batch_summary.get("title") or prev_summary.get("title") or "X 创意雷达扫描报告",
+        "scan_time": batch_summary.get("scan_time") or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "account_stats": {
+            "total": len(scanned),
+            "success": len(scanned) - len(failed),
+            "failed": len(failed),
+        },
+        "new_tweets_count": new_tweets,
+        "new_originals_count": new_originals,
+        "sampled_preview_count": len(preview),
+        "failed_accounts": failed,
+        "status": "no_new" if new_tweets == 0 else "has_new",
+        "new_ideas_preview": preview,
+    }
+    return {
+        "success": not _scan_batch_failed(failed, scanned),
+        "data_source": batch_result.get("data_source") or existing.get("data_source"),
+        "effective_source": batch_result.get("effective_source") or existing.get("effective_source"),
+        "account_limit": ACCOUNT_LIMIT,
+        "batch_index": len(batches),
+        "total_accounts": len(scanned),
+        "successful_accounts": len(scanned) - len(failed),
+        "failed_accounts": failed,
+        "new_items_count": int(existing.get("new_items_count") or 0) + int(batch_result.get("new_items_count") or 0),
+        "elapsed_seconds": elapsed_seconds,
+        "elapsed_str": f"{int(elapsed_seconds // 60)}m{int(elapsed_seconds % 60)}s",
+        "scanned_accounts": scanned,
+        "batches": batches,
+        "summary": merged_summary,
     }
 
 def log(msg, level='INFO'):
@@ -479,10 +732,36 @@ def log(msg, level='INFO'):
             pass  # 日志写失败不影响主流程
 
 
+def _parse_process_rows(ps_stdout):
+    rows = []
+    pid_to_ppid = {}
+    for raw_line in (ps_stdout or "").splitlines():
+        parts = raw_line.strip().split(None, 2)
+        if len(parts) < 3:
+            continue
+        try:
+            pid = int(parts[0])
+            ppid = int(parts[1])
+        except ValueError:
+            continue
+        command = parts[2]
+        pid_to_ppid[pid] = ppid
+        rows.append((pid, ppid, command))
+    return rows, pid_to_ppid
+
+
+def _ancestor_pids(pid_to_ppid, current_pid):
+    ancestors = set()
+    pid = pid_to_ppid.get(current_pid, os.getppid())
+    while pid and pid not in ancestors:
+        ancestors.add(pid)
+        pid = pid_to_ppid.get(pid)
+    return ancestors
+
+
 def _active_scan_processes():
     """查找未持有新锁的旧版扫描进程，避免升级期间重复触发。"""
     current_pid = os.getpid()
-    parent_pid = os.getppid()
     try:
         proc = subprocess.run(
             ["ps", "-axo", "pid=,ppid=,command="],
@@ -495,25 +774,16 @@ def _active_scan_processes():
     if proc.returncode != 0:
         return []
 
+    rows, pid_to_ppid = _parse_process_rows(proc.stdout)
+    ancestors = _ancestor_pids(pid_to_ppid, current_pid)
     active = []
     markers = (
         "xpost.py radar-scan",
         "x_ideas_scan.py",
         "x_profile_timeline_cdp.js",
     )
-    for raw_line in proc.stdout.splitlines():
-        parts = raw_line.strip().split(None, 2)
-        if len(parts) < 3:
-            continue
-        try:
-            pid = int(parts[0])
-            ppid = int(parts[1])
-        except ValueError:
-            continue
-        command = parts[2]
-        if pid == current_pid:
-            continue
-        if pid == parent_pid and "xpost.py radar-scan" in command:
+    for pid, ppid, command in rows:
+        if pid == current_pid or pid in ancestors:
             continue
         if any(marker in command for marker in markers):
             active.append({
@@ -1370,7 +1640,7 @@ def main():
     if _should_skip_same_day_cdp(EFFECTIVE_SOURCE):
         existing = _load_json_file(_day_result_path()) or {}
         result = _same_day_skip_result(existing)
-        log('今日已完成一轮 CDP 扫描，本次未启动。如需再跑请使用 --force', 'WARN')
+        log('今日活跃账号已全部扫描成功，本次未启动。如需再跑请使用 --force', 'WARN')
         _emit_result_json(result)
         scan_lock.release()
         return 2
@@ -1379,12 +1649,13 @@ def main():
     seen_list, seen_set = load_seen_urls()
     log(f'已记录 URL 数: {len(seen_set)}')
 
-    # 账号顺序随机打乱（避免每次以相同规律访问）
-    accounts = list(dict.fromkeys(TARGET_ACCOUNTS))  # 顺带去重
-    random.shuffle(accounts)
+    accounts, already_completed = _select_scan_accounts(TARGET_ACCOUNTS)
+    if already_completed:
+        log(f'今日已成功 {len(already_completed)} 个账号，本批跳过这些账号；失败账号会再扫')
     if ACCOUNT_LIMIT > 0:
-        accounts = accounts[:ACCOUNT_LIMIT]
-        log(f'账号限制: 本次仅扫描 {len(accounts)} 个账号')
+        log(f'账号限制: 本次仅扫描 {len(accounts)} 个尚未成功的账号')
+    else:
+        log(f'账号限制: 本次扫描剩余全部 {len(accounts)} 个尚未成功的账号')
     if EFFECTIVE_SOURCE == "cdp":
         log(f'并发模式: workers={MAX_WORKERS}  CDP间隔={CDP_JITTER_MIN}-{CDP_JITTER_MAX}s  即时重试={CDP_MAX_RETRIES}')
     else:
@@ -1394,6 +1665,7 @@ def main():
     # 并发扫描所有账号
     all_new_items = []
     failed_accounts = []
+    attempted_accounts = []
     retry_queue = []
     instance_fail_time: dict = {}        # instance -> {"ts","cd"} 冷却恢复机制
     seen_lock = threading.Lock()         # 保护 seen_list / seen_set 的写操作
@@ -1403,16 +1675,19 @@ def main():
     counter = [0]                        # 完成计数器（列表使闭包可写）
     total = len(accounts)
 
+    def _mark_attempted(username):
+        if username not in attempted_accounts:
+            attempted_accounts.append(username)
+
     def scan_one(username, deferred_pass=False):
         """单账号扫描任务（在线程池中执行）"""
         if stop_scan.is_set():
             log(f'SKIP @{username}: CDP guard 已触发，本轮停止访问后续账号', 'WARN')
-            with results_lock:
-                if username not in failed_accounts:
-                    failed_accounts.append(username)
             return
 
         items, error = fetch_with_fallback(username, instance_fail_time)
+        with results_lock:
+            _mark_attempted(username)
 
         if not deferred_pass:
             with results_lock:
@@ -1466,6 +1741,7 @@ def main():
                 uname = futures[future]
                 log(f'FAIL @{uname} 未捕获异常: {e}', 'ERROR')
                 with results_lock:
+                    _mark_attempted(uname)
                     if uname not in failed_accounts:
                         failed_accounts.append(uname)
 
@@ -1480,35 +1756,58 @@ def main():
     # 清理旧推文
     cleanup_old_ideas()
 
-    # 生成摘要
-    summary = generate_summary(all_new_items, len(accounts), failed_accounts)
+    # 生成摘要：按本批实际请求过的账号计，不含 guard 未打开的 SKIP
+    summary = generate_summary(all_new_items, len(attempted_accounts), failed_accounts)
 
     elapsed = time.time() - start_time
     elapsed_str = f'{int(elapsed // 60)}m{int(elapsed % 60)}s'
+    skipped_unattempted = len(accounts) - len(attempted_accounts)
+    success_count = max(0, len(attempted_accounts) - len(failed_accounts))
 
     # 持久化本次运行关键指标
-    log(f'扫描完成  成功:{len(accounts)-len(failed_accounts)}/{len(accounts)}  '
+    log(f'扫描完成  成功:{success_count}/{len(attempted_accounts)}  '
+        f'计划:{len(accounts)}  未请求:{skipped_unattempted}  '
         f'新推文:{len(all_new_items)}  原创:{summary["new_originals_count"]}  '
         f'耗时:{elapsed_str}')
     if failed_accounts:
         log(f'失败账号: {", ".join(failed_accounts)}', 'WARN')
+    if skipped_unattempted:
+        log(f'guard 未请求 {skipped_unattempted} 个账号，留给后续班次', 'WARN')
     log('=' * 48)
 
-    batch_failed = _scan_batch_failed(failed_accounts, accounts)
+    batch_failed = _scan_batch_failed(failed_accounts, attempted_accounts)
 
     # 输出 JSON 结果供 OpenClaw 解析
-    result = {
+    batch_result = {
         "success": not batch_failed,
         "data_source": DATA_SOURCE,
         "effective_source": EFFECTIVE_SOURCE,
-        "total_accounts": len(accounts),
-        "successful_accounts": len(accounts) - len(failed_accounts),
+        "account_limit": ACCOUNT_LIMIT,
+        "total_accounts": len(attempted_accounts),
+        "successful_accounts": success_count,
         "failed_accounts": failed_accounts,
         "new_items_count": len(all_new_items),
         "elapsed_seconds": round(elapsed, 1),
         "elapsed_str": elapsed_str,
-        "summary": summary
+        "scanned_accounts": list(attempted_accounts),
+        "summary": summary,
     }
+
+    write_day_snapshot = ACCOUNT_LIMIT != 1
+    if write_day_snapshot:
+        existing = _load_json_file(_day_result_path()) or {}
+        if _is_usable_scan_result(existing) and not existing.get("scanned_accounts"):
+            inferred = _scanned_accounts_from_day_log()
+            if inferred:
+                existing = dict(existing)
+                existing["scanned_accounts"] = inferred
+                if not existing.get("failed_accounts"):
+                    inferred_failed = _accounts_from_day_log(kinds=("FAIL",))
+                    if inferred_failed:
+                        existing["failed_accounts"] = inferred_failed
+        result = _merge_day_result(existing, batch_result)
+    else:
+        result = batch_result
 
     result_json_str = json.dumps(result, ensure_ascii=False, indent=2)
     _emit_result_json(result)
@@ -1522,14 +1821,16 @@ def main():
     except Exception as e:
         log(f'写入 RESULT.json 失败: {e}', 'WARN')
 
-    # 额外保存一份天级结果快照，便于按天回看扫描结果
-    try:
-        day_result_file = _day_result_path()
-        with open(day_result_file, 'w', encoding='utf-8') as f:
-            f.write(result_json_str)
-        log(f'当日结果快照已写入: {day_result_file}')
-    except Exception as e:
-        log(f'写入当日结果快照失败: {e}', 'WARN')
+    if write_day_snapshot:
+        try:
+            day_result_file = _day_result_path()
+            with open(day_result_file, 'w', encoding='utf-8') as f:
+                f.write(result_json_str)
+            log(f'当日结果快照已写入: {day_result_file}')
+        except Exception as e:
+            log(f'写入当日结果快照失败: {e}', 'WARN')
+    else:
+        log('smoke 扫描 (--limit 1) 不写入当日结果快照')
 
     scan_lock.release()
     if batch_failed:
