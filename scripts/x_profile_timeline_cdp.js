@@ -5,6 +5,7 @@ const {
   openBlankTarget,
   closeTarget,
   detectPageGuard,
+  formatGuardError,
   sleep,
   jitterDelay,
 } = require('./x_metrics_cdp.js');
@@ -83,6 +84,30 @@ function buildExtractionExpression(username, limitItems) {
     const seen = new Set();
     const items = [];
 
+    function collectNotice() {
+      const parts = [];
+      const selectors = [
+        '[data-testid="emptyState"]',
+        '[data-testid="error-detail"]',
+        '[role="alert"]',
+        '[data-testid="sheetDialog"]',
+      ];
+      for (const sel of selectors) {
+        document.querySelectorAll(sel).forEach((el) => {
+          const t = (el.innerText || '').trim();
+          if (t) parts.push(t);
+        });
+      }
+      const primary = document.querySelector('[data-testid="primaryColumn"]');
+      if (primary) {
+        const clone = primary.cloneNode(true);
+        clone.querySelectorAll('article').forEach((el) => el.remove());
+        const leftover = (clone.innerText || '').trim();
+        if (leftover) parts.push(leftover.slice(0, 2000));
+      }
+      return parts.join('\\n').slice(0, 2500);
+    }
+
     for (const article of articles) {
       const anchors = Array.from(article.querySelectorAll('a[href]'));
       let statusAnchor = null;
@@ -128,6 +153,8 @@ function buildExtractionExpression(username, limitItems) {
 
     return {
       title: document.title || '',
+      url: location.href || '',
+      notice: collectNotice(),
       text: pageText.slice(0, 8000),
       items,
     };
@@ -198,7 +225,7 @@ async function fetchProfileTimeline(username, options = {}) {
           return {
             ok: false,
             username: handle,
-            error: `Page guard detected: ${guard.reason}`,
+            error: formatGuardError(guard),
             error_type: guard.reason || 'page_guard',
             retryable: false,
             guard,
@@ -217,22 +244,33 @@ async function fetchProfileTimeline(username, options = {}) {
       await sleep(jitterDelay(options.delayMs || 1200, options.jitterMs || 800));
     }
 
+    const items = (value.items || [])
+      .map((item) => convertExtractedItem(item, handle))
+      .filter((item) => item.link && item.title);
+
     const guard = detectPageGuard(value);
-    if (guard.blocked) {
+    if (guard.blocked && HARD_GUARD_REASONS.has(guard.reason)) {
       return {
         ok: false,
         username: handle,
-        error: `Page guard detected: ${guard.reason}`,
+        error: formatGuardError(guard),
         error_type: guard.reason || 'page_guard',
         retryable: false,
         guard,
         items: [],
       };
     }
-
-    const items = (value.items || [])
-      .map((item) => convertExtractedItem(item, handle))
-      .filter((item) => item.link && item.title);
+    if (guard.blocked && items.length === 0) {
+      return {
+        ok: false,
+        username: handle,
+        error: formatGuardError(guard),
+        error_type: guard.reason || 'page_guard',
+        retryable: false,
+        guard,
+        items: [],
+      };
+    }
 
     const emptyClass = classifyErrorMessage('No visible timeline items found');
     return {
@@ -344,8 +382,9 @@ Safety:
   Uses your existing Chrome/CDP session. It reads visible DOM only; it does not
   call X API, click, like, repost, reply, solve challenges, or bypass guards.
   Immediate per-account retries default to 0. Login/challenge/rate-limit pages
-  stop the current profile; empty or "something went wrong" timelines are left
-  to the Python scanner's one deferred retry after the batch.`);
+  are detected from URL, title, and empty-state/error copy (not tweet text).
+  Empty or "something went wrong" timelines are left to the Python scanner's
+  one deferred retry after the batch.`);
 }
 
 async function main() {

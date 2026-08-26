@@ -52,28 +52,76 @@ function hasAnyMetric(metrics) {
   return Object.values(metrics || {}).some((value) => Number.isFinite(value));
 }
 
+function clipGuardMatch(source, regex, maxLen = 160) {
+  const text = String(source || '').replace(/\s+/g, ' ').trim();
+  const match = text.match(regex);
+  if (!match) return null;
+  const idx = match.index || 0;
+  const start = Math.max(0, idx - 24);
+  const end = Math.min(text.length, idx + match[0].length + 72);
+  return text.slice(start, end).trim().slice(0, maxLen);
+}
+
 function detectPageGuard(page) {
-  const title = String((page && page.title) || '').toLowerCase();
-  const text = String((page && page.text) || '').toLowerCase();
-  const source = `${title}\n${text}`;
+  const title = String((page && page.title) || '');
+  const text = String((page && page.text) || '');
+  const notice = String((page && page.notice) || '');
+  const url = String((page && page.url) || '');
+  const hasItems = Array.isArray(page && page.items) && page.items.length > 0;
+  const hasTweet = Boolean(page && page.tweetText && String(page.tweetText).trim());
 
-  if (/rate limit|too many requests|try again later|temporarily restricted|temporarily blocked/.test(source)) {
-    return { blocked: true, reason: 'rate_limited' };
+  if (/\/i\/flow\/login(?:\/|$|\?|#)/i.test(url) || /(?:^|\/\/)(?:www\.)?x\.com\/login(?:\/|$|\?|#)/i.test(url)) {
+    return { blocked: true, reason: 'login_required', matched: url.slice(0, 180) };
   }
-  if (/captcha|verify you are human|verify your identity|prove you are human|complete this challenge|unusual activity|automated requests|confirm you.?re not a robot/.test(source)) {
-    return { blocked: true, reason: 'challenge_required' };
-  }
-  if (/sign in to x|log in to x|login to x|create your account|join x today|javascript is not available/.test(source)) {
-    return { blocked: true, reason: 'login_required' };
-  }
-  if (/this account doesn.?t exist|this post is unavailable|page doesn.?t exist/.test(source)) {
-    return { blocked: true, reason: 'unavailable' };
-  }
-  if (/出错了|请尝试重新加载|something went wrong|please try reloading|try reloading/.test(source)) {
-    return { blocked: true, reason: 'timeline_error' };
+  if (/\/account\/access(?:\/|$|\?|#)/i.test(url)) {
+    return { blocked: true, reason: 'challenge_required', matched: url.slice(0, 180) };
   }
 
-  return { blocked: false, reason: null };
+  const hardSurface = `${title}\n${notice}`;
+  const hardWithEmptyFallback = (hasItems || hasTweet) ? hardSurface : `${hardSurface}\n${text}`;
+
+  const rateRe = /rate limit(?:ed| exceeded)?|too many requests|temporarily restricted|temporarily blocked|操作过于频繁|暂时受到限制/i;
+  const rateNoticeRe = /请稍后再试/;
+  let matched = clipGuardMatch(hardWithEmptyFallback, rateRe) || clipGuardMatch(hardSurface, rateNoticeRe);
+  if (matched) {
+    return { blocked: true, reason: 'rate_limited', matched };
+  }
+
+  const challengeRe = /captcha|verify you are human|verify your identity|prove you are human|complete this challenge|unusual activity|automated requests|confirm you.?re not a robot/i;
+  matched = clipGuardMatch(hardWithEmptyFallback, challengeRe);
+  if (matched) {
+    return { blocked: true, reason: 'challenge_required', matched };
+  }
+
+  const loginRe = /sign in to x|log in to x|login to x|create your account|join x today|javascript is not available/i;
+  matched = clipGuardMatch(hardWithEmptyFallback, loginRe);
+  if (matched) {
+    return { blocked: true, reason: 'login_required', matched };
+  }
+
+  const softSource = `${title}\n${notice}\n${text}`;
+  const unavailableRe = /this account doesn.?t exist|this post is unavailable|page doesn.?t exist/i;
+  matched = clipGuardMatch(softSource, unavailableRe);
+  if (matched) {
+    return { blocked: true, reason: 'unavailable', matched };
+  }
+
+  const brokenRe = /出错了|请尝试重新加载|something went wrong|please try reloading|try reloading/i;
+  matched = clipGuardMatch(softSource, brokenRe);
+  if (matched) {
+    return { blocked: true, reason: 'timeline_error', matched };
+  }
+
+  return { blocked: false, reason: null, matched: null };
+}
+
+function formatGuardError(guard) {
+  const reason = (guard && guard.reason) || 'page_guard';
+  const matched = guard && guard.matched ? String(guard.matched) : '';
+  if (!matched) {
+    return `Page guard detected: ${reason}`;
+  }
+  return `Page guard detected: ${reason} matched=${JSON.stringify(matched)}`;
 }
 
 function sleep(ms) {
@@ -251,9 +299,18 @@ function buildExtractionExpression() {
     const ariaLabels = Array.from(root.querySelectorAll('[aria-label]'))
       .map((element) => element.getAttribute('aria-label'))
       .filter(Boolean);
+    const primary = document.querySelector('[data-testid="primaryColumn"]');
+    let notice = '';
+    if (primary) {
+      const clone = primary.cloneNode(true);
+      clone.querySelectorAll('article').forEach((el) => el.remove());
+      notice = (clone.innerText || '').slice(0, 2500);
+    }
 
     return {
       title: document.title,
+      url: location.href || '',
+      notice,
       tweetText: (root.querySelector('[data-testid="tweetText"]')?.innerText || '').trim(),
       labels: ariaLabels.slice(0, 120),
       text: (root.innerText || '').slice(0, 8000)
@@ -292,7 +349,7 @@ async function getTweetMetrics(url, options = {}) {
         return {
           ok: false,
           url,
-          error: `Page guard detected: ${guard.reason}`,
+          error: formatGuardError(guard),
           guard,
           metrics,
           tweetText: value.tweetText || '',
@@ -475,6 +532,7 @@ module.exports = {
   extractMetricsFromText,
   hasAnyMetric,
   detectPageGuard,
+  formatGuardError,
   parseArgs,
   jitterDelay,
   sleep,

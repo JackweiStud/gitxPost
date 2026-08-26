@@ -51,35 +51,83 @@ test('hasAnyMetric rejects empty metric payloads', () => {
 });
 
 test('detectPageGuard identifies login, challenge, and rate-limit states', () => {
-  assert.deepEqual(detectPageGuard({
+  const login = detectPageGuard({
     title: 'X',
     text: 'Sign in to X to continue. JavaScript is not available.',
-  }), { blocked: true, reason: 'login_required' });
+  });
+  assert.equal(login.blocked, true);
+  assert.equal(login.reason, 'login_required');
+  assert.match(String(login.matched), /sign in to x/i);
 
-  assert.deepEqual(detectPageGuard({
+  const challenge = detectPageGuard({
     title: 'Verify your identity / X',
     text: 'Please complete this challenge to help us confirm you are not a robot.',
-  }), { blocked: true, reason: 'challenge_required' });
+  });
+  assert.equal(challenge.blocked, true);
+  assert.equal(challenge.reason, 'challenge_required');
+  assert.match(String(challenge.matched), /verify your identity|complete this challenge/i);
 
-  assert.deepEqual(detectPageGuard({
+  const limited = detectPageGuard({
     title: 'Rate limit exceeded / X',
     text: 'Something went wrong. Rate limit exceeded. Try again later.',
-  }), { blocked: true, reason: 'rate_limited' });
+  });
+  assert.equal(limited.blocked, true);
+  assert.equal(limited.reason, 'rate_limited');
+  assert.match(String(limited.matched), /rate limit/i);
 
   assert.deepEqual(detectPageGuard({
     title: 'Post / X',
     text: 'Composer 2.5 is now the most-chosen model in Cursor. 10 replies 20 likes',
-  }), { blocked: false, reason: null });
+  }), { blocked: false, reason: null, matched: null });
 
-  assert.deepEqual(detectPageGuard({
+  const broken = detectPageGuard({
     title: 'OpenAI Developers (OpenAIDevs) / X',
     text: '出错了。请尝试重新加载。',
-  }), { blocked: true, reason: 'timeline_error' });
+  });
+  assert.equal(broken.blocked, true);
+  assert.equal(broken.reason, 'timeline_error');
 
-  assert.deepEqual(detectPageGuard({
+  const reload = detectPageGuard({
     title: 'X',
     text: 'Something went wrong. Please try reloading.',
-  }), { blocked: true, reason: 'timeline_error' });
+  });
+  assert.equal(reload.blocked, true);
+  assert.equal(reload.reason, 'timeline_error');
+});
+
+test('detectPageGuard uses URL and notice, not tweet body, for hard guards', () => {
+  const loginUrl = detectPageGuard({
+    title: 'X',
+    url: 'https://x.com/i/flow/login?redirect_after_login=%2Fnaval',
+    text: 'whatever',
+  });
+  assert.equal(loginUrl.reason, 'login_required');
+  assert.match(String(loginUrl.matched), /\/i\/flow\/login/);
+
+  const accessUrl = detectPageGuard({
+    title: 'X',
+    url: 'https://x.com/account/access',
+    text: 'Please try again later in this tweet.',
+  });
+  assert.equal(accessUrl.reason, 'challenge_required');
+  assert.match(String(accessUrl.matched), /\/account\/access/);
+
+  const tweetFalsePositive = detectPageGuard({
+    title: 'aiDotEngineer / X',
+    url: 'https://x.com/aiDotEngineer',
+    text: 'We hit a rate limit at work. Please try again later.',
+    tweetText: 'We hit a rate limit at work. Please try again later.',
+    items: [{ statusId: '1' }],
+  });
+  assert.equal(tweetFalsePositive.blocked, false);
+
+  const chineseNotice = detectPageGuard({
+    title: 'X',
+    url: 'https://x.com/opencode',
+    notice: '操作过于频繁，请稍后再试。',
+  });
+  assert.equal(chineseNotice.reason, 'rate_limited');
+  assert.match(String(chineseNotice.matched), /操作过于频繁/);
 });
 
 test('parseArgs supports conservative pacing options', () => {

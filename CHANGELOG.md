@@ -10,6 +10,34 @@
   - 仍未解决的边界或风险
 - 如果改动影响验收方式或测试结论，需要同步更新 `CI/` 目录下的文档。
 
+日期：2026-08-25
+
+## 调整：CDP 硬 guard 改为认 URL/标题/错误区，并记录命中片段
+
+范围：`scripts/x_metrics_cdp.js`、`scripts/x_profile_timeline_cdp.js`、`scripts/fetch_followers_cdp.js`、`xinfo/x_ideas_scan.py`、`test_x_metrics_cdp.js`、`CI/test-cases.md`
+
+### 问题
+
+- 限流判定扫整页 `innerText`，推文里的 `try again later` / `rate limit` 会误停整轮。
+- 没有中文限流文案，也没有把命中原文打进日志，14:02 这类停扫无法复核。
+
+### 变更
+
+- 登录/验证优先认 URL：`/i/flow/login`、`/account/access`。
+- 硬 guard 只看标题和主栏去掉推文后的错误区；有推文时不再拿正文当限流。
+- 去掉单独的 `try again later` 限流词；补上「操作过于频繁」「暂时受到限制」。
+- 错误日志带 `matched=` 命中片段。
+
+### 验证
+
+- `node --test test_x_metrics_cdp.js test_x_profile_timeline_cdp.js`
+- `python3 -m unittest test_x_ideas_scan_auto_source.py`
+
+### 风险
+
+- 若限流页既不改 URL、标题也没有上述英文/中文词，仍可能被当成空时间线继续扫。
+- 「出错了 / something went wrong」仍按单账号失败，不停整轮。
+
 日期：2026-08-24
 
 ## 调整：最后一班按任务开始时刻判断，网页扫描超时加到 180 分钟

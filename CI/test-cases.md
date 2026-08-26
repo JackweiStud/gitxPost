@@ -222,6 +222,7 @@ python /Users/jackwl/Code/gitcode/gitxPost/xpost.py radar-scan --limit 0
 - 不传参时 `source=auto`、`limit=100`
 - `auto` 且 RSS 不可用时：`effective_source=cdp`，账号数不超过 `--limit`
 - CDP 失败账号不会立刻重试；整轮名单跑完后各补跑 1 次
+- 登录/验证/限流硬 guard 看 URL（`/i/flow/login`、`/account/access`）、标题和主栏错误区，不把推文里的 `try again later` 当限流；日志带 `matched=` 命中片段
 - 本轮扫描账号全部失败时：`RESULT.json` 的 `success=false`，CLI 退出码非 0（按 limit 后的账号数判定，不是全量活跃账号）
 - 同一自然日后续批次跳过今日已成功账号；失败账号及 guard 未请求账号会在后续班次补扫。全部成功后 `error_type=radar_scan_day_complete`，不覆盖当天 `_result.json`；`--force` 可继续
 - launchd 默认 09:00 / 14:00 / 20:00；网页可改逗号分隔时刻。每班最多 100 个尚未成功的账号（失败会补扫）。当天全部成功，或任务开始时刻落在当天最后一班窗口（最晚时刻起 90 分钟内、不跨午夜），生成日报；今日日报已存在则跳过。立即执行仍跑完整流水线。网页扫描 HTTP 超时 180 分钟，立即执行 210 分钟。
@@ -230,6 +231,7 @@ python /Users/jackwl/Code/gitcode/gitxPost/xpost.py radar-scan --limit 0
 
 ```bash
 python3 -m unittest test_x_ideas_scan_auto_source.py test_scheduler.py
+node --test test_x_metrics_cdp.js test_x_profile_timeline_cdp.js
 ```
 
 ### TC-09 Radar 分析

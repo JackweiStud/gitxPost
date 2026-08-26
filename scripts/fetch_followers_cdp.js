@@ -98,6 +98,7 @@ async function fetchProfileStats(username, options = {}) {
         }));
         return {
           title: document.title,
+          url: location.href || '',
           text: document.body ? document.body.innerText : '',
           links: links.filter((item) =>
             item.href === '/' + username + '/following' ||

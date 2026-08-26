@@ -1171,6 +1171,9 @@ def fetch_cdp_profile(username):
         error_type = result.get("error_type") or "cdp_unknown_failed"
         attempts = result.get("attempt")
         detail = result.get("error") or "CDP timeline failed"
+        matched = (result.get("guard") or {}).get("matched")
+        if matched and "matched=" not in str(detail):
+            detail = f"{detail} matched={matched!r}"
         suffix = f" after {attempts} attempt(s)" if attempts else ""
         raise RuntimeError(f"{error_type}: {detail}{suffix}")
     items = result.get("items", [])
