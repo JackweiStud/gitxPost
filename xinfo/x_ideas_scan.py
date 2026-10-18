@@ -330,6 +330,9 @@ NITTER_INSTANCES = [
 RSSHUB_INSTANCES = [
 ]
 
+# fxtwitter 公开时间线 API（Nitter/RSSHub 不可用时的中间层数据源）
+FXTWITTER_API_BASE = os.environ.get("XPOST_RADAR_FXTWITTER_API", "https://api.fxtwitter.com").rstrip("/")
+
 # 文件路径（相对于脚本所在目录）
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(SCRIPT_DIR, "log")
@@ -380,7 +383,7 @@ _UA_POOL = [
 # 每个实例的信号量 — 模块加载时预初始化，避免懒初始化竞争
 _instance_semaphores: dict = {
     inst: threading.Semaphore(CONCURRENT_PER_INSTANCE)
-    for inst in NITTER_INSTANCES + RSSHUB_INSTANCES
+    for inst in NITTER_INSTANCES + RSSHUB_INSTANCES + [FXTWITTER_API_BASE]
 }
 
 # 日志文件写入锁（多线程并发时防止日志行交错）
@@ -1087,6 +1090,118 @@ def fetch_rsshub(username, rsshub_instance):
     except urllib.error.HTTPError as e:
         raise RuntimeError(f"HTTP {e.code}: {e.reason} from {url}") from e
 
+
+def _fxtwitter_profile_url(username: str) -> str:
+    handle = _normalize_handle(username)
+    return f"{FXTWITTER_API_BASE}/2/profile/{handle}/statuses"
+
+
+def _fxtwitter_json_headers() -> dict:
+    return {
+        "User-Agent": _random_ua(),
+        "Accept": "application/json",
+    }
+
+
+def fetch_fxtwitter_json(username):
+    """请求 fxtwitter profile statuses，返回解析后的 JSON dict。"""
+    url = _fxtwitter_profile_url(username)
+    req = urllib.request.Request(url, headers=_fxtwitter_json_headers())
+    try:
+        with urllib.request.urlopen(req, timeout=20) as response:
+            body = response.read()
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"HTTP {e.code}: {e.reason} from {url}") from e
+    if not body:
+        raise RuntimeError(f"HTTP 200 empty body from {url}")
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"fxtwitter JSON parse failed from {url}") from e
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"fxtwitter invalid payload from {url}")
+    return payload
+
+
+def _is_fxtwitter_original(status, username: str) -> bool:
+    """仅保留目标账号的原创帖（排除回复、纯转推）。引用帖仍算原创。"""
+    if not isinstance(status, dict):
+        return False
+    if status.get("replying_to"):
+        return False
+    if status.get("reposted_by"):
+        return False
+    author = status.get("author") if isinstance(status.get("author"), dict) else {}
+    screen = (author.get("screen_name") or "").strip().lower()
+    return screen == _normalize_handle(username).lower()
+
+
+def parse_fxtwitter_statuses(payload, username):
+    """将 fxtwitter 响应转为与 RSS/CDP 一致的 item 列表（仅原创）。"""
+    results = payload.get("results") if isinstance(payload, dict) else None
+    if not isinstance(results, list):
+        raise RuntimeError("fxtwitter invalid payload: missing results list")
+
+    items = []
+    for status in results:
+        if not _is_fxtwitter_original(status, username):
+            continue
+        text = (status.get("text") or "").strip()
+        status_id = status.get("id")
+        link = (status.get("url") or "").strip()
+        if not link and status_id:
+            link = f"https://x.com/{_normalize_handle(username)}/status/{status_id}"
+        if not link:
+            continue
+        pub_date = status.get("created_at") or ""
+        title_line = text.split("\n")[0].strip() if text else "推文"
+        items.append({
+            "title": title_line,
+            "link": link,
+            "pub_date": pub_date,
+            "description": text,
+        })
+    return items
+
+
+def _fetch_fxtwitter_profile(username, instance_fail_time: dict):
+    """带限速冷却与抖动的 fxtwitter 单账号抓取。"""
+    instance = FXTWITTER_API_BASE
+    if not _is_instance_available(instance, instance_fail_time):
+        remaining = _cooldown_remaining(instance, instance_fail_time)
+        raise RuntimeError(f"fxtwitter 冷却中，剩余 {remaining}s")
+
+    sem = _get_semaphore(instance)
+    with sem:
+        for attempt in range(MAX_RETRIES):
+            try:
+                time.sleep(random.uniform(JITTER_MIN, JITTER_MAX))
+                payload = fetch_fxtwitter_json(username)
+                items = parse_fxtwitter_statuses(payload, username)
+                print(f"  ✅ @{username} [fxtwitter] {len(items)}条原创")
+                return items
+            except Exception as e:
+                error_msg = str(e)
+                if _is_rate_limited(error_msg):
+                    cd = _mark_instance_failure(instance, error_msg, instance_fail_time)
+                    print(f"  ❌ @{username} fxtwitter 限流: {error_msg}（冷却 {cd}s）")
+                    raise RuntimeError(error_msg) from e
+                if attempt == MAX_RETRIES - 1:
+                    print(f"  ❌ @{username} fxtwitter 失败: {error_msg}")
+                    raise
+                time.sleep(random.uniform(2.0, 4.0))
+
+
+def _fetch_cdp_items(username):
+    items = fetch_cdp_profile(username)
+    print(f"  ✅ @{username} [CDP/X profile] {len(items)}条")
+    return items
+
+
+def _auto_per_handle_fallback_enabled() -> bool:
+    return DATA_SOURCE == "auto"
+
+
 # 构建域名替换表（从配置动态生成）[P1-5]
 _DOMAIN_REPLACEMENTS = []
 for _inst in NITTER_INSTANCES:
@@ -1274,6 +1389,18 @@ def _mark_instance_failure(instance: str, error_msg: str, instance_fail_time: di
     return cd
 
 
+def _probe_fxtwitter_source(username: str = AUTO_PROBE_ACCOUNT):
+    """探测 fxtwitter 是否可用；auto 模式在 RSS 失败后调用。"""
+    try:
+        payload = fetch_fxtwitter_json(username)
+        results = payload.get("results")
+        if not isinstance(results, list) or not results:
+            return False, "fxtwitter empty results"
+        return True, _fxtwitter_profile_url(username)
+    except Exception as e:
+        return False, str(e)
+
+
 def _probe_rss_source(username: str = AUTO_PROBE_ACCOUNT):
     """探测一次 RSS 源是否可用；auto 模式只在本轮启动时调用。"""
     errors = []
@@ -1312,22 +1439,41 @@ def resolve_effective_source():
         log(f'auto probe: RSS 可用 ({reason})，本轮使用 rss')
         return "rss"
 
-    log(f'auto probe: RSS 不可用 ({reason})，本轮切换 cdp', 'WARN')
+    ok, fx_reason = _probe_fxtwitter_source()
+    if ok:
+        log(f'auto probe: RSS 不可用 ({reason})；fxtwitter 可用 ({fx_reason})，本轮使用 fxtwitter')
+        return "fxtwitter"
+
+    log(
+        f'auto probe: RSS 不可用 ({reason})；fxtwitter 不可用 ({fx_reason})，本轮切换 cdp',
+        'WARN',
+    )
     return "cdp"
 
 
 def fetch_with_fallback(username, instance_fail_time: dict):
-    """使用多实例 fallback 机制获取推文（Nitter → RSSHub）。
+    """使用多实例 fallback 机制获取推文（Nitter → RSSHub → fxtwitter → CDP）。
     实例失败后进入冷却期，冷却后自动恢复。
     429 使用更长冷却，且不在同一账号上立即重试。
+    auto 模式下单账号失败会按 RSS → fxtwitter → CDP 继续降级。
     """
     if EFFECTIVE_SOURCE == "cdp":
         try:
-            items = fetch_cdp_profile(username)
-            print(f"  ✅ @{username} [CDP/X profile] {len(items)}条")
-            return items, None
+            return _fetch_cdp_items(username), None
         except Exception as e:
             return None, f"CDP 失败: {e}"
+
+    if EFFECTIVE_SOURCE == "fxtwitter":
+        try:
+            return _fetch_fxtwitter_profile(username, instance_fail_time), None
+        except Exception as e:
+            error_msg = str(e)
+            if _auto_per_handle_fallback_enabled():
+                try:
+                    return _fetch_cdp_items(username), None
+                except Exception as cdp_err:
+                    return None, f"fxtwitter 失败: {error_msg}; CDP 失败: {cdp_err}"
+            return None, f"fxtwitter 失败: {error_msg}"
 
     # 第一层：尝试 Nitter 实例
     for instance in NITTER_INSTANCES:
@@ -1424,7 +1570,19 @@ def fetch_with_fallback(username, instance_fail_time: dict):
     src = f"Nitter({len(NITTER_INSTANCES)})"
     if RSSHUB_INSTANCES:
         src += f"+RSSHub({len(RSSHUB_INSTANCES)})"
-    return None, f"{src} 所有实例均失败"
+    rss_error = f"{src} 所有实例均失败"
+
+    if _auto_per_handle_fallback_enabled():
+        try:
+            return _fetch_fxtwitter_profile(username, instance_fail_time), None
+        except Exception as fx_err:
+            fx_error = str(fx_err)
+            try:
+                return _fetch_cdp_items(username), None
+            except Exception as cdp_err:
+                return None, f"{rss_error}; fxtwitter 失败: {fx_error}; CDP 失败: {cdp_err}"
+
+    return None, rss_error
 
 def filter_new_items(items, seen_records, seen_set, source_account):
     """过滤出新推文，并记录元数据到 seen_records"""
@@ -1638,7 +1796,10 @@ def main():
     log('=' * 48)
     log(f'X 创意雷达启动  账号数:{len(TARGET_ACCOUNTS)}')
     EFFECTIVE_SOURCE = resolve_effective_source()
-    log(f'数据源: {DATA_SOURCE} -> {EFFECTIVE_SOURCE}  Nitter({len(NITTER_INSTANCES)}) + RSSHub({len(RSSHUB_INSTANCES)})')
+    log(
+        f'数据源: {DATA_SOURCE} -> {EFFECTIVE_SOURCE}  '
+        f'Nitter({len(NITTER_INSTANCES)}) + RSSHub({len(RSSHUB_INSTANCES)}) + fxtwitter'
+    )
 
     if _should_skip_same_day_cdp(EFFECTIVE_SOURCE):
         existing = _load_json_file(_day_result_path()) or {}
@@ -1661,6 +1822,8 @@ def main():
         log(f'账号限制: 本次扫描剩余全部 {len(accounts)} 个尚未成功的账号')
     if EFFECTIVE_SOURCE == "cdp":
         log(f'并发模式: workers={MAX_WORKERS}  CDP间隔={CDP_JITTER_MIN}-{CDP_JITTER_MAX}s  即时重试={CDP_MAX_RETRIES}')
+    elif EFFECTIVE_SOURCE == "fxtwitter":
+        log(f'并发模式: workers={MAX_WORKERS}  fxtwitter jitter={JITTER_MIN}-{JITTER_MAX}s')
     else:
         log(f'并发模式: workers={MAX_WORKERS}  每实例≤{CONCURRENT_PER_INSTANCE}并发  jitter={JITTER_MIN}-{JITTER_MAX}s')
     print()

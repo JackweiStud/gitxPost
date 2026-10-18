@@ -3632,9 +3632,9 @@ def main():
     p_radar_scan = sub.add_parser("radar-scan", help="Run X radar scan")
     p_radar_scan.add_argument(
         "--source",
-        choices=["rss", "cdp", "auto"],
+        choices=["rss", "fxtwitter", "cdp", "auto"],
         default=os.environ.get("XPOST_RADAR_SOURCE", "auto"),
-        help="Data source: rss only, cdp only, or rss with cdp fallback (default: auto)",
+        help="Data source: rss, fxtwitter, cdp, or auto (rss -> fxtwitter -> cdp fallback)",
     )
     p_radar_scan.add_argument(
         "--limit",

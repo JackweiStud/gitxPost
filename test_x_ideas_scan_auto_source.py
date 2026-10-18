@@ -18,7 +18,7 @@ class XIdeasScanAutoSourceTest(unittest.TestCase):
         ):
             self.assertEqual("rss", scan.resolve_effective_source())
 
-    def test_auto_source_switches_to_cdp_on_instance_failure(self):
+    def test_auto_source_switches_to_fxtwitter_when_rss_fails(self):
         def fail_rss(_username, _instance):
             raise RuntimeError("HTTP 200 empty body from https://nitter.test/sama/rss")
 
@@ -28,8 +28,133 @@ class XIdeasScanAutoSourceTest(unittest.TestCase):
             patch.object(scan, "RSSHUB_INSTANCES", []),
             patch.object(scan, "log", lambda *_args, **_kwargs: None),
             patch.object(scan, "fetch_rss", fail_rss),
+            patch.object(scan, "_probe_fxtwitter_source", lambda *_a, **_k: (True, "https://api.fxtwitter.com/2/profile/sama/statuses")),
+        ):
+            self.assertEqual("fxtwitter", scan.resolve_effective_source())
+
+    def test_auto_source_switches_to_cdp_when_rss_and_fxtwitter_fail(self):
+        def fail_rss(_username, _instance):
+            raise RuntimeError("HTTP 200 empty body from https://nitter.test/sama/rss")
+
+        with (
+            patch.object(scan, "DATA_SOURCE", "auto"),
+            patch.object(scan, "NITTER_INSTANCES", ["https://nitter.test"]),
+            patch.object(scan, "RSSHUB_INSTANCES", []),
+            patch.object(scan, "log", lambda *_args, **_kwargs: None),
+            patch.object(scan, "fetch_rss", fail_rss),
+            patch.object(scan, "_probe_fxtwitter_source", lambda *_a, **_k: (False, "fxtwitter down")),
         ):
             self.assertEqual("cdp", scan.resolve_effective_source())
+
+    def test_parse_fxtwitter_filters_originals_only(self):
+        payload = {
+            "results": [
+                {
+                    "id": "1",
+                    "url": "https://x.com/sama/status/1",
+                    "text": "original post",
+                    "created_at": "Fri Oct 16 16:56:29 +0000 2026",
+                    "author": {"screen_name": "sama"},
+                },
+                {
+                    "id": "2",
+                    "url": "https://x.com/other/status/2",
+                    "text": "repost",
+                    "created_at": "Fri Oct 16 16:50:00 +0000 2026",
+                    "author": {"screen_name": "other"},
+                    "reposted_by": {"screen_name": "sama"},
+                },
+                {
+                    "id": "3",
+                    "url": "https://x.com/sama/status/3",
+                    "text": "a reply",
+                    "created_at": "Fri Oct 16 16:40:00 +0000 2026",
+                    "author": {"screen_name": "sama"},
+                    "replying_to": {"screen_name": "foo"},
+                },
+            ]
+        }
+        items = scan.parse_fxtwitter_statuses(payload, "sama")
+        self.assertEqual(1, len(items))
+        self.assertEqual("original post", items[0]["title"])
+        self.assertEqual("https://x.com/sama/status/1", items[0]["link"])
+        self.assertEqual("original post", items[0]["description"])
+
+    def test_fxtwitter_429_marks_cooldown(self):
+        import urllib.error
+
+        def raise_429(*_args, **_kwargs):
+            raise urllib.error.HTTPError(
+                url="https://api.fxtwitter.com/2/profile/sama/statuses",
+                code=429,
+                msg="Too Many Requests",
+                hdrs=None,
+                fp=None,
+            )
+
+        instance_fail_time = {}
+        with (
+            patch.object(scan, "fetch_fxtwitter_json", raise_429),
+            patch.object(scan, "JITTER_MIN", 0),
+            patch.object(scan, "JITTER_MAX", 0),
+        ):
+            with self.assertRaises(RuntimeError):
+                scan._fetch_fxtwitter_profile("sama", instance_fail_time)
+        self.assertIn(scan.FXTWITTER_API_BASE, instance_fail_time)
+        self.assertEqual(scan.RATE_LIMIT_COOLDOWN, instance_fail_time[scan.FXTWITTER_API_BASE]["cd"])
+
+    def test_auto_rss_account_failure_falls_back_to_fxtwitter(self):
+        sample = {
+            "results": [{
+                "id": "9",
+                "url": "https://x.com/sama/status/9",
+                "text": "via fx",
+                "created_at": "Fri Oct 16 16:56:29 +0000 2026",
+                "author": {"screen_name": "sama"},
+            }]
+        }
+
+        with (
+            patch.object(scan, "DATA_SOURCE", "auto"),
+            patch.object(scan, "EFFECTIVE_SOURCE", "rss"),
+            patch.object(scan, "NITTER_INSTANCES", []),
+            patch.object(scan, "RSSHUB_INSTANCES", []),
+            patch.object(scan, "fetch_fxtwitter_json", lambda _u: sample),
+            patch.object(scan, "fetch_cdp_profile", lambda _u: (_ for _ in ()).throw(AssertionError("cdp should not run"))),
+            patch.object(scan, "JITTER_MIN", 0),
+            patch.object(scan, "JITTER_MAX", 0),
+        ):
+            items, error = scan.fetch_with_fallback("sama", {})
+
+        self.assertIsNone(error)
+        self.assertEqual("https://x.com/sama/status/9", items[0]["link"])
+
+    def test_fxtwitter_effective_source_does_not_call_rss(self):
+        def fail_rss(*_args, **_kwargs):
+            raise AssertionError("RSS should not be called when effective source is fxtwitter")
+
+        sample = {
+            "results": [{
+                "id": "11",
+                "url": "https://x.com/sama/status/11",
+                "text": "hello fx",
+                "created_at": "Fri Oct 16 16:56:29 +0000 2026",
+                "author": {"screen_name": "sama"},
+            }]
+        }
+
+        with (
+            patch.object(scan, "DATA_SOURCE", "fxtwitter"),
+            patch.object(scan, "EFFECTIVE_SOURCE", "fxtwitter"),
+            patch.object(scan, "fetch_rss", fail_rss),
+            patch.object(scan, "fetch_fxtwitter_json", lambda _u: sample),
+            patch.object(scan, "JITTER_MIN", 0),
+            patch.object(scan, "JITTER_MAX", 0),
+        ):
+            items, error = scan.fetch_with_fallback("sama", {})
+
+        self.assertIsNone(error)
+        self.assertEqual("hello fx", items[0]["title"])
 
     def test_effective_cdp_source_does_not_call_rss_per_account(self):
         def fail_if_called(*_args, **_kwargs):
