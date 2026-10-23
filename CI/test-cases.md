@@ -253,7 +253,8 @@ python /Users/jackwl/Code/gitcode/gitxPost/xpost.py radar-scan --limit 0
 - `xinfo/RESULT.json` 被写入
 - 输出中包含 `successful_accounts`、`failed_accounts`、`new_items_count`
 - 不传参时 `source=auto`、`limit=100`
-- `auto` 且 RSS 不可用时：`effective_source=cdp`，账号数不超过 `--limit`
+- 默认并发：`workers=2`、fxtwitter 并发=2（可用 `XPOST_RADAR_MAX_WORKERS` / `XPOST_RADAR_FXTWITTER_CONCURRENT` 覆盖）；fxtwitter 日志含 `fxtwitter并发=2`
+- `auto` 且 RSS 不可用时：`effective_source` 可为 `fxtwitter` 或 `cdp`（按探测结果），账号数不超过 `--limit`
 - CDP 失败账号不会立刻重试；整轮名单跑完后各补跑 1 次
 - 登录/验证/限流硬 guard 看 URL（`/i/flow/login`、`/account/access`）、标题和主栏错误区，不把推文里的 `try again later` 当限流；日志带 `matched=` 命中片段
 - 本轮扫描账号全部失败时：`RESULT.json` 的 `success=false`，CLI 退出码非 0（按 limit 后的账号数判定，不是全量活跃账号）

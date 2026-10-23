@@ -364,11 +364,22 @@ CDP_DEFERRED_RETRY_PAUSE = float(os.environ.get("XPOST_RADAR_CDP_RETRY_PAUSE", "
 if CDP_JITTER_MAX < CDP_JITTER_MIN:
     CDP_JITTER_MIN, CDP_JITTER_MAX = CDP_JITTER_MAX, CDP_JITTER_MIN
 
-# 并发配置（单 worker + 低并发，避免把 nitter.net 再次打进 429）
+
+def _env_positive_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, str(default))
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+# 并发配置（默认 workers=2 + fxtwitter 并发 2；Nitter/RSSHub 仍每实例 1，避免 429）
 CONCURRENT_PER_INSTANCE = 1
+FXTWITTER_CONCURRENT = _env_positive_int("XPOST_RADAR_FXTWITTER_CONCURRENT", 2)
 JITTER_MIN = 3.0
 JITTER_MAX = 6.0
-MAX_WORKERS = 1
+MAX_WORKERS = _env_positive_int("XPOST_RADAR_MAX_WORKERS", 2)
 
 # User-Agent 池（完整浏览器串；避免截断 UA 被当成脚本）
 _UA_POOL = [
@@ -383,8 +394,9 @@ _UA_POOL = [
 # 每个实例的信号量 — 模块加载时预初始化，避免懒初始化竞争
 _instance_semaphores: dict = {
     inst: threading.Semaphore(CONCURRENT_PER_INSTANCE)
-    for inst in NITTER_INSTANCES + RSSHUB_INSTANCES + [FXTWITTER_API_BASE]
+    for inst in NITTER_INSTANCES + RSSHUB_INSTANCES
 }
+_instance_semaphores[FXTWITTER_API_BASE] = threading.Semaphore(FXTWITTER_CONCURRENT)
 
 # 日志文件写入锁（多线程并发时防止日志行交错）
 _log_lock = threading.Lock()
@@ -1823,7 +1835,10 @@ def main():
     if EFFECTIVE_SOURCE == "cdp":
         log(f'并发模式: workers={MAX_WORKERS}  CDP间隔={CDP_JITTER_MIN}-{CDP_JITTER_MAX}s  即时重试={CDP_MAX_RETRIES}')
     elif EFFECTIVE_SOURCE == "fxtwitter":
-        log(f'并发模式: workers={MAX_WORKERS}  fxtwitter jitter={JITTER_MIN}-{JITTER_MAX}s')
+        log(
+            f'并发模式: workers={MAX_WORKERS}  fxtwitter并发={FXTWITTER_CONCURRENT}  '
+            f'jitter={JITTER_MIN}-{JITTER_MAX}s'
+        )
     else:
         log(f'并发模式: workers={MAX_WORKERS}  每实例≤{CONCURRENT_PER_INSTANCE}并发  jitter={JITTER_MIN}-{JITTER_MAX}s')
     print()

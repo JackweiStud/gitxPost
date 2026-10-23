@@ -10,6 +10,35 @@
   - 仍未解决的边界或风险
 - 如果改动影响验收方式或测试结论，需要同步更新 `CI/` 目录下的文档。
 
+日期：2026-10-22
+
+## 调整：雷达扫描默认 workers=2、fxtwitter 并发=2
+
+范围：`xinfo/x_ideas_scan.py`、`CI/test-cases.md`
+
+### 问题
+
+- 扫描线程池与 fxtwitter 并发写死为 1，补扫剩余账号偏慢。
+- 无法在不改代码的情况下临时调并发。
+
+### 变更
+
+- 新增环境变量：`XPOST_RADAR_MAX_WORKERS`、`XPOST_RADAR_FXTWITTER_CONCURRENT`（正整数，非法回退默认）。
+- 默认改为 `workers=2`、`fxtwitter 并发=2`；Nitter/RSSHub 仍每实例 1。
+- fxtwitter 信号量与 Nitter/RSSHub 分开初始化；日志打印 `fxtwitter并发=N`。
+
+### 验证
+
+- `python3 -m py_compile xinfo/x_ideas_scan.py`
+- `python3 -m unittest test_x_ideas_scan_auto_source.py`（23 通过）
+- 本机确认默认 `MAX_WORKERS=2`、`FXTWITTER_CONCURRENT=2`
+- 此前补扫实测：`workers=2` + fxtwitter 并发 2，约 33 账号约 1m50s
+
+### 风险
+
+- fxtwitter 并发提高可能更容易触发 429/冷却；可用环境变量降回 1。
+- CDP 模式下多 worker 仍可能加重 Chrome 压力，建议 CDP 时显式设 `XPOST_RADAR_MAX_WORKERS=1`。
+
 日期：2026-10-23
 
 ## 调整：本地大视频（>50MiB）走 CDP 路径挂载，避免远程 50MiB 传输上限
