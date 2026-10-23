@@ -91,6 +91,57 @@ def validate_media(media: Optional[List[str]]) -> bool:
 
 validate_images = validate_media
 
+# Playwright remote CDP transfer rejects payloads ≥50MiB; local path attach avoids that.
+_MEDIA_UPLOAD_TIMEOUT_MIN_MS = 10_000
+_MEDIA_UPLOAD_TIMEOUT_MAX_MS = 300_000  # 5 minutes
+_MEDIA_UPLOAD_TIMEOUT_BASE_MS = 60_000
+_MEDIA_UPLOAD_TIMEOUT_PER_MIB_MS = 2_000
+
+
+def media_upload_timeout_ms(paths: List[str]) -> int:
+    """Timeout budget for attaching/confirming media; scales with total size."""
+    total_bytes = 0
+    for path in paths:
+        try:
+            total_bytes += Path(path).stat().st_size
+        except OSError:
+            continue
+    mib = total_bytes / (1024 * 1024)
+    return int(
+        min(
+            _MEDIA_UPLOAD_TIMEOUT_MAX_MS,
+            max(
+                _MEDIA_UPLOAD_TIMEOUT_MIN_MS,
+                _MEDIA_UPLOAD_TIMEOUT_BASE_MS + mib * _MEDIA_UPLOAD_TIMEOUT_PER_MIB_MS,
+            ),
+        )
+    )
+
+
+def set_local_file_input_files(page: Page, selector: str, paths: List[str]) -> None:
+    """Attach local files via CDP DOM.setFileInputFiles (paths only, no byte transfer)."""
+    abs_paths = [str(Path(path).expanduser().resolve()) for path in paths]
+    for abs_path in abs_paths:
+        if not Path(abs_path).is_file():
+            raise FileNotFoundError(f"媒体文件不存在: {abs_path}")
+
+    cdp = page.context.new_cdp_session(page)
+    try:
+        doc = cdp.send("DOM.getDocument", {"depth": 0})
+        result = cdp.send(
+            "DOM.querySelector",
+            {"nodeId": doc["root"]["nodeId"], "selector": selector},
+        )
+        node_id = int(result.get("nodeId") or 0)
+        if node_id == 0:
+            raise RuntimeError(f"CDP 未找到文件上传控件: {selector}")
+        cdp.send("DOM.setFileInputFiles", {"nodeId": node_id, "files": abs_paths})
+    finally:
+        try:
+            cdp.detach()
+        except Exception:
+            pass
+
 
 class HumanBehaviorSimulator:
     """人类行为模拟器"""
@@ -353,40 +404,49 @@ def upload_post_media(page: Page, media: List[str], step_pause_ms: int = STEP_PA
     if handle is None:
         _save_debug_artifacts(page)
         raise RuntimeError(f"未找到媒体上传控件句柄: {matched_selector}")
-    
-    # 上传媒体
+
     abs_media = [str(Path(media_path).expanduser().resolve()) for media_path in media]
-    handle.set_input_files(abs_media, timeout=10000)
-    page.wait_for_timeout(2500)
+    timeout_ms = media_upload_timeout_ms(abs_media)
+    print(f"   ⏱️  媒体挂载超时预算: {timeout_ms}ms")
+
+    # Local absolute paths via CDP — avoids Playwright's ≥50MiB remote transfer limit.
+    set_local_file_input_files(page, matched_selector, abs_media)
     _activate_chrome_window()
-    
-    # 验证上传
-    attached = page.eval_on_selector(
-        matched_selector,
-        "(el) => (el.files && el.files.length) || 0",
-    ) or 0
-    
-    preview_count = page.evaluate(
-        """
-        () => {
-          const selectors = [
-            'button[data-testid="removeMedia"]',
-            'button[aria-label*="Remove media"]',
-            'div[data-testid="attachments"] img',
-            'div[data-testid="attachments"] video',
-            'img[src^="blob:"]',
-            'video[src^="blob:"]'
-          ];
-          return Math.max(0, ...selectors.map((selector) => document.querySelectorAll(selector).length));
-        }
-        """
-    )
-    
-    detected = max(attached, preview_count)
-    if detected < len(media):
-        _save_debug_artifacts(page)
-        raise RuntimeError(f"媒体上传不完整：期望 {len(media)} 个，实际检测 {detected} 个")
-    
+
+    detected = 0
+    deadline = time.time() + (timeout_ms / 1000.0)
+    while True:
+        attached = page.eval_on_selector(
+            matched_selector,
+            "(el) => (el.files && el.files.length) || 0",
+        ) or 0
+
+        preview_count = page.evaluate(
+            """
+            () => {
+              const selectors = [
+                'button[data-testid="removeMedia"]',
+                'button[aria-label*="Remove media"]',
+                'div[data-testid="attachments"] img',
+                'div[data-testid="attachments"] video',
+                'img[src^="blob:"]',
+                'video[src^="blob:"]'
+              ];
+              return Math.max(0, ...selectors.map((selector) => document.querySelectorAll(selector).length));
+            }
+            """
+        )
+
+        detected = max(attached, preview_count)
+        if detected >= len(media):
+            break
+        if time.time() >= deadline:
+            _save_debug_artifacts(page)
+            raise RuntimeError(
+                f"媒体上传不完整：期望 {len(media)} 个，实际检测 {detected} 个"
+            )
+        page.wait_for_timeout(500)
+
     print(f"   ✅ 媒体上传成功 (检测到 {detected} 个)")
     _pause_for_observation("媒体已插入", step_pause_ms)
     return True

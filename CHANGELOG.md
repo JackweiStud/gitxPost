@@ -10,6 +10,32 @@
   - 仍未解决的边界或风险
 - 如果改动影响验收方式或测试结论，需要同步更新 `CI/` 目录下的文档。
 
+日期：2026-10-23
+
+## 调整：本地大视频（>50MiB）走 CDP 路径挂载，避免远程 50MiB 传输上限
+
+范围：`auto_publish_post.py`、`browser_cdp_session.py`、`test_auto_publish_post_media_upload.py`、`CI/test-cases.md`
+
+### 问题
+
+- Patchright `connect_over_cdp` 默认按非同机处理，`set_input_files` 会把文件读入内存经协议传输；≥50MiB 抛 `Cannot transfer files larger than 50Mb...`
+- 媒体挂载 timeout 固定 10s，大视频不够用
+
+### 变更
+
+- `connect_over_cdp(..., is_local=True)`：声明本机 Chrome
+- `upload_post_media` 用 CDP `DOM.setFileInputFiles` 只传本地绝对路径，不传文件字节
+- 挂载确认超时按体积缩放：`60s + 2s/MiB`，下限 10s，上限 5 分钟；轮询预览/files 直至就绪或超时
+
+### 验证
+
+- `python3 -m pytest test_auto_publish_post_media_upload.py test_auto_publish_post_video.py test_browser_cdp_session.py -v`
+- 云端无本机 Chrome `:19222`，>50MiB 真机冒烟见 `CI/test-cases.md` TC-07b
+
+### 风险
+
+- 若文件不在 Chrome 所在机器的文件系统上，CDP 路径挂载仍会失败（本仓库本机 Chrome 场景不适用）
+
 日期：2026-08-25
 
 ## 调整：CDP 硬 guard 改为认 URL/标题/错误区，并记录命中片段
