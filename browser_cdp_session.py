@@ -373,9 +373,11 @@ console.log(JSON.stringify(result));
 
             self._ensure_page_target_for_patchright()
             
-            # Connect over CDP for existing Chrome process
+            # Local Chrome on this host: is_local lets set_input_files use paths
+            # instead of transferring file bytes (avoids the 50MiB CDP limit).
             self.browser = self.playwright.chromium.connect_over_cdp(
-                f"http://127.0.0.1:{self.remote_debugging_port}"
+                f"http://127.0.0.1:{self.remote_debugging_port}",
+                is_local=True,
             )
             
             # 获取或创建上下文

@@ -183,6 +183,39 @@ python /Users/jackwl/Code/gitcode/gitxPost/xpost.py post "smoke image test" \
 - 图片成功上传
 - 返回 JSON：`ok=true`
 
+### TC-07b Post 本地大视频（>50MiB）
+
+目标：
+- 验证本地 Chrome `:19222` + 本地绝对路径视频在超过 Playwright 远程传输 50MiB 限制时仍能挂载
+- 挂载走 CDP `DOM.setFileInputFiles`（只传路径，不传文件内容）；`connect_over_cdp(..., is_local=True)` 作为同机优化
+
+前置：
+- macOS，本机 Chrome 已开 remote debugging（默认端口 19222）
+- 准备一个本地视频文件，大小 **>50MiB**（不要用压缩/转码绕过）
+
+单元（云端/无 Chrome 可跑）：
+
+```bash
+source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
+python -m pytest test_auto_publish_post_media_upload.py -v
+```
+
+真机冒烟：
+
+```bash
+source /Users/jackwl/Code/gitcode/gitxPost/.venv/bin/activate
+python /Users/jackwl/Code/gitcode/gitxPost/xpost.py post "large video smoke" \
+  --media /path/to/local/video-over-50mib.mp4 \
+  --no-wait
+```
+
+预期：
+- 不再出现 `Cannot transfer files larger than 50Mb to a browser not co-located with the server`
+- 媒体挂载超时预算随体积放大（上限约 5 分钟），不会卡死在 10s
+- 返回 JSON：`ok=true`（草稿模式）
+
+说明：云 VM 无本机 Chrome `:19222` 时只能跑单元测试；真机冒烟需 Jack 在 Mac 上执行。
+
 ### TC-08 Radar 扫描
 
 目标：
